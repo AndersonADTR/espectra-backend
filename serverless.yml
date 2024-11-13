@@ -1,0 +1,40 @@
+service: spectra-backend
+
+frameworkVersion: '3'
+
+provider:
+  name: aws
+  runtime: nodejs20.x
+  stage: ${opt:stage, 'dev'}
+  region: ${opt:region, 'us-east-1'}
+  environment:
+    STAGE: ${self:provider.stage}
+
+plugins:
+  - serverless-plugin-typescript  # Quitar las versiones de aquí
+  - serverless-offline           # Quitar las versiones de aquí
+
+custom:
+  serverlessPluginTypescript:
+    tsConfigFileLocation: './tsconfig.json'
+  serverless-offline:           # Agregar configuración específica
+    httpPort: 3000
+    lambdaPort: 3002
+    websocketPort: 3001
+
+package:
+  individually: true
+  patterns:
+    - '!node_modules/.prisma/**'
+    - '!node_modules/@prisma/client/**'
+    - '!node_modules/prisma/**'
+    - '!.build/**'
+    - '!.serverless/**'
+
+functions:
+  hello:
+    handler: services/hello.handler
+    events:
+      - http:
+          path: hello
+          method: get

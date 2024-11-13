@@ -1,0 +1,22 @@
+{
+  "compilerOptions": {
+    "target": "ES2020",
+    "module": "commonjs",
+    "lib": ["ES2020"],
+    "strict": true,
+    "rootDir": "./",
+    "outDir": ".build",
+    "sourceMap": true,
+    "removeComments": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "baseUrl": ".",
+    "paths": {
+      "@shared/*": ["shared/*"],
+      "@services/*": ["services/*"]
+    }
+  },
+  "include": ["services/**/*", "shared/**/*"],
+  "exclude": ["node_modules", ".serverless", ".build"]
+}
