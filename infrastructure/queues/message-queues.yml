@@ -1,0 +1,47 @@
+# infrastructure/queues/message-queues.yml
+Resources:
+  MessageQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: ${self:service}-${self:provider.stage}-messages.fifo
+      FifoQueue: true
+      ContentBasedDeduplication: true
+      VisibilityTimeout: 60
+      RedrivePolicy:
+        deadLetterTargetArn: !GetAtt MessageDLQ.Arn
+        maxReceiveCount: 3
+
+  MessageDLQ:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: ${self:service}-${self:provider.stage}-messages-dlq.fifo
+      FifoQueue: true
+      MessageRetentionPeriod: 1209600 # 14 días
+
+  MessageQueuePolicy:
+    Type: AWS::SQS::QueuePolicy
+    Properties:
+      Queues:
+        - !Ref MessageQueue
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action:
+              - sqs:SendMessage
+              - sqs:ReceiveMessage
+              - sqs:DeleteMessage
+              - sqs:GetQueueAttributes
+            Resource: !GetAtt MessageQueue.Arn
+
+Outputs:
+  MessageQueueUrl:
+    Value: !Ref MessageQueue
+    Export:
+      Name: ${self:service}-${self:provider.stage}-message-queue-url
+  MessageQueueArn:
+    Value: !GetAtt MessageQueue.Arn
+    Export:
+      Name: ${self:service}-${self:provider.stage}-message-queue-arn

@@ -1,40 +1,235 @@
-service: spectra-backend
+service: espectra-backend
 
-frameworkVersion: '3'
+frameworkVersion: '4'
+
+custom:
+  userPoolId: ${cf:${self:service}-${self:provider.stage}.UserPoolId}
+  userPoolClientId: ${cf:${self:service}-${self:provider.stage}.UserPoolClientId}
+  connectionsTableName: ${self:service}-${self:provider.stage}-connections
+  IS_OFFLINE: ${env:IS_OFFLINE, 'false'}
+  logRetentionInDays: 14
+  logLevel:
+    dev: 'DEBUG'
+    staging: 'INFO'
+    prod: 'WARN'
+  esbuild:
+    bundle: true
+    minify: false
+    sourcemap: true
+    exclude: 
+      - aws-sdk
+      - /@aws-sdk/*
+    target: 'node20'
+    define: { 'require.resolve': undefined }
+    platform: 'node'
+    concurrency: 10
+    external:
+      - aws-sdk
+      - tslib
 
 provider:
   name: aws
   runtime: nodejs20.x
   stage: ${opt:stage, 'dev'}
   region: ${opt:region, 'us-east-1'}
+  memorySize: 1024
+  timeout: 30
+  logRetentionInDays: 14
   environment:
     STAGE: ${self:provider.stage}
+    REGION: ${self:provider.region}
+    SERVICE_NAME: ${self:service}
+    # Variables existentes de Cognito
+    COGNITO_USER_POOL_ID: ${self:custom.userPoolId} #${cf:${self:service}-${self:provider.stage}.UserPoolId}
+    COGNITO_CLIENT_ID: ${self:custom.userPoolClientId} #${cf:${self:service}-${self:provider.stage}.UserPoolClientId}
+    # Variables existentes de SQS
+    MESSAGE_QUEUE_URL: !Ref MessageQueue
+    # Variables existentes de DynamoDB
+    CONNECTION_TABLE: ${self:service}-${self:provider.stage}-connections
+  iam:
+    role:
+      statements:
+        # Permisos para Cognito
+        - Effect: Allow
+          Action:
+            - cognito-idp:AdminInitiateAuth
+            - cognito-idp:AdminCreateUser
+            - cognito-idp:AdminSetUserPassword
+            - cognito-idp:AdminUpdateUserAttributes
+            - cognito-idp:AdminDeleteUser
+            - cognito-idp:AdminGetUser
+            - cognito-idp:InitiateAuth
+            - cognito-idp:SignUp
+            - cognito-idp:AdminConfirmSignUp
+          Resource: !GetAtt SpectraUserPool.Arn
+        
+        # Permisos para DynamoDB
+        - Effect: Allow
+          Action:
+            - dynamodb:PutItem
+            - dynamodb:GetItem
+            - dynamodb:UpdateItem
+            - dynamodb:DeleteItem
+            - dynamodb:Query
+            - dynamodb:Scan
+          Resource: 
+            # Tabla de usuarios
+            - !GetAtt UsersTable.Arn
+            - !Join ['', [!GetAtt UsersTable.Arn, '/index/*']]
+            # Tabla de conexiones
+            - !GetAtt ConnectionsTable.Arn
+            - !Join ['', [!GetAtt ConnectionsTable.Arn, '/index/*']]
+        
+        # Permisos para CloudWatch Logs
+        - Effect: Allow
+          Action:
+            - logs:CreateLogGroup
+            - logs:CreateLogStream
+            - logs:PutLogEvents
+          Resource: '*'
+
+        # Permisos para API Gateway
+        - Effect: Allow
+          Action:
+            - execute-api:ManageConnections
+          Resource:
+            - arn:aws:execute-api:${self:provider.region}:*:*/*/POST/@connections/*
 
 plugins:
-  - serverless-plugin-typescript  # Quitar las versiones de aquí
-  - serverless-offline           # Quitar las versiones de aquí
-
-custom:
-  serverlessPluginTypescript:
-    tsConfigFileLocation: './tsconfig.json'
-  serverless-offline:           # Agregar configuración específica
-    httpPort: 3000
-    lambdaPort: 3002
-    websocketPort: 3001
+  - serverless-offline
+  - serverless-iam-roles-per-function
 
 package:
   individually: true
   patterns:
-    - '!node_modules/.prisma/**'
-    - '!node_modules/@prisma/client/**'
-    - '!node_modules/prisma/**'
-    - '!.build/**'
-    - '!.serverless/**'
+    - "!./**"
+    - "node_modules/@aws-sdk/**"
+    - "node_modules/@smithy/**"
+    - "node_modules/aws-sdk/**"
+    - "node_modules/@aws-sdk/types/**"
+    - "node_modules/tslib/**"
+    - "node_modules/uuid/**"
+    - "node_modules/aws-jwt-verify/**"
+    - "node_modules/fast-xml-parser/**"
+    - "node_modules/strnum/**"
+    - "node_modules/mnemonist/**"
+    - "!node_modules/@types/**"
+    - "services/**/*.ts"
+    - "shared/**/*.ts"
 
 functions:
-  hello:
-    handler: services/hello.handler
+  authorizer:
+    handler: services/auth/authorizer.handler
+    environment:
+      COGNITO_USER_POOL_ID: ${self:custom.userPoolId} #${cf:${self:service}-${self:provider.stage}.UserPoolId}
+      COGNITO_CLIENT_ID: ${self:custom.userPoolClientId} #${cf:${self:service}-${self:provider.stage}.UserPoolClientId}
+
+  register:
+    handler: services/auth/handlers/register.handler
     events:
       - http:
-          path: hello
+          path: auth/register
+          method: post
+          cors: true
+    environment:
+      # Variables de entorno específicas para la función register
+      ALLOWED_ORIGINS: '*'
+      PASSWORD_MIN_LENGTH: '8'
+      USER_POOL_REGION: ${self:provider.region}
+
+  login:
+    handler: services/auth/handlers/login.handler
+    events:
+      - http:
+          path: auth/login
+          method: post
+          cors: true
+
+  refreshToken:
+    handler: services/auth/handlers/refreshToken.handler
+    events:
+      - http:
+          path: auth/refresh-token
+          method: post
+          cors: true
+
+  logout:
+    handler: services/auth/handlers/logout.handler
+    events:
+      - http:
+          path: auth/logout
+          method: post
+          cors: true
+          authorizer:
+            name: authorizer
+            type: token
+
+  getUser:
+    handler: services/auth/handlers/getUser.handler
+    events:
+      - http:
+          path: users/{userId}
           method: get
+          authorizer:
+            name: authorizer
+            type: token
+
+  websocketAuthorizer:
+    handler: services/websocket/handlers/authorizer.handler
+    environment:
+      COGNITO_USER_POOL_ID: ${self:custom.userPoolId}
+      COGNITO_CLIENT_ID: ${self:custom.userPoolClientId}
+      LOG_LEVEL: 'debug'  # Aumentar nivel de logging para diagnóstico
+    memorySize: 256
+    timeout: 10
+    # Agregar logs específicos para el authorizer
+    logRetentionInDays: 14
+    tags:
+      Function: WebSocketAuthorizer
+      Service: ${self:service}
+      Environment: ${self:provider.stage}
+
+  wsConnect:
+    handler: services/websocket/handlers/connect.handler
+    environment:
+      CONNECTION_TABLE: ${self:custom.connectionsTableName}
+    events:
+      - websocket:
+          route: $connect
+          authorizer:
+            name: websocketAuthorizer
+            identitySource:
+              - route.request.querystring.Auth
+    role: !GetAtt WebSocketLambdaRole.Arn
+
+  wsDisconnect:
+    handler: services/websocket/handlers/disconnect.handler
+    environment:
+      CONNECTION_TABLE: ${self:custom.connectionsTableName}
+    events:
+      - websocket:
+          route: $disconnect
+    role: !GetAtt WebSocketLambdaRole.Arn
+
+  wsMessage:
+    handler: services/websocket/handlers/message.handler
+    environment:
+      CONNECTION_TABLE: ${self:custom.connectionsTableName}
+    events:
+      - websocket:
+          route: $default
+    role: !GetAtt WebSocketLambdaRole.Arn
+
+resources:
+  - ${file(infrastructure/network/vpc.yml)}
+  - ${file(infrastructure/iam/roles.yml)}
+  - ${file(infrastructure/iam/websocket-roles.yml)}
+  - ${file(infrastructure/security/kms.yml)}
+  - ${file(infrastructure/queues/message-queues.yml)}
+  - ${file(infrastructure/cognito/cognito.yml)}
+  - ${file(infrastructure/dynamodb/user-tables.yml)}
+  - ${file(infrastructure/dynamodb/connection-concierge-tables.yml)}
+  - ${file(infrastructure/websocket/websocket.yml)}
+  - ${file(infrastructure/security/websocket-security.yml)}
+  - ${file(infrastructure/security/waf.yml)}
+  - ${file(infrastructure/monitoring/cloudwatch.yml)}

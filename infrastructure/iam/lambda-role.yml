@@ -1,0 +1,51 @@
+# # infrastructure/iam/lambda-role.yml
+# Resources:
+#   WebSocketLambdaRole:
+#     Type: AWS::IAM::Role
+#     Properties:
+#       RoleName: ${self:service}-${self:provider.stage}-ws-lambda-role
+#       AssumeRolePolicyDocument:
+#         Version: '2012-10-17'
+#         Statement:
+#           - Effect: Allow
+#             Principal:
+#               Service: lambda.amazonaws.com
+#             Action: sts:AssumeRole
+#       ManagedPolicyArns:
+#         - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+#       Policies:
+#         - PolicyName: kms-access
+#           PolicyDocument:
+#             Version: '2012-10-17'
+#             Statement:
+#               - Effect: Allow
+#                 Action:
+#                   - kms:Decrypt
+#                   - kms:Encrypt
+#                   - kms:GenerateDataKey
+#                   - kms:DescribeKey
+#                 Resource:
+#                   - arn:aws:kms:${self:provider.region}:${aws:accountId}:key/02f1128a-1710-419f-b3a9-b8104de83d71
+#         - PolicyName: dynamodb-access
+#           PolicyDocument:
+#             Version: '2012-10-17'
+#             Statement:
+#               - Effect: Allow
+#                 Action:
+#                   - dynamodb:PutItem
+#                   - dynamodb:GetItem
+#                   - dynamodb:DeleteItem
+#                   - dynamodb:Query
+#                   - dynamodb:UpdateItem
+#                 Resource:
+#                   - !GetAtt ConnectionsTable.Arn
+#                   - !Sub ${ConnectionsTable.Arn}/index/*
+#         - PolicyName: websocket-management
+#           PolicyDocument:
+#             Version: '2012-10-17'
+#             Statement:
+#               - Effect: Allow
+#                 Action:
+#                   - execute-api:ManageConnections
+#                 Resource:
+#                   - !Sub arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${WebSocketApi}/*

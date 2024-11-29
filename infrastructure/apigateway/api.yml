@@ -1,0 +1,33 @@
+Resources:
+  ApiGatewayCloudWatchRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: ${self:service}-${self:provider.stage}-apigw-cloudwatch-role
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: apigateway.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AmazonAPIGatewayPushToCloudWatchLogs
+
+  ApiGatewayAccount:
+    Type: AWS::ApiGateway::Account
+    Properties:
+      CloudWatchRoleArn: !GetAtt ApiGatewayCloudWatchRole.Arn
+    DependsOn: ApiGatewayCloudWatchRole
+
+  ApiGatewayAccessLogs:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: /aws/apigateway/${self:service}-${self:provider.stage}-access-logs
+      RetentionInDays: ${self:custom.logRetentionInDays}
+
+Outputs:
+  ApiGatewayCloudWatchRoleArn:
+    Description: ARN of the API Gateway CloudWatch role
+    Value: !GetAtt ApiGatewayCloudWatchRole.Arn
+    Export:
+      Name: ${self:service}-${self:provider.stage}-apigw-cloudwatch-role-arn

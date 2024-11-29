@@ -1,0 +1,76 @@
+# infrastructure/iam/websocket-roles.yml
+Resources:
+  WebSocketLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: ${self:service}-${self:provider.stage}-websocket-lambda-role
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: websocket-full-access
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              # WebSocket Management
+              - Effect: Allow
+                Action:
+                  - execute-api:ManageConnections
+                Resource: 
+                  - !Sub arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:*/*
+
+              # DynamoDB Access
+              - Effect: Allow
+                Action:
+                  - dynamodb:PutItem
+                  - dynamodb:GetItem
+                  - dynamodb:DeleteItem
+                  - dynamodb:Query
+                  - dynamodb:UpdateItem
+                Resource:
+                  - !GetAtt ConnectionsTable.Arn
+                  - !Sub ${ConnectionsTable.Arn}/index/*
+
+              # SQS Access
+              - Effect: Allow
+                Action:
+                  - sqs:SendMessage
+                  - sqs:GetQueueUrl
+                  - sqs:ReceiveMessage
+                  - sqs:DeleteMessage
+                Resource:
+                  - !GetAtt MessageQueue.Arn
+
+              #CloudWatch Logs Access
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                  - cognito-idp:AdminInitiateAuth
+                  - cognito-idp:ListUsers
+                Resource: '*'
+
+              # KMS Access
+              - Effect: Allow
+                Action:
+                  - kms:Decrypt
+                  - kms:Encrypt
+                  - kms:GenerateDataKey
+                  - kms:DescribeKey
+                Resource:
+                  - !GetAtt WebSocketKMSKey.Arn
+                  - arn:aws:kms:${self:provider.region}:${aws:accountId}:key/*
+
+Outputs:
+  WebSocketLambdaRoleArn:
+    Description: ARN of the WebSocket Lambda Role
+    Value: !GetAtt WebSocketLambdaRole.Arn
+    Export:
+      Name: ${self:service}-${self:provider.stage}-websocket-role-arn

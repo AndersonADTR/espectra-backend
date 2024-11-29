@@ -1,0 +1,31 @@
+# infrastructure/security/kms.yml
+Resources:
+  WebSocketKMSKey:
+    Type: AWS::KMS::Key
+    Properties:
+      Description: KMS key for WebSocket connections encryption
+      EnableKeyRotation: true
+      KeyPolicy:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: Enable IAM User Permissions
+            Effect: Allow
+            Principal:
+              AWS: !Sub arn:aws:iam::${AWS::AccountId}:root
+            Action: kms:*
+            Resource: '*'
+          - Sid: Allow Lambda to use the key
+            Effect: Allow
+            Principal:
+              AWS: '*'
+            Action:
+              - kms:Decrypt
+              - kms:Encrypt
+              - kms:GenerateDataKey
+            Resource: '*'
+
+  WebSocketKMSKeyAlias:
+    Type: AWS::KMS::Alias
+    Properties:
+      AliasName: !Sub alias/${self:service}-${self:provider.stage}-websocket
+      TargetKeyId: !Ref WebSocketKMSKey

@@ -1,0 +1,67 @@
+Resources:
+  SpectraUserPool:
+    Type: AWS::Cognito::UserPool
+    Properties:
+      UserPoolName: ${self:service}-${self:provider.stage}-user-pool
+      AutoVerifiedAttributes:
+        - email
+      UsernameAttributes:
+        - email
+      Policies:
+        PasswordPolicy:
+          MinimumLength: 8
+          RequireLowercase: true
+          RequireNumbers: true
+          RequireSymbols: true
+          RequireUppercase: true
+      Schema:
+        - Name: email
+          AttributeDataType: String
+          Mutable: true
+          Required: true
+        - Name: name
+          AttributeDataType: String
+          Mutable: true
+          Required: true
+        - Name: userType
+          AttributeDataType: String
+          Mutable: true
+          Required: false
+          StringAttributeConstraints:
+            MaxLength: "20"
+            MinLength: "1"
+
+  SpectraUserPoolClient:
+    Type: AWS::Cognito::UserPoolClient
+    Properties:
+      ClientName: ${self:service}-${self:provider.stage}-user-pool-client
+      UserPoolId: !Ref SpectraUserPool
+      ExplicitAuthFlows:
+        - ALLOW_USER_PASSWORD_AUTH
+        - ALLOW_REFRESH_TOKEN_AUTH
+        - ALLOW_USER_SRP_AUTH
+      PreventUserExistenceErrors: ENABLED
+      GenerateSecret: false
+      AccessTokenValidity: 1
+      IdTokenValidity: 1
+      RefreshTokenValidity: 30
+      TokenValidityUnits:
+        AccessToken: "hours"
+        IdToken: "hours"
+        RefreshToken: "days"
+
+Outputs:
+  UserPoolId:
+    Value: !Ref SpectraUserPool
+    Export:
+      Name: ${self:service}-${self:provider.stage}-user-pool-id
+
+  UserPoolClientId:
+    Value: !Ref SpectraUserPoolClient
+    Export:
+      Name: ${self:service}-${self:provider.stage}-user-pool-client-id
+
+  UserPoolArn:
+    Value: !GetAtt SpectraUserPool.Arn
+    Export:
+      Name: ${self:service}-${self:provider.stage}-user-pool-arn

@@ -1,22 +1,55 @@
 {
   "compilerOptions": {
-    "target": "ES2020",
-    "module": "commonjs",
-    "lib": ["ES2020"],
-    "strict": true,
-    "rootDir": "./",
-    "outDir": ".build",
-    "sourceMap": true,
-    "removeComments": true,
-    "esModuleInterop": true,
-    "skipLibCheck": true,
-    "forceConsistentCasingInFileNames": true,
-    "baseUrl": ".",
+    "target": "ES2020",                       // Versión de ECMAScript objetivo
+    "module": "commonjs",                     // Sistema de módulos
+    "lib": ["ES2020"],                        // Librerías a incluir
+    "allowJs": true,                          // Permitir archivos JavaScript
+    "moduleResolution": "node",               // Resolución de módulos para Node.js
+    "esModuleInterop": true,                  // Habilitar interoperabilidad de módulos ES
+    "resolveJsonModule": true,                // Permitir importar archivos JSON
+    "strict": true,                           // Habilitar todas las comprobaciones estrictas
+    "noImplicitAny": true,                    // No permitir tipo 'any' implícito
+    "strictNullChecks": true,                 // Comprobaciones estrictas de null
+    "strictFunctionTypes": true,              // Comprobación estricta de tipos de funciones
+    "strictBindCallApply": true,              // Comprobaciones estrictas para bind, call y apply
+    "strictPropertyInitialization": true,      // Comprobación estricta de inicialización de propiedades
+    "noImplicitThis": true,                   // No permitir 'this' implícito
+    "alwaysStrict": true,                     // Analizar en modo estricto
+    "noUnusedLocals": true,                   // Reportar variables locales no usadas
+    "noUnusedParameters": true,               // Reportar parámetros no usados
+    "noImplicitReturns": true,                // Comprobar todos los caminos de retorno
+    "noFallthroughCasesInSwitch": true,       // Prevenir casos sin break en switch
+    "baseUrl": ".",                           // URL base para resolución de módulos
     "paths": {
-      "@shared/*": ["shared/*"],
-      "@services/*": ["services/*"]
-    }
+      "@services/*": ["services/*"],          // Alias para servicios
+      "@shared/*": ["shared/*"],              // Alias para código compartido
+      "@infrastructure/*": ["infrastructure/*"]
+    },
+    "rootDir": "./",                          // Directorio raíz del código fuente
+    "outDir": ".build",                       // Directorio de salida
+    "sourceMap": true,                        // Generar source maps
+    "removeComments": true,                   // Remover comentarios en la salida
+    "skipLibCheck": true,                     // Saltar chequeo de archivos .d.ts
+    "forceConsistentCasingInFileNames": true, // Forzar consistencia en nombres de archivos
+    "declaration": true,                      // Generar archivos de declaración .d.ts
+    "declarationMap": true,                   // Generar source maps para archivos .d.ts
+    "incremental": true,                      // Habilitar compilación incremental
+    "tsBuildInfoFile": "./.tsbuildinfo"       // Archivo para compilación incremental
   },
-  "include": ["services/**/*", "shared/**/*"],
-  "exclude": ["node_modules", ".serverless", ".build"]
+  "include": [
+    "services/**/*",                          // Incluir todos los archivos en services
+    "shared/**/*",                            // Incluir todos los archivos compartidos
+    "infrastructure/**/*"                     // Incluir todos los archivos de infraestructura
+  ],
+  "exclude": [
+    "node_modules",                           // Excluir node_modules
+    ".serverless",                            // Excluir directorio serverless
+    ".build",                                 // Excluir directorio de build
+    "dist",                                   // Excluir directorio de distribución
+    "**/*.test.ts",                           // Excluir archivos de test
+    "**/*.spec.ts"                            // Excluir archivos de especificación
+  ],
+  "ts-node": {
+    "require": ["tsconfig-paths/register"]    // Soporte para paths en ts-node
+  }
 }

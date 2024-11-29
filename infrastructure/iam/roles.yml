@@ -1,0 +1,104 @@
+Resources:
+  IamRoleLambdaExecution:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: ${self:service}-${self:provider.stage}-lambda-role
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole
+      Policies:
+        - PolicyName: ${self:service}-${self:provider.stage}-lambda-policy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - cognito-idp:AdminInitiateAuth
+                  - cognito-idp:AdminConfirmSignUp
+                  - cognito-idp:AdminCreateUser
+                  - cognito-idp:AdminSetUserPassword
+                  - cognito-idp:AdminUpdateUserAttributes
+                  - cognito-idp:AdminDeleteUser
+                  - cognito-idp:AdminGetUser
+                  - cognito-idp:ListUsers
+                Resource: 
+                  - !Sub arn:aws:cognito-idp:${AWS::Region}:${AWS::AccountId}:userpool/*
+              - Effect: Allow
+                Action:
+                  - dynamodb:PutItem
+                  - dynamodb:GetItem
+                  - dynamodb:UpdateItem
+                  - dynamodb:DeleteItem
+                  - dynamodb:Query
+                  - dynamodb:Scan
+                Resource:
+                  - !Sub arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${self:service}-${self:provider.stage}-*
+              - Effect: Allow
+                Action:
+                  - xray:PutTraceSegments
+                  - xray:PutTelemetryRecords
+                Resource: "*"
+
+  WafAssociationLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: ${self:service}-${self:provider.stage}-waf-association-lambda-role
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: 
+                - lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: ${self:service}-${self:provider.stage}-waf-lambda-policy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - wafv2:AssociateWebACL
+                  - wafv2:DisassociateWebACL
+                  - apigateway:GET
+                Resource: '*'
+              - Effect: Allow
+                Action:
+                  - apigateway:GET
+                  - apigateway:SetWebACL
+                Resource: '*'
+  #             - Effect: Allow
+  #               Action:
+  #                 - lambda:GetLayerVersion
+  #                 - lambda:ListLayerVersions
+  #               Resource: 
+  #                 - !Sub 'arn:aws:lambda:${AWS::Region}:017000801446:layer:AWSLambdaPowertoolsTypeScript:*'
+
+  # LambdaLayerPermission:
+  #   Type: AWS::Lambda::LayerVersionPermission
+  #   Properties:
+  #     Action: lambda:GetLayerVersion
+  #     LayerVersionArn: !Sub 'arn:aws:lambda:${AWS::Region}:017000801446:layer:AWSLambdaPowertoolsTypeScript:13'
+  #     Principal: !Ref AWS::AccountId
+
+Outputs:
+  LambdaRoleArn:
+    Description: ARN of the lambda execution role
+    Value: !GetAtt IamRoleLambdaExecution.Arn
+    Export:
+      Name: ${self:service}-${self:provider.stage}-lambda-role-arn
+
+  WafAssociationLambdaRoleArn:
+    Description: ARN of the WAF Association Lambda role
+    Value: !GetAtt WafAssociationLambdaRole.Arn
+    Export:
+      Name: ${self:service}-${self:provider.stage}-waf-association-lambda-role-arn
