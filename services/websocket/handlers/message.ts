@@ -1,53 +1,91 @@
-// services/websocket/handlers/message.ts
-import { APIGatewayProxyHandler } from 'aws-lambda';
+// services/websocket/handlers/message.handler.ts
+
+import { APIGatewayProxyHandler, APIGatewayProxyEvent } from 'aws-lambda';
 import { Logger } from '@shared/utils/logger';
-import { ValidationError, InternalServerError } from '@shared/utils/errors';
-import { MessageService } from '../services/message.services';
-import { validateMessage } from '../validators/message.validator';
+import { MetricsService } from '@shared/utils/metrics';
+import { MessageService } from '../services/message.service';
+import { BotpressService } from '../../botpress/services/botpress.service';
+import { Connection } from '../models/connection';
+import { WebSocketError } from '../utils/errors';
+import { MONITORING_CONFIG } from '../../botpress/config/config';
 
-const logger = new Logger('WebSocket-Message');
+const logger = new Logger('WebSocketMessageHandler');
+const metrics = new MetricsService(MONITORING_CONFIG.METRICS.NAMESPACE);
 const messageService = new MessageService();
+const botpressService = new BotpressService();
 
-export const handler: APIGatewayProxyHandler = async (event) => {
+export const handler: APIGatewayProxyHandler = async (event: APIGatewayProxyEvent) => {
+  const connectionId = event.requestContext.connectionId;
+  
   try {
-    const connectionId = event.requestContext.connectionId;
-    const userId = event.requestContext.authorizer?.userId;
+    logger.info('WebSocket message received', { connectionId });
+
+    if (!connectionId || !event.body) {
+      throw new WebSocketError('Missing required connectionId or message body', 400);
+    }
+
+    const messageData = JSON.parse(event.body);
+
+    const connection = await messageService.getConnectionById(connectionId);
+    if (!connection) {
+      throw new WebSocketError('Connection not found', 404);
+    }
+
+    const { userId } = connection;
+    const { conversationId, content } = messageData;
+
+    const botResponse = await botpressService.sendMessage({
+      conversationId,
+      text: content,
+      message: content,
+      userId,
+      metadata: {
+        source: 'websocket',
+        timestamp: new Date().toISOString(),
+        context: messageData.metadata?.context,
+      },
+    });
+
+    const requiresHumanIntervention = botResponse.responses.some(
+      (response) => response.metadata?.handoff?.requested
+    );
     
-    logger.info('Received WebSocket message', {
-      connectionId: connectionId || '',
-      userId,
-      requestId: event.requestContext.requestId
-    });
+    if (requiresHumanIntervention) {
+      await messageService.notifyHumanAgent(connection, messageData);
+      await messageService.updateConnectionStatus(connectionId, 'WAITING_FOR_AGENT');
+    } else {
+      for (const response of botResponse.responses) {
+        await messageService.sendMessage(connectionId, {
+          type: response.type === 'handoff' ? 'HANDOFF_STATUS' : 'BOT_RESPONSE',
+          content: response.message,
+          conversationId,
+          timestamp: new Date().toISOString(),
+          metadata: response.metadata,
+        });
+      }
+    }
 
-    const message = JSON.parse(event.body || '{}');
-    const validatedMessage = validateMessage(message);
-
-    await messageService.processMessage({
-      connectionId: connectionId || '',
-      userId,
-      message: validatedMessage,
-      timestamp: new Date().toISOString()
-    });
+    metrics.incrementCounter('WebSocketMessagesProcessed');
 
     return {
       statusCode: 200,
-      body: 'Message processed successfully'
+      body: 'Message processed',
     };
   } catch (error) {
-    logger.error('Failed to process WebSocket message', {
-      error,
-      connectionId: event.requestContext.connectionId,
-      requestId: event.requestContext.requestId
-    });
+    logger.error('Error processing WebSocket message', { error, connectionId });
 
-    if (error instanceof SyntaxError) {
-      throw new ValidationError('Invalid message format');
+    if (error instanceof WebSocketError) {
+      return {
+        statusCode: error.statusCode,
+        body: error.message,
+      };
     }
 
-    if (error instanceof ValidationError) {
-      throw error;
-    }
+    metrics.incrementCounter('WebSocketMessageProcessingFailures');
 
-    throw new InternalServerError('Failed to process message');
+    return {
+      statusCode: 500,
+      body: 'Failed to process message',
+    };
   }
 };

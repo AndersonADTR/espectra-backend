@@ -6,6 +6,8 @@ custom:
   userPoolId: ${cf:${self:service}-${self:provider.stage}.UserPoolId}
   userPoolClientId: ${cf:${self:service}-${self:provider.stage}.UserPoolClientId}
   connectionsTableName: ${self:service}-${self:provider.stage}-connections
+  chatHistoryTable: ${self:service}-${self:provider.stage}-chat-history
+  snsAlarmTopic: ${ssm:/${self:service}/${self:provider.stage}/sns-alarm-topic-arn}
   IS_OFFLINE: ${env:IS_OFFLINE, 'false'}
   logRetentionInDays: 14
   logLevel:
@@ -40,12 +42,18 @@ provider:
     REGION: ${self:provider.region}
     SERVICE_NAME: ${self:service}
     # Variables existentes de Cognito
-    COGNITO_USER_POOL_ID: ${self:custom.userPoolId} #${cf:${self:service}-${self:provider.stage}.UserPoolId}
-    COGNITO_CLIENT_ID: ${self:custom.userPoolClientId} #${cf:${self:service}-${self:provider.stage}.UserPoolClientId}
+    COGNITO_USER_POOL_ID: ${self:custom.userPoolId}
+    COGNITO_CLIENT_ID: ${self:custom.userPoolClientId}
     # Variables existentes de SQS
     MESSAGE_QUEUE_URL: !Ref MessageQueue
     # Variables existentes de DynamoDB
     CONNECTION_TABLE: ${self:service}-${self:provider.stage}-connections
+    CHAT_HISTORY_TABLE: ${self:service}-${self:provider.stage}-chat-history
+    # Botpress 
+    BOTPRESS_API_URL: ${ssm:/${self:service}/${self:provider.stage}/botpress-api-url}
+    BOTPRESS_BOT_ID: ${ssm:/${self:service}/${self:provider.stage}/botpress-bot-id}
+    BOTPRESS_API_KEY: ${ssm:/${self:service}/${self:provider.stage}/botpress-api-key}
+    BOTPRESS_WORKSPACE_ID: ${ssm:/${self:service}/${self:provider.stage}/botpress-workspace-id}
   iam:
     role:
       statements:
@@ -79,6 +87,17 @@ provider:
             # Tabla de conexiones
             - !GetAtt ConnectionsTable.Arn
             - !Join ['', [!GetAtt ConnectionsTable.Arn, '/index/*']]
+
+        - Effect: Allow
+          Action:
+            - dynamodb:PutItem
+            - dynamodb:GetItem
+            - dynamodb:Query
+            - dynamodb:UpdateItem
+            - dynamodb:DeleteItem
+          Resource: 
+            - arn:aws:dynamodb:${self:provider.region}:*:table/${self:custom.chatHistoryTable}
+            - arn:aws:dynamodb:${self:provider.region}:*:table/${self:custom.connectionsTableName}
         
         # Permisos para CloudWatch Logs
         - Effect: Allow
@@ -94,6 +113,12 @@ provider:
             - execute-api:ManageConnections
           Resource:
             - arn:aws:execute-api:${self:provider.region}:*:*/*/POST/@connections/*
+
+        # Secret Manager
+        - Effect: Allow
+          Action:
+            - secretsmanager:GetSecretValue
+          Resource: arn:aws:secretsmanager:${self:provider.region}:*:secret:${self:service}/botpress/*
 
 plugins:
   - serverless-offline
@@ -219,6 +244,25 @@ functions:
       - websocket:
           route: $default
     role: !GetAtt WebSocketLambdaRole.Arn
+  
+  wsBotpressMessage:
+    handler: services/websocket/handlers/botpress-message.handler
+    events:
+      - websocket:
+          route: botpress
+    environment:
+      BOTPRESS_API_URL: ${ssm:/${self:service}/${self:provider.stage}/botpress-api-url}
+      BOTPRESS_BOT_ID: ${ssm:/${self:service}/${self:provider.stage}/botpress-bot-id}
+      BOTPRESS_API_KEY: ${ssm:/${self:service}/${self:provider.stage}/botpress-api-key}
+      BOTPRESS_WORKSPACE_ID: ${ssm:/${self:service}/${self:provider.stage}/botpress-workspace-id}
+
+  botpressTest:
+    handler: services/websocket/tests/botpress-test.botpressHandler
+    events:
+      - http:
+          path: /botpress/test
+          method: post
+          cors: true
 
 resources:
   - ${file(infrastructure/network/vpc.yml)}

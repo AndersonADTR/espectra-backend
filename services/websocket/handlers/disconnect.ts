@@ -1,44 +1,41 @@
 // services/websocket/handlers/disconnect.ts
-import { APIGatewayProxyHandler } from 'aws-lambda';
-import { DynamoDB } from '@aws-sdk/client-dynamodb';
-import { DynamoDBDocument } from '@aws-sdk/lib-dynamodb';
+
+import { APIGatewayProxyHandler, APIGatewayProxyEvent } from 'aws-lambda';
 import { Logger } from '@shared/utils/logger';
-import { InternalServerError } from '@shared/utils/errors';
-import { ConnectionService } from '../../websocket/services/connection.services';
+import { MetricsService } from '@shared/utils/metrics';
+import { ConnectionService } from '../services/connection.service';
+import { MONITORING_CONFIG } from '../../botpress/config/config';
 
-const logger = new Logger('WebSocket-Disconnect');
-const ddb = DynamoDBDocument.from(new DynamoDB({}));
-const connectionService = new ConnectionService(ddb);
+const logger = new Logger('WebSocketDisconnectHandler');
+const metrics = new MetricsService(MONITORING_CONFIG.METRICS.NAMESPACE);
+const connectionService = new ConnectionService();
 
-export const handler: APIGatewayProxyHandler = async (event) => {
+export const handler: APIGatewayProxyHandler = async (event: APIGatewayProxyEvent) => {
+  const connectionId = event.requestContext.connectionId;
+
   try {
-    const connectionId = event.requestContext.connectionId;
+    logger.info('WebSocket disconnect', { connectionId });
 
-    logger.info('WebSocket disconnect request', {
-      connectionId,
-      requestId: event.requestContext.requestId
-    });
-
-    if (connectionId) {
-      await connectionService.removeConnection(connectionId);
-    } else {
-      throw new InternalServerError('Connection ID is undefined');
+    if (!connectionId) {
+      throw new Error('Missing required connectionId');
     }
+
+    await connectionService.deleteConnection(connectionId);
+
+    metrics.incrementCounter('WebSocketDisconnections');
 
     return {
       statusCode: 200,
-      body: 'Disconnected successfully'
+      body: 'Disconnected',
     };
   } catch (error) {
-    logger.error('Failed to handle WebSocket disconnect', {
-      error: (error as Error).message,
-      connectionId: event.requestContext.connectionId,
-      requestId: event.requestContext.requestId
-    });
+    logger.error('Error handling WebSocket disconnect', { error, connectionId });
+
+    metrics.incrementCounter('WebSocketDisconnectionFailures');
 
     return {
       statusCode: 500,
-      body: 'Failed to disconnect'
+      body: 'Failed to disconnect',
     };
   }
 };

@@ -1,50 +1,45 @@
 // services/websocket/handlers/connect.ts
-import { APIGatewayProxyHandler } from 'aws-lambda';
-import { DynamoDB } from '@aws-sdk/client-dynamodb';
-import { DynamoDBDocument } from '@aws-sdk/lib-dynamodb';
+
+import { APIGatewayProxyHandler, APIGatewayProxyEvent } from 'aws-lambda';
 import { Logger } from '@shared/utils/logger';
-import { InternalServerError } from '@shared/utils/errors';
-import { ConnectionService } from '../../websocket/services/connection.services';
+import { MetricsService } from '@shared/utils/metrics';
+import { ConnectionService } from '../services/connection.service';
+import { MONITORING_CONFIG } from '../../botpress/config/config';
 
-const logger = new Logger('WebSocket-Connect');
-const ddb = DynamoDBDocument.from(new DynamoDB({}));
-const connectionService = new ConnectionService(ddb);
+const logger = new Logger('WebSocketConnectHandler');
+const metrics = new MetricsService(MONITORING_CONFIG.METRICS.NAMESPACE);
+const connectionService = new ConnectionService();
 
-export const handler: APIGatewayProxyHandler = async (event) => {
+export const handler: APIGatewayProxyHandler = async (event: APIGatewayProxyEvent) => {
+  const connectionId = event.requestContext.connectionId;
+  const userId = event.requestContext.authorizer?.principalId;
+
   try {
-    const connectionId = event.requestContext.connectionId;
-    if (!connectionId) {
-      throw new InternalServerError('Connection ID is missing');
+    logger.info('WebSocket connect', { connectionId, userId });
+
+    if (!connectionId || !userId) {
+      throw new Error('Missing required connectionId or userId');
     }
-    const userId = event.requestContext.authorizer?.userId;
 
-    logger.info('New WebSocket connection request', {
-      connectionId,
-      userId,
-      requestId: event.requestContext.requestId
+    await connectionService.createConnection(connectionId, userId, {
+      'User-Agent': event.headers['User-Agent'],
+      platform: event.queryStringParameters?.platform,
     });
 
-    await connectionService.saveConnection({
-      connectionId,
-      userId,
-      timestamp: new Date().toISOString(),
-      status: 'CONNECTED'
-    });
+    metrics.incrementCounter('WebSocketConnections');
 
     return {
       statusCode: 200,
-      body: 'Connected successfully'
+      body: 'Connected',
     };
   } catch (error) {
-    logger.error('Failed to handle WebSocket connect', {
-      error: (error as Error).message,
-      connectionId: event.requestContext.connectionId,
-      requestId: event.requestContext.requestId
-    });
+    logger.error('Error handling WebSocket connect', { error, connectionId, userId });
+
+    metrics.incrementCounter('WebSocketConnectionFailures');
 
     return {
       statusCode: 500,
-      body: 'Failed to establish connection'
+      body: 'Failed to connect',
     };
   }
 };

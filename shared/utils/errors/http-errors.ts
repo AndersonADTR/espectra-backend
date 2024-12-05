@@ -8,6 +8,12 @@ export class ValidationError extends BaseError {
   }
 }
 
+export class ResourceNotFoundError extends BaseError {
+  constructor(message: string, metadata?: ErrorMetadata) {
+    super('RESOURCE_NOT_FOUND', 404, message, metadata);
+  }
+}
+
 export class AuthorizationError extends BaseError {
   constructor(message: string, metadata?: ErrorMetadata) {
     super('AUTHORIZATION_ERROR', 401, message, metadata);
