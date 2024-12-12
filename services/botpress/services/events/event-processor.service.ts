@@ -1,17 +1,15 @@
 // services/botpress/services/event/event-processor.service.ts
 
-import { Logger } from '@shared/utils/logger';
-import { MetricsService } from '@shared/utils/metrics';
 import { BotpressError } from '../../utils/errors';
 import { BotpressEvent, BotpressEventType } from '../../types/botpress.types';
 import { BotpressChatService } from '../chat/botpress-chat.service';
 import { HandoffService } from '../../services/handoff.service';
 import { TokenManagementService } from '../token/token-management.service';
 import { EventBridge } from '@aws-sdk/client-eventbridge';
+import { BaseService } from '../base/base.service';
 
-export class EventProcessorService {
-  private readonly logger: Logger;
-  private readonly metrics: MetricsService;
+export class EventProcessorService extends BaseService {
+  
   private readonly chatService: BotpressChatService;
   private readonly handoffService: HandoffService;
   private readonly tokenService: TokenManagementService;
@@ -19,8 +17,7 @@ export class EventProcessorService {
   private readonly eventBusName: string;
 
   constructor() {
-    this.logger = new Logger('EventProcessorService');
-    this.metrics = new MetricsService('Spectra/Botpress');
+    super('EventProcessorService');
     this.chatService = new BotpressChatService();
     this.handoffService = new HandoffService();
     this.tokenService = new TokenManagementService();
@@ -61,9 +58,10 @@ export class EventProcessorService {
         eventType: event.type,
         botId: event.botId
       });
-
-      this.metrics.incrementCounter('EventProcessingErrors');
-      throw new BotpressError('Event processing failed', { originalError: error });
+      this.handleError(error, 'Failed to process event', { 
+        operationName: 'EventProcessing',
+        eventType: event.type 
+      });
     }
   }
 
@@ -143,7 +141,8 @@ export class EventProcessorService {
         conversation_id: event.payload.conversationId,
         userId: event.target,
         timestamp: event.createdAt,
-        metadata: event.payload.metadata
+        metadata: event.payload.metadata,
+        message: event.payload.message
       });
     } else if (event.payload.status === 'completed') {
       await this.handoffService.completeHandoff(event.payload.conversationId);

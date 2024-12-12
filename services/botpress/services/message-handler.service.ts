@@ -1,20 +1,17 @@
 // services/botpress/services/message-handler.service.ts
 
-import { Logger } from '@shared/utils/logger';
-import { MetricsService } from '@shared/utils/metrics';
 import { BotpressService } from './botpress.service';
 import { BotpressValidationError } from '../utils/errors';
 import { ChatMessage, ChatResponse } from '../types/chat.types';
 import { MONITORING_CONFIG, CHAT_CONFIG } from '../config/config';
+import { BaseService } from './base/base.service';
 
-export class MessageHandlerService {
-  private readonly logger: Logger;
-  private readonly metrics: MetricsService;
+export class MessageHandlerService extends BaseService {
+  
   private readonly botpressService: BotpressService;
 
   constructor() {
-    this.logger = new Logger('MessageHandlerService');
-    this.metrics = new MetricsService(MONITORING_CONFIG.METRICS.NAMESPACE);
+    super('MessageHandlerService', MONITORING_CONFIG.METRICS.NAMESPACE);
     this.botpressService = new BotpressService();
   }
 
@@ -64,13 +61,11 @@ export class MessageHandlerService {
 
       return response;
     } catch (error) {
-      this.metrics.incrementCounter('MessageProcessingErrors');
-      this.logger.error('Failed to process message', {
-        error,
+      this.handleError(error, 'Failed to process message', {
+        operationName: 'MessageProcessing',
         userId: message.userId,
         conversationId: message.conversationId
       });
-      throw error;
     }
   }
 
@@ -117,13 +112,15 @@ export class MessageHandlerService {
       await this.botpressService.initiateHandoff({
         conversation_id: message.conversationId,
         userId: message.userId,
+        message: message.message,
         timestamp: new Date().toISOString(),
         metadata: {
           contextData: message.metadata?.context,
           userInfo: {
             name: message.metadata?.source,
             email: message.metadata?.sessionId
-          }
+          },
+          connectionId: message.metadata?.context?.connectionId
         }
       });
 

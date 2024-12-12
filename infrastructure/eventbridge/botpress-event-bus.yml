@@ -1,0 +1,5 @@
+Resources:
+  BotpressEventBus:
+      Type: AWS::Events::EventBus
+      Properties:
+        Name: ${self:service}-${self:provider.stage}-botpress-events

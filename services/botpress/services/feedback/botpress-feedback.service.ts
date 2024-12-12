@@ -2,29 +2,16 @@
 
 import { DynamoDBDocument } from '@aws-sdk/lib-dynamodb';
 import { DynamoDB } from '@aws-sdk/client-dynamodb';
-import { Logger } from '@shared/utils/logger';
-import { MetricsService } from '@shared/utils/metrics';
-import { BotpressError } from '../../utils/errors';
+import { BaseService } from '../base/base.service';
+import { FeedbackData } from '@services/botpress/types/feedback.types';
 
-interface FeedbackData {
-  userId: string;
-  conversationId: string;
-  messageId?: string;
-  rating: number;
-  comment?: string;
-  tags?: string[];
-  metadata?: Record<string, any>;
-}
-
-export class BotpressFeedbackService {
-  private readonly logger: Logger;
-  private readonly metrics: MetricsService;
+export class BotpressFeedbackService extends BaseService {
+  
   private readonly ddb: DynamoDBDocument;
   private readonly tableName: string;
 
   constructor() {
-    this.logger = new Logger('BotpressFeedbackService');
-    this.metrics = new MetricsService('Spectra/Botpress');
+    super('BotpressFeedbackService');
     this.ddb = DynamoDBDocument.from(new DynamoDB({}));
     this.tableName = process.env.BOTPRESS_FEEDBACK_TABLE || '';
 
@@ -56,12 +43,11 @@ export class BotpressFeedbackService {
         rating: feedback.rating
       });
     } catch (error) {
-      this.logger.error('Failed to record feedback', {
-        error,
+      this.handleError(error, 'Failed to record feedback', { 
+        operationName: 'recordFeedback',
         userId: feedback.userId,
         conversationId: feedback.conversationId
       });
-      throw new BotpressError('Failed to record feedback');
     }
   }
 
@@ -98,8 +84,10 @@ export class BotpressFeedbackService {
         commonTags
       };
     } catch (error) {
-      this.logger.error('Failed to analyze feedback', { error });
-      throw new BotpressError('Failed to analyze feedback');
+      this.handleError(error, 'Failed to analyze feedback', {
+        operationName: 'analyzeFeedback',
+        timeRange
+      });
     }
   }
 

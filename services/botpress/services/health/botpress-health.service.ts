@@ -1,40 +1,19 @@
 // services/botpress/services/health/botpress-health.service.ts
 
-import { Logger } from '@shared/utils/logger';
-import { MetricsService } from '@shared/utils/metrics';
 import { BotpressChatService } from '../chat/botpress-chat.service';
 import { BOTPRESS_CONFIG } from 'services/botpress/config/config';
-import { BotpressError } from '../../utils/errors';
 import { DynamoDB } from '@aws-sdk/client-dynamodb';
+import { BaseService } from '../base/base.service';
+import { HealthCheckResult, ComponentHealth } from '@services/botpress/types/health.types';
 
-interface HealthCheckResult {
-  status: 'healthy' | 'degraded' | 'unhealthy';
-  latency: number;
-  components: {
-    api: ComponentHealth;
-    nlu: ComponentHealth;
-    database: ComponentHealth;
-  };
-  lastChecked: string;
-  details?: Record<string, any>;
-}
-
-interface ComponentHealth {
-  status: 'operational' | 'degraded' | 'down';
-  latency?: number;
-  error?: string;
-}
-
-export class BotpressHealthService {
-  private readonly logger: Logger;
-  private readonly metrics: MetricsService;
+export class BotpressHealthService extends BaseService {
+  
   private readonly chatService: BotpressChatService;
   private healthCheckCache: HealthCheckResult | null = null;
   private readonly CACHE_TTL = 30000; // 30 segundos
 
   constructor() {
-    this.logger = new Logger('BotpressHealthService');
-    this.metrics = new MetricsService('Spectra/Botpress');
+    super('BotpressHealth');
     this.chatService = new BotpressChatService();
   }
 
@@ -77,8 +56,7 @@ export class BotpressHealthService {
 
       return health;
     } catch (error) {
-      this.logger.error('Health check failed', { error });
-      throw new BotpressError('Failed to perform health check');
+      this.handleError(error, 'Failed to perform health check');
     }
   }
 
@@ -120,7 +98,6 @@ export class BotpressHealthService {
           conversationId: `health_${Date.now()}`,
           text: 'health_check',
           userId: 'system',
-          conversation_id: 'health_conversation_id_check',
           message: 'health_message_check'
       });
 
@@ -219,8 +196,7 @@ export class BotpressHealthService {
         degradations: 0
       };
     } catch (error) {
-      this.logger.error('Failed to generate health report', { error });
-      throw new BotpressError('Failed to generate health report');
+      this.handleError(error, 'Failed to generate health report');
     }
   }
 }

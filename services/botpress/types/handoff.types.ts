@@ -13,6 +13,7 @@ export interface HandoffQueue {
   conversationId: string;
   userId: string;
   advisorId?: string;
+  timestamp: string;
   status: HandoffStatus;
   priority: HandoffPriority;
   createdAt: string;

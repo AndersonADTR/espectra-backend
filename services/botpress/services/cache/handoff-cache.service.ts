@@ -1,20 +1,16 @@
 // services/botpress/services/cache/handoff-cache.service.ts
 
 import { ElastiCache, CreateReplicationGroupCommand } from '@aws-sdk/client-elasticache';
-import { Logger } from '@shared/utils/logger';
-import { MetricsService } from '@shared/utils/metrics';
 import { Redis } from 'ioredis';
 import { HandoffQueue } from '../../types/handoff.types';
 import { HANDOFF_CACHE, HANDOFF_CONSTANTS } from '../../config/handoff.config';
+import { BaseService } from '../base/base.service';
 
-export class HandoffCacheService {
-  private readonly logger: Logger;
-  private readonly metrics: MetricsService;
+export class HandoffCacheService extends BaseService {
   private readonly redis: Redis;
 
   constructor() {
-    this.logger = new Logger('HandoffCacheService');
-    this.metrics = new MetricsService(HANDOFF_CONSTANTS.METRICS.NAMESPACE);
+    super('HandoffCacheService', HANDOFF_CONSTANTS.METRICS.NAMESPACE);
     
     if (!process.env.REDIS_URL) {
       throw new Error('REDIS_URL environment variable is not set');
@@ -59,12 +55,10 @@ export class HandoffCacheService {
         ttl: HANDOFF_CACHE.TTL.QUEUE_ITEM
       });
     } catch (error) {
-      this.logger.error('Failed to cache queue item', {
-        error,
-        queueId: queueItem.queueId
+      this.handleError(error as Error, 'Failed to cache queue item', { 
+        operationName: 'CacheQueueItem',
+        queueId: queueItem.queueId,
       });
-      this.metrics.incrementCounter('CacheWriteErrors');
-      throw error;
     }
   }
 
@@ -86,12 +80,10 @@ export class HandoffCacheService {
       
       return JSON.parse(cached) as HandoffQueue;
     } catch (error) {
-      this.logger.error('Failed to get cached queue item', {
-        error,
-        queueId
+      this.handleError(error as Error, 'Failed to get cached queue item', { 
+        operationName: 'CacheReadErrors',
+        queueId: queueId,
       });
-      this.metrics.incrementCounter('CacheReadErrors');
-      throw error;
     }
   }
 
@@ -119,12 +111,10 @@ export class HandoffCacheService {
         status
       });
     } catch (error) {
-      this.logger.error('Failed to cache advisor status', {
-        error,
+      this.handleError(error as Error, 'Failed to cache advisor status', {
+        operationName: 'CacheAdvisorStatus',
         advisorId
       });
-      this.metrics.incrementCounter('AdvisorStatusCacheErrors');
-      throw error;
     }
   }
 
@@ -144,11 +134,10 @@ export class HandoffCacheService {
 
       return JSON.parse(cached);
     } catch (error) {
-      this.logger.error('Failed to get cached advisor status', {
-        error,
+      this.handleError(error as Error, 'Failed to get cached advisor status', {
+        operationName: 'GetCacheAdvisorStatus',
         advisorId
       });
-      throw error;
     }
   }
 
@@ -171,11 +160,10 @@ export class HandoffCacheService {
         ttl
       });
     } catch (error) {
-      this.logger.error('Failed to cache metrics', {
-        error,
+      this.handleError(error as Error, 'Failed to cache metrics', {
+        operationName: 'CacheMetrics',
         metricKey
       });
-      throw error;
     }
   }
 
@@ -190,11 +178,10 @@ export class HandoffCacheService {
 
       return JSON.parse(cached) as T;
     } catch (error) {
-      this.logger.error('Failed to get cached metrics', {
-        error,
+      this.handleError(error as Error, 'Failed to get cached metrics', {
+        operationName: 'GetCachedMetrics',
         metricKey
       });
-      throw error;
     }
   }
 
@@ -211,11 +198,10 @@ export class HandoffCacheService {
         });
       }
     } catch (error) {
-      this.logger.error('Failed to invalidate cache', {
-        error,
+      this.handleError(error as Error, 'Failed to invalidate cache', {
+        operationName: 'InvalidateCache',
         pattern
       });
-      throw error;
     }
   }
 

@@ -2,7 +2,104 @@ service: espectra-backend
 
 frameworkVersion: '4'
 
+provider:
+  name: aws
+  runtime: nodejs20.x
+  stage: ${opt:stage, 'dev'}
+  region: ${opt:region, 'us-east-1'}
+  memorySize: 1024
+  timeout: 30
+  logRetentionInDays: 14
+  environment:
+    STAGE: ${self:provider.stage}
+    REGION: ${self:provider.region}
+    SERVICE_NAME: ${self:service}
+    # Variables de entorno para el cognito
+    COGNITO_USER_POOL_ID: ${self:custom.userPoolId}
+    COGNITO_CLIENT_ID: ${self:custom.userPoolClientId}
+    MESSAGE_QUEUE_URL: !Ref MessageQueue
+    CONNECTION_TABLE: ${self:service}-${self:provider.stage}-connections
+    CHAT_HISTORY_TABLE: ${self:service}-${self:provider.stage}-chat-history
+    # Variables de entorno para el botpress
+    BOTPRESS_API_URL: ${ssm:/${self:service}/${self:provider.stage}/botpress-api-url}
+    BOTPRESS_BOT_ID: ${ssm:/${self:service}/${self:provider.stage}/botpress-bot-id}
+    BOTPRESS_API_KEY: ${ssm:/${self:service}/${self:provider.stage}/botpress-api-key}
+    BOTPRESS_WORKSPACE_ID: ${ssm:/${self:service}/${self:provider.stage}/botpress-workspace-id}
+    BOTPRESS_QUEUE_URL: !Ref MessageQueue
+    BOTPRESS_DLQ_URL: !Ref MessageDLQ
+    BOTPRESS_EVENT_BUS: !Ref BotpressEventBus
+    # Variables de entorno para el websocket
+    WEBSOCKET_API_ENDPOINT: 
+      !Join
+        - ''
+        - - 'https://'
+          - !Ref WebsocketsApi
+          - '.execute-api.${self:provider.region}.amazonaws.com/${self:provider.stage}'
+  iam:
+    role:
+      statements:
+        - Effect: Allow
+          Action:
+            - cognito-idp:AdminInitiateAuth
+            - cognito-idp:AdminCreateUser
+            - cognito-idp:AdminSetUserPassword
+            - cognito-idp:AdminUpdateUserAttributes
+            - cognito-idp:AdminDeleteUser
+            - cognito-idp:AdminGetUser
+            - cognito-idp:InitiateAuth
+            - cognito-idp:SignUp
+            - cognito-idp:AdminConfirmSignUp
+          Resource: !GetAtt SpectraUserPool.Arn
+        
+        - Effect: Allow
+          Action:
+            - dynamodb:PutItem
+            - dynamodb:GetItem
+            - dynamodb:UpdateItem
+            - dynamodb:DeleteItem
+            - dynamodb:Query
+            - dynamodb:Scan
+          Resource: 
+            - !GetAtt UsersTable.Arn
+            - !Join ['', [!GetAtt UsersTable.Arn, '/index/*']]
+            - !GetAtt ConnectionsTable.Arn
+            - !Join ['', [!GetAtt ConnectionsTable.Arn, '/index/*']]
+
+        - Effect: Allow
+          Action:
+            - dynamodb:PutItem
+            - dynamodb:GetItem
+            - dynamodb:Query
+            - dynamodb:UpdateItem
+            - dynamodb:DeleteItem
+          Resource: 
+            - arn:aws:dynamodb:${self:provider.region}:*:table/${self:custom.chatHistoryTable}
+            - arn:aws:dynamodb:${self:provider.region}:*:table/${self:custom.connectionsTableName}
+        
+        - Effect: Allow
+          Action:
+            - logs:CreateLogGroup
+            - logs:CreateLogStream
+            - logs:PutLogEvents
+          Resource: '*'
+
+        - Effect: Allow
+          Action:
+            - execute-api:ManageConnections
+          Resource:
+            - arn:aws:execute-api:${self:provider.region}:*:*/*/POST/@connections/*
+
+        - Effect: Allow
+          Action:
+            - secretsmanager:GetSecretValue
+          Resource: arn:aws:secretsmanager:${self:provider.region}:*:secret:${self:service}/botpress/*
+
 custom:
+  tableNames:
+    connections: ${self:service}-${self:provider.stage}-connections
+    context: ${self:service}-${self:provider.stage}-context
+    tokens: ${self:service}-${self:provider.stage}-tokens
+    handoff: ${self:service}-${self:provider.stage}-handoff
   userPoolId: ${cf:${self:service}-${self:provider.stage}.UserPoolId}
   userPoolClientId: ${cf:${self:service}-${self:provider.stage}.UserPoolClientId}
   connectionsTableName: ${self:service}-${self:provider.stage}-connections
@@ -28,97 +125,6 @@ custom:
     external:
       - aws-sdk
       - tslib
-
-provider:
-  name: aws
-  runtime: nodejs20.x
-  stage: ${opt:stage, 'dev'}
-  region: ${opt:region, 'us-east-1'}
-  memorySize: 1024
-  timeout: 30
-  logRetentionInDays: 14
-  environment:
-    STAGE: ${self:provider.stage}
-    REGION: ${self:provider.region}
-    SERVICE_NAME: ${self:service}
-    # Variables existentes de Cognito
-    COGNITO_USER_POOL_ID: ${self:custom.userPoolId}
-    COGNITO_CLIENT_ID: ${self:custom.userPoolClientId}
-    # Variables existentes de SQS
-    MESSAGE_QUEUE_URL: !Ref MessageQueue
-    # Variables existentes de DynamoDB
-    CONNECTION_TABLE: ${self:service}-${self:provider.stage}-connections
-    CHAT_HISTORY_TABLE: ${self:service}-${self:provider.stage}-chat-history
-    # Botpress 
-    BOTPRESS_API_URL: ${ssm:/${self:service}/${self:provider.stage}/botpress-api-url}
-    BOTPRESS_BOT_ID: ${ssm:/${self:service}/${self:provider.stage}/botpress-bot-id}
-    BOTPRESS_API_KEY: ${ssm:/${self:service}/${self:provider.stage}/botpress-api-key}
-    BOTPRESS_WORKSPACE_ID: ${ssm:/${self:service}/${self:provider.stage}/botpress-workspace-id}
-  iam:
-    role:
-      statements:
-        # Permisos para Cognito
-        - Effect: Allow
-          Action:
-            - cognito-idp:AdminInitiateAuth
-            - cognito-idp:AdminCreateUser
-            - cognito-idp:AdminSetUserPassword
-            - cognito-idp:AdminUpdateUserAttributes
-            - cognito-idp:AdminDeleteUser
-            - cognito-idp:AdminGetUser
-            - cognito-idp:InitiateAuth
-            - cognito-idp:SignUp
-            - cognito-idp:AdminConfirmSignUp
-          Resource: !GetAtt SpectraUserPool.Arn
-        
-        # Permisos para DynamoDB
-        - Effect: Allow
-          Action:
-            - dynamodb:PutItem
-            - dynamodb:GetItem
-            - dynamodb:UpdateItem
-            - dynamodb:DeleteItem
-            - dynamodb:Query
-            - dynamodb:Scan
-          Resource: 
-            # Tabla de usuarios
-            - !GetAtt UsersTable.Arn
-            - !Join ['', [!GetAtt UsersTable.Arn, '/index/*']]
-            # Tabla de conexiones
-            - !GetAtt ConnectionsTable.Arn
-            - !Join ['', [!GetAtt ConnectionsTable.Arn, '/index/*']]
-
-        - Effect: Allow
-          Action:
-            - dynamodb:PutItem
-            - dynamodb:GetItem
-            - dynamodb:Query
-            - dynamodb:UpdateItem
-            - dynamodb:DeleteItem
-          Resource: 
-            - arn:aws:dynamodb:${self:provider.region}:*:table/${self:custom.chatHistoryTable}
-            - arn:aws:dynamodb:${self:provider.region}:*:table/${self:custom.connectionsTableName}
-        
-        # Permisos para CloudWatch Logs
-        - Effect: Allow
-          Action:
-            - logs:CreateLogGroup
-            - logs:CreateLogStream
-            - logs:PutLogEvents
-          Resource: '*'
-
-        # Permisos para API Gateway
-        - Effect: Allow
-          Action:
-            - execute-api:ManageConnections
-          Resource:
-            - arn:aws:execute-api:${self:provider.region}:*:*/*/POST/@connections/*
-
-        # Secret Manager
-        - Effect: Allow
-          Action:
-            - secretsmanager:GetSecretValue
-          Resource: arn:aws:secretsmanager:${self:provider.region}:*:secret:${self:service}/botpress/*
 
 plugins:
   - serverless-offline
@@ -214,54 +220,71 @@ functions:
       Service: ${self:service}
       Environment: ${self:provider.stage}
 
-  wsConnect:
+  webSocketConnect:
     handler: services/websocket/handlers/connect.handler
-    environment:
-      CONNECTION_TABLE: ${self:custom.connectionsTableName}
     events:
       - websocket:
           route: $connect
           authorizer:
-            name: websocketAuthorizer
+            name: authorizer
             identitySource:
-              - route.request.querystring.Auth
-    role: !GetAtt WebSocketLambdaRole.Arn
+              - 'route.request.querystring.Auth'
 
-  wsDisconnect:
+  webSocketDisconnect:
     handler: services/websocket/handlers/disconnect.handler
-    environment:
-      CONNECTION_TABLE: ${self:custom.connectionsTableName}
     events:
       - websocket:
           route: $disconnect
-    role: !GetAtt WebSocketLambdaRole.Arn
 
-  wsMessage:
+  webSocketMessage:
     handler: services/websocket/handlers/message.handler
-    environment:
-      CONNECTION_TABLE: ${self:custom.connectionsTableName}
     events:
       - websocket:
           route: $default
-    role: !GetAtt WebSocketLambdaRole.Arn
-  
-  wsBotpressMessage:
-    handler: services/websocket/handlers/botpress-message.handler
-    events:
-      - websocket:
-          route: botpress
     environment:
-      BOTPRESS_API_URL: ${ssm:/${self:service}/${self:provider.stage}/botpress-api-url}
-      BOTPRESS_BOT_ID: ${ssm:/${self:service}/${self:provider.stage}/botpress-bot-id}
-      BOTPRESS_API_KEY: ${ssm:/${self:service}/${self:provider.stage}/botpress-api-key}
-      BOTPRESS_WORKSPACE_ID: ${ssm:/${self:service}/${self:provider.stage}/botpress-workspace-id}
+      WEBSOCKET_API_ENDPOINT: ${self:provider.environment.WEBSOCKET_API_ENDPOINT}
+      CONNECTION_TABLE: ${self:custom.connectionsTableName}
 
-  botpressTest:
-    handler: services/websocket/tests/botpress-test.botpressHandler
+  # Webhook Handlers
+  webhookHandler:
+    handler: services/botpress/handlers/webhook/webhook-handler.handler
     events:
       - http:
-          path: /botpress/test
+          path: /botpress/webhook
           method: post
+          cors: true
+
+  # Message Processing
+  processMessage:
+    handler: services/botpress/handlers/message/process-message.handler
+    events:
+      - sqs:
+          arn: !GetAtt MessageQueue.Arn
+          batchSize: 1
+
+  # Human Handoff
+  handoffRequest:
+    handler: services/botpress/handlers/handoff/request.handler
+    events:
+      - http:
+          path: /handoff/request
+          method: post
+          authorizer:
+            name: authorizer
+            # identitySource:
+            #   - 'route.request.querystring.Auth'
+          cors: true
+
+  handoffAccept:
+    handler: services/botpress/handlers/handoff/accept.handler
+    events:
+      - http:
+          path: /handoff/accept
+          method: post
+          authorizer:
+            name: authorizer
+            # identitySource:
+            #   - 'route.request.querystring.Auth'
           cors: true
 
 resources:
@@ -272,7 +295,10 @@ resources:
   - ${file(infrastructure/queues/message-queues.yml)}
   - ${file(infrastructure/cognito/cognito.yml)}
   - ${file(infrastructure/dynamodb/user-tables.yml)}
+  - ${file(infrastructure/dynamodb/botpress-tables.yml)}
+  - ${file(infrastructure/dynamodb/chat-history-tables.yml)}
   - ${file(infrastructure/dynamodb/connection-concierge-tables.yml)}
+  - ${file(infrastructure/eventbridge/botpress-event-bus.yml)}
   - ${file(infrastructure/websocket/websocket.yml)}
   - ${file(infrastructure/security/websocket-security.yml)}
   - ${file(infrastructure/security/waf.yml)}

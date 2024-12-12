@@ -6,18 +6,7 @@ import { Logger } from '@shared/utils/logger';
 import { MetricsService } from '@shared/utils/metrics';
 import { WebSocketService } from '../../websocket/services/websocket.service';
 import { MONITORING_CONFIG } from '../config/config';
-
-interface AdvisorStatus {
-  advisorId: string;
-  status: 'available' | 'busy' | 'offline';
-  lastUpdated: string;
-  activeConversations: number;
-  metadata?: {
-    name?: string;
-    email?: string;
-    specialties?: string[];
-  };
-}
+import { AdvisorStatus } from '../types/advisor.types';
 
 export class AdvisorService {
   private readonly logger: Logger;

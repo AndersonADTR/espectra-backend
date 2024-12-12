@@ -2,29 +2,10 @@
 
 import { DynamoDBDocument } from '@aws-sdk/lib-dynamodb';
 import { DynamoDB } from '@aws-sdk/client-dynamodb';
-import { Logger } from '@shared/utils/logger';
-import { MetricsService } from '@shared/utils/metrics';
-import { ValidationError } from '@shared/utils/errors';
+import { BaseService } from '../base/base.service';
 
-interface TokenUsage {
-  userId: string;
-  date: string;
-  tokensUsed: number;
-  tokensLimit: number;
-  lastUpdated: string;
-  planType: string;
-}
-
-interface TokenLimits {
-  basic: number;
-  pro: number;
-  business: number;
-  enterprise: number;
-}
-
-export class TokenManagementService {
-  private readonly logger: Logger;
-  private readonly metrics: MetricsService;
+export class TokenManagementService extends BaseService {
+  
   private readonly ddb: DynamoDBDocument;
   private readonly tableName: string;
 
@@ -36,8 +17,7 @@ export class TokenManagementService {
   };
 
   constructor() {
-    this.logger = new Logger('TokenManagementService');
-    this.metrics = new MetricsService('Spectra/Botpress');
+    super('TokenManagementService');
     this.ddb = DynamoDBDocument.from(new DynamoDB({}));
     this.tableName = process.env.TOKEN_USAGE_TABLE || '';
 

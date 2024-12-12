@@ -1,7 +1,5 @@
 // services/botpress/controllers/handoff.controller.ts
 
-import { Logger } from '@shared/utils/logger';
-import { MetricsService } from '@shared/utils/metrics';
 import { HandoffPersistenceService } from 'services/botpress/services/persistence/handoff-persistence.service';
 import { HandoffEventService } from 'services/botpress/services/events/handoff-event.service';
 import { HandoffMetricsService } from 'services/botpress/services/metrics/handoff-metrics.service';
@@ -9,18 +7,17 @@ import { HandoffValidatorService } from 'services/botpress/services/validators/h
 import { HandoffQueue, HandoffStatus, CreateHandoffRequest, UpdateHandoffRequest } from 'services/botpress/types/handoff.types';
 import { HANDOFF_CONSTANTS, HANDOFF_ERRORS } from '../../config/handoff.config';
 import { ValidationError, ResourceNotFoundError } from '@shared/utils/errors';
+import { BaseService } from '../base/base.service';
 
-export class HandoffController {
-  private readonly logger: Logger;
-  private readonly metrics: MetricsService;
+export class HandoffController extends BaseService {
+  
   private readonly persistenceService: HandoffPersistenceService;
   private readonly eventService: HandoffEventService;
   private readonly metricsService: HandoffMetricsService;
   private readonly validatorService: HandoffValidatorService;
 
   constructor() {
-    this.logger = new Logger('HandoffController');
-    this.metrics = new MetricsService(HANDOFF_CONSTANTS.METRICS.NAMESPACE);
+    super('HandoffController', HANDOFF_CONSTANTS.METRICS.NAMESPACE);
     this.persistenceService = new HandoffPersistenceService();
     this.eventService = new HandoffEventService();
     this.metricsService = new HandoffMetricsService();
@@ -49,7 +46,8 @@ export class HandoffController {
         priority: request.priority || 'medium',
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
-        metadata: request.metadata
+        metadata: request.metadata,
+        timestamp: new Date().toISOString()
       };
 
       await this.persistenceService.createHandoff(handoff);
@@ -77,11 +75,10 @@ export class HandoffController {
 
       return handoff;
     } catch (error) {
-      this.logger.error('Failed to create handoff', {
-        error,
-        request
+      this.handleError(error, 'Failed to create handoff', { 
+        operationName: 'createHandoff',
+        request 
       });
-      throw error;
     }
   }
 
@@ -132,12 +129,11 @@ export class HandoffController {
 
       return updatedHandoff;
     } catch (error) {
-      this.logger.error('Failed to assign handoff', {
-        error,
+      this.handleError(error, 'Failed to assign handoff', {
+        operationName: 'assignHandoff',
         queueId,
         advisorId
       });
-      throw error;
     }
   }
   
@@ -156,11 +152,10 @@ export class HandoffController {
   
       return handoff;
     } catch (error) {
-      this.logger.error('Failed to get handoff', {
-        error,
+      this.handleError(error, 'Failed to get handoff', {
+        operationName: 'getHandoff',
         queueId
       });
-      throw error;
     }
   }
 
@@ -198,11 +193,10 @@ export class HandoffController {
 
       return updatedHandoff;
     } catch (error) {
-      this.logger.error('Failed to complete handoff', {
-        error,
+      this.handleError(error, 'Failed to complete handoff', {
+        operationName: 'completeHandoff',
         queueId
       });
-      throw error;
     }
   }
 

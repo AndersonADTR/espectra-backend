@@ -2,34 +2,20 @@
 
 import { DynamoDBDocument } from '@aws-sdk/lib-dynamodb';
 import { DynamoDB } from '@aws-sdk/client-dynamodb';
-import { Logger } from '@shared/utils/logger';
-import { MetricsService } from '@shared/utils/metrics';
 import { WebSocketService } from '../../websocket/services/websocket.service';
 import { HandoffRequest, HandoffResponse } from '../types/chat.types';
+import { HandoffQueue } from '../types/handoff.types';
 import { MONITORING_CONFIG, HANDOFF_CONFIG } from '../config/config';
+import { BaseService } from './base/base.service';
 
-interface HandoffQueueItem {
-  queueId: string;
-  conversationId: string;
-  userId: string;
-  timestamp: string;
-  status: 'pending' | 'assigned' | 'completed';
-  priority: 'low' | 'medium' | 'high';
-  agentId?: string;
-  metadata?: Record<string, any>;
-  ttl?: number;
-}
-
-export class HandoffService {
-  private readonly logger: Logger;
-  private readonly metrics: MetricsService;
+export class HandoffService extends BaseService {
+  
   private readonly ddb: DynamoDBDocument;
   private readonly wsService: WebSocketService;
   private readonly handoffQueueTable: string;
 
   constructor() {
-    this.logger = new Logger('HandoffService');
-    this.metrics = new MetricsService(MONITORING_CONFIG.METRICS.NAMESPACE);
+    super('HandoffService', MONITORING_CONFIG.METRICS.NAMESPACE);
     this.ddb = DynamoDBDocument.from(new DynamoDB({}));
     this.wsService = new WebSocketService();
     
@@ -44,7 +30,7 @@ export class HandoffService {
     try {
       const queueId = `handoff_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
       
-      const queueItem: HandoffQueueItem = {
+      const queueItem: HandoffQueue = {
         queueId,
         conversationId: request.conversation_id,
         userId: request.userId,
@@ -52,7 +38,9 @@ export class HandoffService {
         status: 'pending',
         priority: request.priority || HANDOFF_CONFIG.DEFAULT_PRIORITY,
         metadata: request.metadata,
-        ttl: Math.floor(Date.now() / 1000) + (24 * 60 * 60) // 24 horas TTL
+        ttl: Math.floor(Date.now() / 1000) + (24 * 60 * 60), // 24 horas TTL
+        createdAt: '',
+        updatedAt: ''
       };
 
       await this.ddb.put({
@@ -77,12 +65,11 @@ export class HandoffService {
         timestamp: queueItem.timestamp
       };
     } catch (error) {
-      this.logger.error('Failed to request handoff', {
-        error,
+      this.handleError(error, 'Failed to request handoff', { 
+        operationName: 'RequestHandoff',  
         conversationId: request.conversation_id,
         userId: request.userId
       });
-      throw error;
     }
   }
 
@@ -139,12 +126,11 @@ export class HandoffService {
         timestamp: new Date().toISOString()
       };
     } catch (error) {
-      this.logger.error('Failed to assign handoff', {
-        error,
+      this.handleError(error, 'Failed to assign handoff', {
+        operationName: 'AssignHandoff',
         queueId,
         agentId
       });
-      throw error;
     }
   }
 
@@ -176,15 +162,14 @@ export class HandoffService {
         conversationId: queueItem.conversationId
       });
     } catch (error) {
-      this.logger.error('Failed to complete handoff', {
-        error,
+      this.handleError(error, 'Failed to complete handoff', {
+        operationName: 'CompleteHandoff',
         queueId
       });
-      throw error;
     }
   }
 
-  async getPendingHandoffs(): Promise<HandoffQueueItem[]> {
+  async getPendingHandoffs(): Promise<HandoffQueue[]> {
     try {
       const result = await this.ddb.query({
         TableName: this.handoffQueueTable,
@@ -204,23 +189,24 @@ export class HandoffService {
         count: result.Items?.length || 0
       });
   
-      return (result.Items || []) as HandoffQueueItem[];
+      return (result.Items || []) as HandoffQueue[];
     } catch (error) {
-      this.logger.error('Failed to get pending handoffs', { error });
-      throw error;
+      this.handleError(error, 'Failed to get pending handoffs', {
+        operationName: 'GetPendingHandoffs'
+      });
     }
   }
 
-  private async getQueueItem(queueId: string): Promise<HandoffQueueItem | null> {
+  private async getQueueItem(queueId: string): Promise<HandoffQueue | null> {
     const result = await this.ddb.get({
       TableName: this.handoffQueueTable,
       Key: { queueId }
     });
 
-    return result.Item as HandoffQueueItem || null;
+    return result.Item as HandoffQueue || null;
   }
 
-  private async notifyAgents(queueItem: HandoffQueueItem): Promise<void> {
+  private async notifyAgents(queueItem: HandoffQueue): Promise<void> {
     try {
       // Enviar notificación a todos los agentes disponibles
       await this.wsService.broadcastMessage({

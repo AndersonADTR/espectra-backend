@@ -1,33 +1,23 @@
 // services/botpress/services/webhook/webhook-handler.service.ts
 
-import { Logger } from '@shared/utils/logger';
-import { MetricsService } from '@shared/utils/metrics';
 import { BotpressError } from '../../utils/errors';
 import { BotpressEvent, BotpressMessage } from '../../types/botpress.types';
 import { BotpressChatService } from '../chat/botpress-chat.service';
 import { HandoffService } from '../../services/handoff.service';
 import { TokenManagementService } from '../token/token-management.service';
 import { RequestValidatorMiddleware } from '../../middleware/request-validator.middleware';
+import { WebhookPayload } from '@services/botpress/types/webhook.types';
+import { BaseService } from '../base/base.service';
 
-interface WebhookPayload {
-  type: string;
-  botId: string;
-  channel: string;
-  payload: Record<string, any>;
-  timestamp: string;
-}
-
-export class WebhookHandlerService {
-  private readonly logger: Logger;
-  private readonly metrics: MetricsService;
+export class WebhookHandlerService extends BaseService {
+  
   private readonly chatService: BotpressChatService;
   private readonly handoffService: HandoffService;
   private readonly tokenService: TokenManagementService;
   private readonly validator: RequestValidatorMiddleware;
 
   constructor() {
-    this.logger = new Logger('WebhookHandlerService');
-    this.metrics = new MetricsService('Spectra/Botpress');
+    super('WebhookHandler');
     this.chatService = new BotpressChatService();
     this.handoffService = new HandoffService();
     this.tokenService = new TokenManagementService();
@@ -70,12 +60,11 @@ export class WebhookHandlerService {
       this.metrics.incrementCounter(`Webhook_${payload.type}`);
 
     } catch (error) {
-      this.logger.error('Failed to handle webhook', {
-        error,
-        type: payload.type,
-        botId: payload.botId
+      this.handleError(error, 'Failed to handle webhook', { 
+        operationName: 'handleWebhook',
+        type: payload.type, 
+        botId: payload.botId 
       });
-      throw new BotpressError('Webhook processing failed', { originalError: error });
     }
   }
 
@@ -116,11 +105,10 @@ export class WebhookHandlerService {
       });
 
     } catch (error) {
-      this.logger.error('Failed to handle message webhook', {
-        error,
+      this.handleError(error, 'Failed to handle message webhook', {
+        operationName: 'handleMessageWebhook',
         messageId: message.id
       });
-      throw error;
     }
   }
 
@@ -133,18 +121,18 @@ export class WebhookHandlerService {
           conversation_id: handoffData.conversationId,
           userId: handoffData.userId,
           timestamp: payload.timestamp,
-          metadata: handoffData.metadata
+          metadata: handoffData.metadata,
+          message: handoffData.message
         });
       } else if (handoffData.status === 'completed') {
         await this.handoffService.completeHandoff(handoffData.conversationId);
       }
 
     } catch (error) {
-      this.logger.error('Failed to handle handoff webhook', {
-        error,
+      this.handleError(error, 'Failed to handle handoff webhook', {
+        operationName: 'handleHandoffWebhook',
         conversationId: payload.payload.conversationId
       });
-      throw error;
     }
   }
 
@@ -159,11 +147,10 @@ export class WebhookHandlerService {
       });
 
     } catch (error) {
-      this.logger.error('Failed to handle session webhook', {
-        error,
+      this.handleError(error, 'Failed to handle session webhook', {
+        operationName: 'handleSessionWebhook',
         userId: payload.payload.userId
       });
-      throw error;
     }
   }
 
@@ -178,11 +165,10 @@ export class WebhookHandlerService {
       });
 
     } catch (error) {
-      this.logger.error('Failed to handle feedback webhook', {
-        error,
+      this.handleError(error, 'Failed to handle feedback webhook', {
+        operationName: 'handleFeedbackWebhook',
         userId: payload.payload.userId
       });
-      throw error;
     }
   }
 

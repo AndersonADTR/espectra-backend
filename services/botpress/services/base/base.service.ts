@@ -8,23 +8,24 @@ export abstract class BaseService {
   protected readonly logger: Logger;
   protected readonly metrics: MetricsService;
 
-  constructor(serviceName: string) {
+  constructor(serviceName: string, namespace: string = 'Spectra/Botpress') {
     this.logger = new Logger(serviceName);
-    this.metrics = new MetricsService('Spectra/Botpress');
+    this.metrics = new MetricsService(namespace);
   }
 
-  public handleError(error: Error, context?: Record<string, any>): never {
-    this.logger.error('Service error occurred', {
+  public handleError(error: any, errorMessage: string, context?: Record<string, any>): never {
+    this.logger.error(errorMessage, {
       error,
       context,
       service: this.constructor.name
     });
+    this.metrics.incrementCounter(`${context?.operationName}Error`);
 
     if (error instanceof BotpressError) {
       throw error;
     }
 
-    throw new BotpressError(`Error in ${this.constructor.name}`, {
+    throw new BotpressError(`Error in ${this.constructor.name}: \n ${errorMessage}`, {
       originalError: error,
       context
     });

@@ -8,6 +8,8 @@ import { Connection } from '../models/connection';
 import { Logger } from '@shared/utils/logger';
 import { MetricsService } from '@shared/utils/metrics';
 import { MONITORING_CONFIG } from '../../botpress/config/config';
+import { HandoffRequest } from '@services/botpress/types/chat.types';
+import { WebSocketError } from '../utils/errors';
 
 export class MessageService {
   private readonly logger: Logger;
@@ -43,37 +45,111 @@ export class MessageService {
   }
 
   async notifyHumanAgent(connection: Connection, message: WSMessage): Promise<void> {
-    const agentMessage: WSMessage = {
-      ...message,
-      type: 'HANDOFF_REQUEST',
-      metadata: {
-        ...message.metadata,
+    try {
+      this.logger.info('Notifying human agent', {
         connectionId: connection.connectionId,
         userId: connection.userId,
-      },
-    };
+        conversationId: message.conversationId
+      });
 
-    await this.webSocketService.sendToUser(connection.userId, agentMessage);
-    this.metrics.incrementCounter('HandoffRequests');
+      const agentMessage: WSMessage = {
+        ...message,
+        type: 'HANDOFF_REQUEST',
+        metadata: {
+          ...message.metadata,
+          connectionId: connection.connectionId,
+          userId: connection.userId,
+        },
+      };
+  
+      const handoffRequest: HandoffRequest = {
+        conversation_id: message.conversationId,
+        userId: connection.userId,
+        message: message.content,
+        metadata: {
+          connectionId: connection.connectionId,
+          ...message.metadata
+        },
+        timestamp: new Date().toISOString()
+      };
+  
+      await this.webSocketService.sendToUser(connection.userId, agentMessage);
+      await this.botpressService.initiateHandoff(handoffRequest);
+      this.metrics.incrementCounter('HandoffRequestsInitiated');
+  
+      this.logger.info('Handoff request sent to Botpress', {
+        connectionId: connection.connectionId,
+        conversationId: message.conversationId
+      });
+    } catch (error) {
+      this.logger.error('Failed to notify human agent', {
+        error,
+        connectionId: connection.connectionId,
+        conversationId: message.conversationId
+      });
+      throw error;
+    }
   }
-
+  
   async handleAgentResponse(connectionId: string, message: WSMessage): Promise<void> {
-    if (message.type === 'HANDOFF_ACCEPTED') {
-      await this.connectionService.updateConnectionStatus(connectionId, 'IN_PROGRESS');
-      await this.webSocketService.sendMessage(connectionId, {
-        type: 'HANDOFF_STARTED',
-        content: 'Un agente ha tomado tu conversación.',
-        conversationId: message.conversationId,
-        timestamp: new Date().toISOString(),
+    try {
+      this.logger.info('Handling agent response', {
+        connectionId,
+        conversationId: message.conversationId
       });
-    } else if (message.type === 'HANDOFF_REJECTED') {
-      await this.connectionService.updateConnectionStatus(connectionId, 'CONNECTED');
-      await this.webSocketService.sendMessage(connectionId, {
-        type: 'SYSTEM_MESSAGE',
-        content: 'No hay agentes disponibles en este momento. Por favor, intenta nuevamente más tarde.',
-        conversationId: message.conversationId,
-        timestamp: new Date().toISOString(),
+  
+      const connection = await this.connectionService.getConnection(connectionId);
+      if (!connection) {
+        throw new WebSocketError('Connection not found', 404);
+      }
+  
+      switch (message.type) {
+        case 'HANDOFF_ACCEPTED':
+          await this.connectionService.updateConnectionStatus(connectionId, 'IN_PROGRESS');
+          await this.sendMessage(connectionId, {
+            type: 'HANDOFF_STARTED',
+            content: 'Un agente ha tomado tu conversación.',
+            conversationId: message.conversationId,
+            timestamp: new Date().toISOString()
+          });
+          break;
+  
+        case 'HANDOFF_REJECTED':
+          await this.connectionService.updateConnectionStatus(connectionId, 'CONNECTED');
+          await this.sendMessage(connectionId, {
+            type: 'SYSTEM_MESSAGE',
+            content: 'No hay agentes disponibles en este momento. Por favor, intenta nuevamente más tarde.',
+            conversationId: message.conversationId,
+            timestamp: new Date().toISOString()
+          });
+          break;
+  
+        case 'AGENT_MESSAGE':
+          await this.sendMessage(connectionId, {
+            type: 'AGENT_MESSAGE',
+            content: message.content,
+            conversationId: message.conversationId,
+            timestamp: new Date().toISOString()
+          });
+          break;
+  
+        case 'HANDOFF_COMPLETED':
+          await this.connectionService.updateConnectionStatus(connectionId, 'CONNECTED');
+          await this.sendMessage(connectionId, {
+            type: 'HANDOFF_COMPLETED',
+            content: 'El agente ha terminado la conversación. Ahora estás hablando con el bot nuevamente.',
+            conversationId: message.conversationId,
+            timestamp: new Date().toISOString()
+          });
+          break;
+      }
+    } catch (error) {
+      this.logger.error('Failed to handle agent response', {
+        error,
+        connectionId,
+        conversationId: message.conversationId
       });
+      throw error;
     }
   }
 }

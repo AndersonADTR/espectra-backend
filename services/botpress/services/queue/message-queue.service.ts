@@ -1,33 +1,18 @@
 // services/botpress/services/queue/message-queue.service.ts
 
 import { GetQueueAttributesCommandOutput, SQS } from '@aws-sdk/client-sqs';
-import { Logger } from '@shared/utils/logger';
-import { MetricsService } from '@shared/utils/metrics';
 import { BotpressError } from '../../utils/errors';
+import { QueueMessage } from '@services/botpress/types/queue.types';
+import { BaseService } from '../base/base.service';
 
-interface QueueMessage {
-  id: string;
-  type: 'message' | 'handoff' | 'system';
-  payload: any;
-  metadata: {
-    userId: string;
-    timestamp: string;
-    retryCount?: number;
-    priority?: 'high' | 'normal' | 'low';
-    [key: string]: any;
-  };
-}
-
-export class MessageQueueService {
-  private readonly logger: Logger;
-  private readonly metrics: MetricsService;
+export class MessageQueueService extends BaseService {
+  
   private readonly sqs: SQS;
   private readonly queueUrl: string;
   private readonly dlqUrl: string;
 
   constructor() {
-    this.logger = new Logger('MessageQueueService');
-    this.metrics = new MetricsService('Spectra/Botpress');
+    super('MessageQueueService');
     this.sqs = new SQS({});
     this.queueUrl = process.env.BOTPRESS_QUEUE_URL || '';
     this.dlqUrl = process.env.BOTPRESS_DLQ_URL || '';

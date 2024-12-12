@@ -1,8 +1,6 @@
 // services/botpress/services/chat/botpress-chat.service.ts
 
 import axios, { AxiosInstance } from 'axios';
-import { Logger } from '@shared/utils/logger';
-import { MetricsService } from '@shared/utils/metrics';
 import { BOTPRESS_CONFIG } from 'services/botpress/config/config';
 import { BotpressError } from 'services/botpress/utils/errors';
 import { 
@@ -11,19 +9,19 @@ import {
   ConversationContext,
   ProcessMessageRequest 
 } from 'services/botpress/types/chat.types';
+import { BaseService } from '../base/base.service';
 
-export class BotpressChatService {
-  private readonly logger: Logger;
-  private readonly metrics: MetricsService;
+export class BotpressChatService extends BaseService {
+
+  private readonly requestTimeout = 10000;
   private readonly client: AxiosInstance;
 
   constructor() {
-    this.logger = new Logger('BotpressChatService');
-    this.metrics = new MetricsService('Spectra/Botpress');
+    super('BotpressChatService');
     
     this.client = axios.create({
       baseURL: BOTPRESS_CONFIG.webhookUrl,
-      timeout: 10000,
+      timeout: this.requestTimeout,
       headers: {
         'Content-Type': 'application/json'
       }
@@ -82,12 +80,11 @@ export class BotpressChatService {
 
       return this.processResponse(response.data);
     } catch (error) {
-      this.logger.error('Failed to send message to Botpress', {
-        error,
+      this.handleError(error, 'Failed to send message to Botpress', {
+        operationName: 'SendMessage',
         conversationId: message.conversationId,
         userId: message.userId
       });
-      throw error;
     }
   }
 
@@ -116,13 +113,10 @@ export class BotpressChatService {
   
       return response;
     } catch (error) {
-      this.logger.error('Failed to process message', {
-        error,
+      this.handleError(error, 'Failed to process message', {
+        operationName: 'ProcessMessage',
         conversationId: request.conversationId,
         userId: request.userId
-      });
-      throw new BotpressError('Failed to process message', {
-        originalError: error
       });
     }
   }
@@ -163,11 +157,10 @@ export class BotpressChatService {
       const response = await this.client.get(`/conversations/${conversationId}/context`);
       return response.data;
     } catch (error) {
-      this.logger.error('Failed to get conversation context', {
-        error,
+      this.handleError(error, 'Failed to get conversation context', {
+        operationName: 'GetConversationContext',
         conversationId
       });
-      throw error;
     }
   }
 
@@ -183,11 +176,10 @@ export class BotpressChatService {
         contextKeys: Object.keys(context)
       });
     } catch (error) {
-      this.logger.error('Failed to update conversation context', {
-        error,
+      this.handleError(error, 'Failed to update conversation context', {
+        operationName: 'UpdateConversationContext',
         conversationId
       });
-      throw error;
     }
   }
 }

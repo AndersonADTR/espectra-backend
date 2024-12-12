@@ -2,20 +2,16 @@
 
 import { DynamoDBDocument } from '@aws-sdk/lib-dynamodb';
 import { DynamoDB } from '@aws-sdk/client-dynamodb';
-import { Logger } from '@shared/utils/logger';
-import { MetricsService } from '@shared/utils/metrics';
 import { ConversationContext } from '../../types/chat.types';
-import { BotpressError } from '../../utils/errors';
+import { BaseService } from '../base/base.service';
 
-export class ConversationContextService {
-  private readonly logger: Logger;
-  private readonly metrics: MetricsService;
+export class ConversationContextService extends BaseService {
+
   private readonly ddb: DynamoDBDocument;
   private readonly tableName: string;
 
   constructor() {
-    this.logger = new Logger('ConversationContextService');
-    this.metrics = new MetricsService('Spectra/Botpress');
+    super('ConversationContextService');
     this.ddb = DynamoDBDocument.from(new DynamoDB({}));
     this.tableName = process.env.CONVERSATION_CONTEXT_TABLE || '';
 
@@ -40,11 +36,10 @@ export class ConversationContextService {
 
       return result.Item as ConversationContext;
     } catch (error) {
-      this.logger.error('Failed to get conversation context', {
-        error,
-        conversationId
+      this.handleError(error, 'Failed to get conversation context', { 
+        operationName: 'GetContext',
+        conversationId 
       });
-      throw new BotpressError('Failed to retrieve conversation context');
     }
   }
 
@@ -79,12 +74,11 @@ export class ConversationContextService {
         updatedFields: Object.keys(context)
       });
     } catch (error) {
-      this.logger.error('Failed to update conversation context', {
-        error,
+      this.handleError(error, 'Failed to update conversation context', {
+        operationName: 'UpdateContext',
         conversationId,
         context
       });
-      throw new BotpressError('Failed to update conversation context');
     }
   }
 
@@ -99,11 +93,10 @@ export class ConversationContextService {
 
       this.logger.info('Context cleared successfully', { conversationId });
     } catch (error) {
-      this.logger.error('Failed to clear conversation context', {
-        error,
+      this.handleError(error, 'Failed to clear conversation context', {
+        operationName: 'ClearContext',
         conversationId
       });
-      throw new BotpressError('Failed to clear conversation context');
     }
   }
 
@@ -125,8 +118,9 @@ export class ConversationContextService {
 
       return (result.Items || []) as ConversationContext[];
     } catch (error) {
-      this.logger.error('Failed to list recent contexts', { error });
-      throw new BotpressError('Failed to list recent conversation contexts');
+      this.handleError(error, 'Failed to list recent conversation contexts', {
+        operationName: 'ListRecentContexts'
+      });
     }
   }
 
@@ -187,8 +181,9 @@ export class ConversationContextService {
         topTopics
       };
     } catch (error) {
-      this.logger.error('Failed to analyze context trends', { error });
-      throw new BotpressError('Failed to analyze conversation context trends');
+      this.handleError(error, 'Failed to analyze conversation context trends', {
+        operationName: 'AnalyzeContextTrends'
+      });
     }
   }
 

@@ -24,6 +24,7 @@ export type WSConnectionStatus = 'CONNECTED' | 'IN_PROGRESS' | 'DISCONNECTED';
 
 export type WSMessageType = 
   | 'USER_MESSAGE'
+  | 'AGENT_MESSAGE'
   | 'BOT_RESPONSE'
   | 'HANDOFF_REQUEST'
   | 'HANDOFF_ACCEPTED'

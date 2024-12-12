@@ -1,23 +1,20 @@
 // services/botpress/services/events/handoff-event.service.ts
 
 import { EventBridge } from '@aws-sdk/client-eventbridge';
-import { Logger } from '@shared/utils/logger';
-import { MetricsService } from '@shared/utils/metrics';
 import { HandoffEvent, HandoffStatus } from '../../types/handoff.types';
 import { HANDOFF_CONSTANTS } from '../../config/handoff.config';
 import { WebSocketService } from '../../../websocket/services/websocket.service';
 import { WSMessage } from '@services/websocket/types/websocket.types';
+import { BaseService } from '../base/base.service';
 
-export class HandoffEventService {
-  private readonly logger: Logger;
-  private readonly metrics: MetricsService;
+export class HandoffEventService extends BaseService{
+  
   private readonly eventBridge: EventBridge;
   private readonly wsService: WebSocketService;
   private readonly eventBusName: string;
 
   constructor() {
-    this.logger = new Logger('HandoffEventService');
-    this.metrics = new MetricsService(HANDOFF_CONSTANTS.METRICS.NAMESPACE);
+    super('HandoffEventService', 'Spectra/Handoff');
     this.eventBridge = new EventBridge({});
     this.wsService = new WebSocketService();
     this.eventBusName = process.env.HANDOFF_EVENT_BUS || '';
@@ -58,13 +55,11 @@ export class HandoffEventService {
         queueId: event.queueId
       });
     } catch (error) {
-      this.logger.error('Failed to publish handoff event', {
-        error,
+      this.handleError(error, 'Failed to publish handoff event', {
+        operationName: 'publishEvent',
         eventType: event.type,
         queueId: event.queueId
       });
-      this.metrics.incrementCounter('HandoffEventErrors');
-      throw error;
     }
   }
 

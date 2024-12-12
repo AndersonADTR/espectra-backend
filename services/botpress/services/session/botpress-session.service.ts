@@ -2,20 +2,18 @@
 
 import { DynamoDBDocument } from '@aws-sdk/lib-dynamodb';
 import { DynamoDB } from '@aws-sdk/client-dynamodb';
-import { Logger } from '@shared/utils/logger';
-import { MetricsService } from '@shared/utils/metrics';
 import { BotpressError } from '../../utils/errors';
 import { BotpressSession, SessionContext } from '../../types/botpress.types';
+import { BaseService } from '../base/base.service';
+import { CacheService } from '../cache/cache.service';
 
-export class BotpressSessionService {
-  private readonly logger: Logger;
-  private readonly metrics: MetricsService;
+export class BotpressSessionService extends BaseService {
+  
   private readonly ddb: DynamoDBDocument;
   private readonly sessionTable: string;
 
   constructor() {
-    this.logger = new Logger('BotpressSessionService');
-    this.metrics = new MetricsService('Spectra/Botpress');
+    super('BotpressSessionService');
     this.ddb = DynamoDBDocument.from(new DynamoDB({}));
     this.sessionTable = process.env.BOTPRESS_SESSION_TABLE || '';
 

@@ -2,21 +2,16 @@
 
 import { DynamoDBDocument } from '@aws-sdk/lib-dynamodb';
 import { DynamoDB } from '@aws-sdk/client-dynamodb';
-import { Logger } from '@shared/utils/logger';
-import { MetricsService } from '@shared/utils/metrics';
 import { BotpressAnalytics, NLUResult } from '../../types/botpress.types';
-import { BotpressError } from '../../utils/errors';
+import { BaseService } from '../base/base.service';
 
-export class BotpressAnalyticsService {
-  private readonly logger: Logger;
-  private readonly metrics: MetricsService;
+export class BotpressAnalyticsService extends BaseService {
   private readonly ddb: DynamoDBDocument;
   private readonly analyticsTable: string;
   private readonly nluTable: string;
 
   constructor() {
-    this.logger = new Logger('BotpressAnalyticsService');
-    this.metrics = new MetricsService('Spectra/Botpress');
+    super('BotpressAnalyticsService');
     this.ddb = DynamoDBDocument.from(new DynamoDB({}));
     
     this.analyticsTable = process.env.BOTPRESS_ANALYTICS_TABLE || '';
@@ -75,12 +70,11 @@ export class BotpressAnalyticsService {
         type: data.type
       });
     } catch (error) {
-      this.logger.error('Failed to track interaction', {
-        error,
+      this.handleError(error as Error, 'Failed to track interaction', {
+        operationName: 'TrackInteraction',
         userId: data.userId,
         messageId: data.messageId
       });
-      throw new BotpressError('Failed to track bot interaction');
     }
   }
 
@@ -124,11 +118,10 @@ export class BotpressAnalyticsService {
 
       return analytics;
     } catch (error) {
-      this.logger.error('Failed to generate analytics', {
-        error,
-        timeRange
+      this.handleError(error as Error, 'Failed to generate analytics', {
+        operationName: 'GenerateAnalytics',
+        timeRange: timeRange
       });
-      throw new BotpressError('Failed to generate bot analytics');
     }
   }
 
