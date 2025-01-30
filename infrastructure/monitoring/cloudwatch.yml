@@ -1,56 +1,115 @@
 Resources:
+  # Log Groups
   ApiGatewayLogGroup:
     Type: AWS::Logs::LogGroup
     Properties:
-      LogGroupName: /aws/apigateway/${self:service}-${self:provider.stage}
+      LogGroupName: /aws/apigateway/${self:custom.service}-${self:provider.stage}
       RetentionInDays: ${self:custom.logRetentionInDays}
+      KmsKeyId: 
+        Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-system-kms-key-arn
+      Tags:
+        - Key: Service
+          Value: ${self:custom.service}
+        - Key: Environment
+          Value: ${self:provider.stage}
+        - Key: Component
+          Value: APIGateway
 
   LambdaLogGroup:
     Type: AWS::Logs::LogGroup
     Properties:
-      LogGroupName: /aws/lambda/${self:service}-${self:provider.stage}
+      LogGroupName: /aws/lambda/${self:custom.service}-${self:provider.stage}
       RetentionInDays: ${self:custom.logRetentionInDays}
-
-  ApiGateway5xxAlarm:
-    Type: AWS::CloudWatch::Alarm
-    Properties:
-      AlarmName: ${self:service}-${self:provider.stage}-5xx-errors
-      AlarmDescription: Alert when 5XX errors exceed threshold
-      MetricName: 5XXError
-      Namespace: AWS/ApiGateway
-      Statistic: Sum
-      Period: 300
-      EvaluationPeriods: 1
-      Threshold: 5
-      ComparisonOperator: GreaterThanThreshold
-      Dimensions:
-        - Name: ApiName
-          Value: ${self:service}-${self:provider.stage}
-        - Name: Stage
+      KmsKeyId: 
+        Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-system-kms-key-arn
+      Tags:
+        - Key: Service
+          Value: ${self:custom.service}
+        - Key: Environment
           Value: ${self:provider.stage}
-      TreatMissingData: notBreaching
+        - Key: Component
+          Value: Lambda
 
-  SpectraDashboard:
+  MetricsLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: /custom/${self:custom.service}-${self:provider.stage}/metrics
+      RetentionInDays: ${self:custom.logRetentionInDays}
+      KmsKeyId: 
+        Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-system-kms-key-arn
+      Tags:
+        - Key: Service
+          Value: ${self:custom.service}
+        - Key: Environment
+          Value: ${self:provider.stage}
+        - Key: Component
+          Value: Metrics
+
+  # IAM Roles
+  CloudWatchRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: ${self:custom.service}-${self:provider.stage}-cloudwatch-role
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: 
+                - apigateway.amazonaws.com
+                - lambda.amazonaws.com
+                - events.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AmazonAPIGatewayPushToCloudWatchLogs
+      Policies:
+        - PolicyName: cloudwatch-custom-policy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                  - logs:DescribeLogGroups
+                  - logs:DescribeLogStreams
+                  - logs:GetLogEvents
+                  - logs:FilterLogEvents
+                Resource: 
+                  - !Sub arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/apigateway/*
+                  - !Sub arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/*
+                  - !Sub arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/custom/*
+              - Effect: Allow
+                Action:
+                  - kms:Decrypt
+                  - kms:GenerateDataKey
+                Resource:
+                  - Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-system-kms-key-arn
+
+  # CloudWatch Dashboard
+  MainDashboard:
     Type: AWS::CloudWatch::Dashboard
     Properties:
-      DashboardName: ${self:service}-${self:provider.stage}-dashboard
+      DashboardName: ${self:custom.service}-${self:provider.stage}-main
       DashboardBody: !Sub |
         {
           "widgets": [
             {
               "type": "metric",
-              "width": 12,
-              "height": 6,
+              "width": 24,
+              "height": 3,
               "properties": {
+                "view": "singleValue",
                 "metrics": [
-                  ["AWS/ApiGateway", "Count", "ApiName", "${self:service}-${self:provider.stage}", "Stage", "${self:provider.stage}"],
-                  [".", "4XXError", ".", ".", ".", "."],
-                  [".", "5XXError", ".", ".", ".", "."]
+                  [ "AWS/ApiGateway", "4XXError", "ApiName", "${self:custom.service}" ],
+                  [ ".", "5XXError", ".", "." ],
+                  [ "AWS/Lambda", "Errors", "FunctionName", "${self:custom.service}-${self:provider.stage}-*" ],
+                  [ "AWS/DynamoDB", "ThrottledRequests", "TableName", "${self:custom.service}-${self:provider.stage}-*" ]
                 ],
-                "period": 300,
-                "stat": "Sum",
                 "region": "${AWS::Region}",
-                "title": "API Gateway Errors"
+                "period": 300,
+                "title": "System Health Overview"
               }
             },
             {
@@ -59,12 +118,15 @@ Resources:
               "height": 6,
               "properties": {
                 "metrics": [
-                  ["AWS/ApiGateway", "Latency", "ApiName", "${self:service}-${self:provider.stage}", "Stage", "${self:provider.stage}"]
+                  [ "AWS/Lambda", "Invocations", "FunctionName", "${self:custom.service}-${self:provider.stage}-*" ],
+                  [ ".", "Errors", ".", "." ],
+                  [ ".", "Throttles", ".", "." ],
+                  [ ".", "Duration", ".", "." ]
                 ],
                 "period": 300,
-                "stat": "Average",
+                "stat": "Sum",
                 "region": "${AWS::Region}",
-                "title": "API Latency"
+                "title": "Lambda Metrics"
               }
             },
             {
@@ -73,19 +135,57 @@ Resources:
               "height": 6,
               "properties": {
                 "metrics": [
-                  ["AWS/WAF", "BlockedRequests", "WebACL", "${SpectraWebACL}", "Region", "${AWS::Region}"],
-                  [".", "AllowedRequests", ".", ".", ".", "."]
+                  [ "AWS/ApiGateway", "Count", "ApiName", "${self:custom.service}", { "stat": "Sum" } ],
+                  [ ".", "Latency", ".", ".", { "stat": "Average" } ],
+                  [ ".", "4XXError", ".", ".", { "stat": "Sum" } ],
+                  [ ".", "5XXError", ".", ".", { "stat": "Sum" } ]
                 ],
                 "period": 300,
-                "stat": "Sum",
                 "region": "${AWS::Region}",
-                "title": "WAF Requests"
+                "title": "API Gateway Metrics"
+              }
+            },
+            {
+              "type": "log",
+              "width": 24,
+              "height": 6,
+              "properties": {
+                "query": "SOURCE '/aws/lambda/${self:custom.service}-${self:provider.stage}-*' | fields @timestamp, @message\n| filter @message like /ERROR/\n| sort @timestamp desc\n| limit 20",
+                "region": "${AWS::Region}",
+                "title": "Recent Error Logs",
+                "view": "table"
               }
             }
           ]
         }
 
 Outputs:
-  DashboardURL:
-    Description: URL of the CloudWatch Dashboard
-    Value: !Sub https://${AWS::Region}.console.aws.amazon.com/cloudwatch/home?region=${AWS::Region}#dashboards:name=${self:service}-${self:provider.stage}-dashboard
+  CloudWatchRoleArn:
+    Description: ARN of the CloudWatch IAM role
+    Value: !GetAtt CloudWatchRole.Arn
+    Export:
+      Name: ${self:custom.service}-${self:provider.stage}-cloudwatch-role-arn
+
+  ApiGatewayLogGroupName:
+    Description: Name of the API Gateway log group
+    Value: !Ref ApiGatewayLogGroup
+    Export:
+      Name: ${self:custom.service}-${self:provider.stage}-apigateway-log-group
+
+  LambdaLogGroupName:
+    Description: Name of the Lambda log group
+    Value: !Ref LambdaLogGroup
+    Export:
+      Name: ${self:custom.service}-${self:provider.stage}-lambda-log-group
+
+  MetricsLogGroupName:
+    Description: Name of the metrics log group
+    Value: !Ref MetricsLogGroup
+    Export:
+      Name: ${self:custom.service}-${self:provider.stage}-metrics-log-group
+
+  MainDashboardURL:
+    Description: URL of the main CloudWatch dashboard
+    Value: !Sub https://${AWS::Region}.console.aws.amazon.com/cloudwatch/home?region=${AWS::Region}#dashboards:name=${self:custom.service}-${self:provider.stage}-main
+    Export:
+      Name: ${self:custom.service}-${self:provider.stage}-main-dashboard-url

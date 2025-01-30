@@ -3,6 +3,10 @@
 import { BaseError } from '@shared/utils/errors';
 
 export class WebSocketError extends BaseError {
+
+  readonly statusCode: number;
+  readonly context?: Record<string, any>;
+
   constructor(
     message: string,
     statusCode: number = 500,
@@ -10,6 +14,10 @@ export class WebSocketError extends BaseError {
   ) {
     super('WEBSOCKET_ERROR', statusCode, message);
     this.name = 'WebSocketError';
+    this.statusCode = statusCode;
+
+    // Necesario para que instanceof funcione correctamente
+    Object.setPrototypeOf(this, WebSocketError.prototype);
   }
 }
 

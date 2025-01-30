@@ -1,13 +1,12 @@
 // services/botpress/config/config.ts
 
-import { BotpressConfig } from "services/botpress/types/chat.types";
+import { BotpressConfig } from "../types/botpress.types";
 
 // Configuración base de Botpress
 export const BOTPRESS_CONFIG: BotpressConfig = {
   webhookUrl: process.env.BOTPRESS_WEBHOOK_URL || 'https://chat.botpress.cloud/a3d58c2c-c0bb-4db7-b344-9d87b18316ea',
   botId: process.env.BOTPRESS_BOT_ID || '187218ca-4f6d-4a78-a409-b374d3b714c1',
-  workspaceId: process.env.BOTPRESS_WORKSPACE_ID || 'wkspace_01JDWDGCRZ2FTMTTBBEWW4YZGN',
-  HANDOFF_CONFIDENCE_THRESHOLD: undefined
+  workspaceId: process.env.BOTPRESS_WORKSPACE_ID || 'wkspace_01JDWDGCRZ2FTMTTBBEWW4YZGN'
 };
 
 // Configuración de timeouts y reintentos

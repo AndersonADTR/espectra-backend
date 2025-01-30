@@ -1,9 +1,9 @@
-# infrastructure/iam/websocket-roles.yml
 Resources:
   WebSocketLambdaRole:
     Type: AWS::IAM::Role
     Properties:
-      RoleName: ${self:service}-${self:provider.stage}-websocket-lambda-role
+      RoleName: ${self:custom.service}-${self:provider.stage}-websocket-lambda-role
+      Description: IAM role for WebSocket Lambda functions in ${self:custom.service}-${self:provider.stage}
       AssumeRolePolicyDocument:
         Version: '2012-10-17'
         Statement:
@@ -13,19 +13,17 @@ Resources:
             Action: sts:AssumeRole
       ManagedPolicyArns:
         - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+        - arn:aws:iam::aws:policy/AWSXRayDaemonWriteAccess
       Policies:
         - PolicyName: websocket-full-access
           PolicyDocument:
             Version: '2012-10-17'
             Statement:
-              # WebSocket Management
               - Effect: Allow
                 Action:
                   - execute-api:ManageConnections
                 Resource: 
-                  - !Sub arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:*/*
-
-              # DynamoDB Access
+                  - !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:*/*/@connections/*"
               - Effect: Allow
                 Action:
                   - dynamodb:PutItem
@@ -34,10 +32,8 @@ Resources:
                   - dynamodb:Query
                   - dynamodb:UpdateItem
                 Resource:
-                  - !GetAtt ConnectionsTable.Arn
-                  - !Sub ${ConnectionsTable.Arn}/index/*
-
-              # SQS Access
+                  - !Sub "arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${self:custom.service}-${self:provider.stage}-connections"
+                  - !Sub "arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${self:custom.service}-${self:provider.stage}-connections/index/*"
               - Effect: Allow
                 Action:
                   - sqs:SendMessage
@@ -45,19 +41,20 @@ Resources:
                   - sqs:ReceiveMessage
                   - sqs:DeleteMessage
                 Resource:
-                  - !GetAtt MessageQueue.Arn
-
-              #CloudWatch Logs Access
+                  - !Sub "arn:aws:sqs:${AWS::Region}:${AWS::AccountId}:${self:custom.service}-${self:provider.stage}-message-queue"
               - Effect: Allow
                 Action:
                   - logs:CreateLogGroup
                   - logs:CreateLogStream
                   - logs:PutLogEvents
+                Resource: 
+                  - !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/${self:custom.service}-${self:provider.stage}-*:*"
+              - Effect: Allow
+                Action:
                   - cognito-idp:AdminInitiateAuth
                   - cognito-idp:ListUsers
-                Resource: '*'
-
-              # KMS Access
+                Resource:
+                  - !Sub "arn:aws:cognito-idp:${AWS::Region}:${AWS::AccountId}:userpool/*"
               - Effect: Allow
                 Action:
                   - kms:Decrypt
@@ -65,12 +62,56 @@ Resources:
                   - kms:GenerateDataKey
                   - kms:DescribeKey
                 Resource:
-                  - !GetAtt WebSocketKMSKey.Arn
-                  - arn:aws:kms:${self:provider.region}:${aws:accountId}:key/*
+                  - !Sub "arn:aws:kms:${AWS::Region}:${AWS::AccountId}:key/*"
+
+  WebSocketAuthorizerRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: ${self:custom.service}-${self:provider.stage}-websocket-authorizer-role
+      Description: IAM role for WebSocket authorizer Lambda function in ${self:custom.service}-${self:provider.stage}
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+        - arn:aws:iam::aws:policy/AWSXRayDaemonWriteAccess
+      Policies:
+        - PolicyName: websocket-authorizer-policy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - cognito-idp:AdminInitiateAuth
+                  - cognito-idp:AdminGetUser
+                Resource:
+                  - Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-user-pool-arn
+              - Effect: Allow
+                Action:
+                  - kms:Decrypt
+                  - kms:GenerateDataKey
+                Resource:
+                  - Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-websocket-kms-key-arn
+              - Effect: Allow
+                Action:
+                  - execute-api:Invoke
+                  - execute-api:ManageConnections
+                Resource:
+                  - !Sub arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:*
 
 Outputs:
   WebSocketLambdaRoleArn:
-    Description: ARN of the WebSocket Lambda Role
+    Description: ARN of the WebSocket Lambda IAM role
     Value: !GetAtt WebSocketLambdaRole.Arn
     Export:
-      Name: ${self:service}-${self:provider.stage}-websocket-role-arn
+      Name: ${self:custom.service}-${self:provider.stage}-websocket-role-arn
+      
+  WebSocketAuthorizerRoleArn:
+    Description: ARN of the WebSocket Authorizer Lambda IAM role
+    Value: !GetAtt WebSocketAuthorizerRole.Arn
+    Export:
+      Name: ${self:custom.service}-${self:provider.stage}-websocket-authorizer-role-arn

@@ -1,31 +1,4 @@
 Resources:
-  # ConnectionsTable:
-  #   Type: AWS::DynamoDB::Table
-  #   DeletionPolicy: Retain
-  #   Properties:
-  #     TableName: ${self:custom.tableNames.connections}
-  #     BillingMode: PAY_PER_REQUEST
-  #     AttributeDefinitions:
-  #       - AttributeName: connectionId
-  #         AttributeType: S
-  #       - AttributeName: userId
-  #         AttributeType: S
-  #     KeySchema:
-  #       - AttributeName: connectionId
-  #         KeyType: HASH
-  #     GlobalSecondaryIndexes:
-  #       - IndexName: UserIdIndex
-  #         KeySchema:
-  #           - AttributeName: userId
-  #             KeyType: HASH
-  #         Projection:
-  #           ProjectionType: ALL
-  #     TimeToLiveSpecification:
-  #       AttributeName: ttl
-  #       Enabled: true
-  #     SSESpecification:
-  #       SSEEnabled: true
-
   ConversationContextTable:
     Type: AWS::DynamoDB::Table
     Properties:
@@ -34,16 +7,121 @@ Resources:
       AttributeDefinitions:
         - AttributeName: conversationId
           AttributeType: S
+        - AttributeName: userId
+          AttributeType: S
+        - AttributeName: lastInteraction
+          AttributeType: S
+        - AttributeName: status
+          AttributeType: S
       KeySchema:
         - AttributeName: conversationId
           KeyType: HASH
+      GlobalSecondaryIndexes:
+        - IndexName: UserIdIndex
+          KeySchema:
+            - AttributeName: userId
+              KeyType: HASH
+            - AttributeName: lastInteraction
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+        - IndexName: StatusLastInteractionIndex
+          KeySchema:
+            - AttributeName: status
+              KeyType: HASH
+            - AttributeName: lastInteraction
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
       TimeToLiveSpecification:
         AttributeName: ttl
         Enabled: true
       SSESpecification:
         SSEEnabled: true
+        SSEType: KMS
+        KMSMasterKeyId: 
+          Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-system-kms-key-arn
       PointInTimeRecoverySpecification:
         PointInTimeRecoveryEnabled: true
+      StreamSpecification:
+        StreamViewType: NEW_AND_OLD_IMAGES
+      Tags:
+        - Key: Service
+          Value: ${self:custom.service}
+        - Key: Environment
+          Value: ${self:provider.stage}
+        - Key: Purpose
+          Value: BotpressContext
+        - Key: ManagedBy
+          Value: CloudFormation
+
+  BotpressMetricsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: ${self:custom.tableNames.metrics}
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: metricId
+          AttributeType: S
+        - AttributeName: timestamp
+          AttributeType: S
+        - AttributeName: userId
+          AttributeType: S
+        - AttributeName: type
+          AttributeType: S
+        - AttributeName: date
+          AttributeType: S
+      KeySchema:
+        - AttributeName: metricId
+          KeyType: HASH
+        - AttributeName: timestamp
+          KeyType: RANGE
+      GlobalSecondaryIndexes:
+        - IndexName: UserMetricsIndex
+          KeySchema:
+            - AttributeName: userId
+              KeyType: HASH
+            - AttributeName: timestamp
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+        - IndexName: MetricTypeIndex
+          KeySchema:
+            - AttributeName: type
+              KeyType: HASH
+            - AttributeName: timestamp
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+        - IndexName: DateTypeIndex
+          KeySchema:
+            - AttributeName: date
+              KeyType: HASH
+            - AttributeName: type
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+      TimeToLiveSpecification:
+        AttributeName: ttl
+        Enabled: true
+      SSESpecification:
+        SSEEnabled: true
+        SSEType: KMS
+        KMSMasterKeyId: 
+          Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-system-kms-key-arn
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
+      StreamSpecification:
+        StreamViewType: NEW_AND_OLD_IMAGES
+      Tags:
+        - Key: Service
+          Value: ${self:custom.service}
+        - Key: Environment
+          Value: ${self:provider.stage}
+        - Key: Purpose
+          Value: BotpressMetrics
+        - Key: ManagedBy
+          Value: CloudFormation
 
   TokenUsageTable:
     Type: AWS::DynamoDB::Table
@@ -62,30 +140,129 @@ Resources:
           KeyType: RANGE
       SSESpecification:
         SSEEnabled: true
+        SSEType: KMS
+        KMSMasterKeyId: 
+          Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-system-kms-key-arn
       PointInTimeRecoverySpecification:
         PointInTimeRecoveryEnabled: true
+      StreamSpecification:
+        StreamViewType: NEW_AND_OLD_IMAGES
+      Tags:
+        - Key: Service
+          Value: ${self:custom.service}
+        - Key: Environment
+          Value: ${self:provider.stage}
+        - Key: Purpose
+          Value: TokenUsage
+        - Key: ManagedBy
+          Value: CloudFormation
 
-  HandoffQueueTable:
-    Type: AWS::DynamoDB::Table
+  # CloudWatch Alarms
+  BotpressContextTableThrottlingAlarm:
+    Type: AWS::CloudWatch::Alarm
     Properties:
-      TableName: ${self:custom.tableNames.handoff}
-      BillingMode: PAY_PER_REQUEST
-      AttributeDefinitions:
-        - AttributeName: queueId
-          AttributeType: S
-        - AttributeName: status
-          AttributeType: S
-      KeySchema:
-        - AttributeName: queueId
-          KeyType: HASH
-      GlobalSecondaryIndexes:
-        - IndexName: StatusIndex
-          KeySchema:
-            - AttributeName: status
-              KeyType: HASH
-          Projection:
-            ProjectionType: ALL
-      SSESpecification:
-        SSEEnabled: true
-      PointInTimeRecoverySpecification:
-        PointInTimeRecoveryEnabled: true
+      AlarmName: ${self:custom.service}-${self:provider.stage}-context-throttling
+      AlarmDescription: Context table throttling events
+      MetricName: ThrottledRequests
+      Namespace: AWS/DynamoDB
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 2
+      Threshold: 10
+      ComparisonOperator: GreaterThanThreshold
+      Dimensions:
+        - Name: TableName
+          Value: ${self:custom.tableNames.context}
+      AlarmActions:
+        - ${self:custom.snsMediumPriorityTopic}
+
+  BotpressMetricsTableThrottlingAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: ${self:custom.service}-${self:provider.stage}-metrics-throttling
+      AlarmDescription: Metrics table throttling events
+      MetricName: ThrottledRequests
+      Namespace: AWS/DynamoDB
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 2
+      Threshold: 10
+      ComparisonOperator: GreaterThanThreshold
+      Dimensions:
+        - Name: TableName
+          Value: ${self:custom.tableNames.metrics}
+      AlarmActions:
+        - ${self:custom.snsMediumPriorityTopic}
+
+  TokenUsageTableThrottlingAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: ${self:custom.service}-${self:provider.stage}-tokens-throttling
+      AlarmDescription: Token usage table throttling events
+      MetricName: ThrottledRequests
+      Namespace: AWS/DynamoDB
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 2
+      Threshold: 10
+      ComparisonOperator: GreaterThanThreshold
+      Dimensions:
+        - Name: TableName
+          Value: ${self:custom.tableNames.tokens}
+      AlarmActions:
+        - ${self:custom.snsMediumPriorityTopic}
+  
+  TokenUsageTableCapacityAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: ${self:custom.service}-${self:provider.stage}-token-usage-capacity
+      AlarmDescription: Alert when token usage table is approaching capacity limits
+      MetricName: ConsumedWriteCapacityUnits
+      Namespace: AWS/DynamoDB
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 2
+      Threshold: 80
+      ComparisonOperator: GreaterThanThreshold
+      Dimensions:
+        - Name: TableName
+          Value: ${self:custom.tableNames.tokens}
+      AlarmActions:
+        - ${self:custom.snsMediumPriorityTopic}
+
+Outputs:
+  ConversationContextTableName:
+    Description: Name of the Conversation Context table
+    Value: ${self:custom.tableNames.context}
+    Export:
+      Name: ${self:custom.service}-${self:provider.stage}-context-table-name
+
+  ConversationContextTableArn:
+    Description: ARN of the Conversation Context table
+    Value: !GetAtt ConversationContextTable.Arn
+    Export:
+      Name: ${self:custom.service}-${self:provider.stage}-context-table-arn
+
+  BotpressMetricsTableName:
+    Description: Name of the Botpress Metrics table
+    Value: ${self:custom.tableNames.metrics}
+    Export:
+      Name: ${self:custom.service}-${self:provider.stage}-metrics-table-name
+
+  BotpressMetricsTableArn:
+    Description: ARN of the Botpress Metrics table
+    Value: !GetAtt BotpressMetricsTable.Arn
+    Export:
+      Name: ${self:custom.service}-${self:provider.stage}-metrics-table-arn
+
+  TokenUsageTableName:
+    Description: Name of the Token Usage table
+    Value: ${self:custom.tableNames.tokens}
+    Export:
+      Name: ${self:custom.service}-${self:provider.stage}-tokens-table-name
+
+  TokenUsageTableArn:
+    Description: ARN of the Token Usage table
+    Value: !GetAtt TokenUsageTable.Arn
+    Export:
+      Name: ${self:custom.service}-${self:provider.stage}-tokens-table-arn

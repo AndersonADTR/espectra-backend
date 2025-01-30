@@ -12,7 +12,7 @@ export class Logger {
         winston.format.json()
       ),
       defaultMeta: {
-        service: 'spectra-backend',
+        service: 'espectra-backend',
         context: this.context,
       },
       transports: [

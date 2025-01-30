@@ -1,74 +1,296 @@
-# infrastructure/websocket/websocket.yml
 Resources:
+  # WebSocket API
   WebSocketApi:
     Type: AWS::ApiGatewayV2::Api
+    DependsOn:
+      - WsAuthorizerLambdaFunction
     Properties:
-      Name: ${self:service}-websocket-${self:provider.stage}
+      Name: ${self:custom.service}-${self:provider.stage}-websocket
       ProtocolType: WEBSOCKET
       RouteSelectionExpression: $request.body.action
+      Description: WebSocket API for real-time communications in ${self:custom.service}
+      DisableExecuteApiEndpoint: false
       ApiKeySelectionExpression: $request.header.x-api-key
+      Tags:
+        Service: ${self:custom.service}
+        Environment: ${self:provider.stage}
+        ManagedBy: CloudFormation
 
+  WebSocketAuthorizerPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !GetAtt WsAuthorizerLambdaFunction.Arn
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub 
+        - arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${WebSocketApi}/*
+        - WebSocketApi: !Ref WebSocketApi
+
+  # Deployment y Stage
   WebSocketStage:
     Type: AWS::ApiGatewayV2::Stage
+    DependsOn:
+      - WebSocketApi
+      - WebSocketDeployment
     Properties:
       ApiId: !Ref WebSocketApi
       StageName: ${self:provider.stage}
+      DeploymentId: !Ref WebSocketDeployment
       DefaultRouteSettings:
-        ThrottlingBurstLimit: 100
-        ThrottlingRateLimit: 50
+        DetailedMetricsEnabled: true
+        ThrottlingBurstLimit: 5000
+        ThrottlingRateLimit: 10000
+        DataTraceEnabled: true
       AccessLogSettings:
-        DestinationArn: !GetAtt WebSocketLogGroup.Arn
-        Format: '{"requestId":"$context.requestId","ip":"$context.identity.sourceIp","requestTime":"$context.requestTime","httpMethod":"$context.httpMethod","routeKey":"$context.routeKey","status":"$context.status","connectionId":"$context.connectionId"}'
+        DestinationArn: !GetAtt WebSocketLogs.Arn
+        Format: '{"requestId": "$context.requestId","ip": "$context.identity.sourceIp","requestTime": "$context.requestTime","routeKey": "$context.routeKey","status": "$context.status","connectionId": "$context.connectionId","error": "$context.error.message","integrationError": "$context.integrationErrorMessage","authorizer": {"principalId": "$context.authorizer.principalId","claims": "$context.authorizer.claims"},"responseLatency": $context.responseLatency,"xrayTraceId": "$context.xrayTraceId"}'
 
-  WebSocketLogGroup:
+  WebSocketDeployment:
+    Type: AWS::ApiGatewayV2::Deployment
+    DependsOn:
+      - WebSocketApi
+      - ConnectRoute
+      - DisconnectRoute
+      - DefaultRoute
+    Properties:
+      ApiId: !Ref WebSocketApi
+      Description: WebSocket deployment for ${self:provider.stage}
+      
+  # Log Group
+  WebSocketLogs:
     Type: AWS::Logs::LogGroup
     Properties:
-      LogGroupName: /aws/websocket/${self:service}-websocket-${self:provider.stage}
-      RetentionInDays: 14
-
-  ConnectionsTable:
-    Type: AWS::DynamoDB::Table
-    Properties:
-      TableName: ${self:service}-${self:provider.stage}-connections
-      BillingMode: PAY_PER_REQUEST
-      AttributeDefinitions:
-        - AttributeName: connectionId
-          AttributeType: S
-        - AttributeName: userId
-          AttributeType: S
-      KeySchema:
-        - AttributeName: connectionId
-          KeyType: HASH
-      GlobalSecondaryIndexes:
-        - IndexName: UserIdIndex
-          KeySchema:
-            - AttributeName: userId
-              KeyType: HASH
-          Projection:
-            ProjectionType: ALL
-      SSESpecification:
-        SSEEnabled: true
-        SSEType: KMS
-        KMSMasterKeyId: !Ref WebSocketKMSKey
-      PointInTimeRecoverySpecification:
-        PointInTimeRecoveryEnabled: true
+      LogGroupName: /aws/websocket/${self:custom.service}-${self:provider.stage}
+      RetentionInDays: ${self:custom.logRetentionInDays}
       Tags:
         - Key: Service
-          Value: ${self:service}
+          Value: ${self:custom.service}
         - Key: Environment
           Value: ${self:provider.stage}
 
-  WebSocketKMSKey:
-    Type: AWS::KMS::Key
+  # Routes
+  ConnectRoute:
+    Type: AWS::ApiGatewayV2::Route
+    DependsOn:
+      - WebSocketApi
+      - ConnectIntegration
+      - WebSocketLambdaAuthorizer
     Properties:
-      Description: KMS key for WebSocket connections encryption
-      EnableKeyRotation: true
-      KeyPolicy:
+      ApiId: !Ref WebSocketApi
+      RouteKey: $connect
+      AuthorizationType: CUSTOM
+      AuthorizerId: !Ref WebSocketLambdaAuthorizer
+      OperationName: ConnectRoute
+      Target: !Join
+        - '/'
+        - - 'integrations'
+          - !Ref ConnectIntegration
+      RouteResponseSelectionExpression: $default
+
+  DisconnectRoute:
+    Type: AWS::ApiGatewayV2::Route
+    DependsOn:
+      - WebSocketApi
+      - DisconnectIntegration
+    Properties:
+      ApiId: !Ref WebSocketApi
+      RouteKey: $disconnect
+      AuthorizationType: NONE
+      OperationName: DisconnectRoute
+      Target: !Join
+        - '/'
+        - - 'integrations'
+          - !Ref DisconnectIntegration
+      RouteResponseSelectionExpression: $default
+
+  DefaultRoute:
+    Type: AWS::ApiGatewayV2::Route
+    DependsOn:
+      - WebSocketApi
+      - DefaultIntegration
+    Properties:
+      ApiId: !Ref WebSocketApi
+      RouteKey: $default
+      AuthorizationType: NONE
+      OperationName: DefaultRoute
+      Target: !Join
+        - '/'
+        - - 'integrations'
+          - !Ref DefaultIntegration
+      RouteResponseSelectionExpression: $default
+
+  # Integraciones
+  ConnectIntegration:
+    Type: AWS::ApiGatewayV2::Integration
+    Properties:
+      ApiId: !Ref WebSocketApi
+      Description: Connect Integration
+      IntegrationType: AWS_PROXY
+      IntegrationUri: !Sub 
+        - arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${FunctionArn}/invocations
+        - FunctionArn: !GetAtt WebSocketConnectLambdaFunction.Arn
+      IntegrationMethod: POST
+      TimeoutInMillis: 29000
+      CredentialsArn: !GetAtt WebSocketApiRole.Arn
+      TlsConfig:
+        ServerNameToVerify: !Sub lambda.${AWS::Region}.amazonaws.com
+
+  DisconnectIntegration:
+    Type: AWS::ApiGatewayV2::Integration
+    Properties:
+      ApiId: !Ref WebSocketApi
+      Description: Disconnect Integration
+      IntegrationType: AWS_PROXY
+      IntegrationUri: !Sub 
+        - arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${FunctionArn}/invocations
+        - FunctionArn: !GetAtt WebSocketDisconnectLambdaFunction.Arn
+      IntegrationMethod: POST
+      TimeoutInMillis: 29000
+      CredentialsArn: !GetAtt WebSocketApiRole.Arn
+      TlsConfig:
+        ServerNameToVerify: !Sub lambda.${AWS::Region}.amazonaws.com
+
+  DefaultIntegration:
+    Type: AWS::ApiGatewayV2::Integration
+    Properties:
+      ApiId: !Ref WebSocketApi
+      Description: Default Message Integration
+      IntegrationType: AWS_PROXY
+      IntegrationUri: !Sub 
+        - arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${FunctionArn}/invocations
+        - FunctionArn: !GetAtt WebSocketMessageLambdaFunction.Arn
+      IntegrationMethod: POST
+      TimeoutInMillis: 29000
+      CredentialsArn: !GetAtt WebSocketApiRole.Arn
+      TlsConfig:
+        ServerNameToVerify: !Sub lambda.${AWS::Region}.amazonaws.com
+
+  # Modelos
+  # ConnectionRequestModel:
+  #   Type: AWS::ApiGatewayV2::Model
+  #   Properties:
+  #     ApiId: !Ref WebSocketApi
+  #     ContentType: application/json
+  #     Name: ConnectionRequest
+  #     Description: 'Modelo de validación para conexiones WebSocket'
+  #     Schema: 
+  #       $schema: 'http://json-schema.org/draft-07/schema#'
+  #       type: object
+  #       properties:
+  #         action:
+  #           type: string
+  #         data:
+  #           type: object
+  #           properties:
+  #             connectionId:
+  #               type: string
+  #               pattern: '^[a-zA-Z0-9-_]+$'
+  #             timestamp:
+  #               type: integer
+  #               minimum: 0
+  #             metadata:
+  #               type: object
+  #               additionalProperties: true
+  #           required:
+  #             - connectionId
+  #             - timestamp
+  #       required:
+  #         - action
+  #         - data
+
+  # IAM Role
+  WebSocketApiRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: ${self:custom.service}-${self:provider.stage}-websocket-api-role
+      AssumeRolePolicyDocument:
         Version: '2012-10-17'
         Statement:
-          - Sid: Enable IAM User Permissions
-            Effect: Allow
+          - Effect: Allow
             Principal:
-              AWS: !Sub arn:aws:iam::${AWS::AccountId}:root
-            Action: kms:*
-            Resource: '*'
+              Service: apigateway.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: websocket-execution
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - lambda:InvokeFunction
+                Resource:
+                  - !GetAtt WebSocketConnectLambdaFunction.Arn
+                  - !GetAtt WebSocketDisconnectLambdaFunction.Arn
+                  - !GetAtt WebSocketMessageLambdaFunction.Arn
+              - Effect: Allow
+                Action:
+                  - kms:Decrypt
+                  - kms:GenerateDataKey
+                Resource: 
+                  #- arn:aws:kms:us-east-1:345594559631:key/2e94db41-6c26-4ea0-9eec-831b14632bac
+                  - Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-websocket-kms-key-arn
+
+  # CloudWatch Alarms
+  WebSocketConnectionsAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: ${self:custom.service}-${self:provider.stage}-websocket-connections
+      AlarmDescription: Alert when concurrent WebSocket connections exceed threshold
+      MetricName: ConnectorConnections
+      Namespace: AWS/ApiGateway
+      Statistic: Maximum
+      Period: 300
+      EvaluationPeriods: 2
+      Threshold: ${self:custom.alarmThresholds.websocket.connections}
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching
+      Dimensions:
+        - Name: ApiId
+          Value: !Ref WebSocketApi
+      AlarmActions:
+        - Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-high-priority-topic-arn
+
+  WebSocketLatencyAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: ${self:custom.service}-${self:provider.stage}-websocket-latency
+      AlarmDescription: WebSocket message processing latency exceeds threshold
+      MetricName: IntegrationLatency
+      Namespace: AWS/ApiGateway
+      ExtendedStatistic: p95
+      Period: 300
+      EvaluationPeriods: 2
+      Threshold: 1000
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching
+      Dimensions:
+        - Name: ApiId
+          Value: !Ref WebSocketApi
+      AlarmActions:
+        - Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-medium-priority-topic-arn
+
+  ReconnectionConfig:
+    Type: AWS::ApiGatewayV2::RouteResponse
+    Properties:
+      ApiId: !Ref WebSocketApi
+      RouteId: !Ref DefaultRoute
+      RouteResponseKey: $default
+
+Outputs:
+  WebSocketApiId:
+    Description: WebSocket API ID
+    Value: !Ref WebSocketApi
+    Export:
+      Name: ${self:custom.service}-${self:provider.stage}-websocket-api-id
+
+  WebSocketApiEndpoint:
+    Description: WebSocket API Endpoint
+    Value: !Sub wss://${WebSocketApi}.execute-api.${AWS::Region}.amazonaws.com/${self:provider.stage}
+    Export:
+      Name: ${self:custom.service}-${self:provider.stage}-websocket-endpoint
+
+  WebSocketStageArn:
+    Description: WebSocket Stage ARN
+    Value: !Sub arn:aws:apigateway:${AWS::Region}::/apis/${WebSocketApi}/stages/${self:provider.stage}
+    Export:
+      Name: ${self:custom.service}-${self:provider.stage}-websocket-stage-arn

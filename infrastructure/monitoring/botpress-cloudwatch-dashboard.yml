@@ -1,0 +1,197 @@
+Resources:
+  BotpressDashboard:
+    Type: AWS::CloudWatch::Dashboard
+    Properties:
+      DashboardName: ${self:custom.service}-${self:provider.stage}-botpress
+      DashboardBody: !Sub |
+        {
+          "widgets": [
+            {
+              "type": "metric",
+              "width": 24,
+              "height": 3,
+              "properties": {
+                "view": "singleValue",
+                "title": "Service Health Overview",
+                "metrics": [
+                  [ "Spectra/Botpress", "ServiceHealth", { "stat": "Minimum" } ],
+                  [ ".", "TokenUsagePercentage", { "stat": "Maximum" } ],
+                  [ ".", "HandoffSuccessRate", { "stat": "Average" } ],
+                  [ ".", "ActiveSessions", { "stat": "Maximum" } ]
+                ],
+                "period": 300,
+                "region": "${AWS::Region}",
+                "setPeriodToTimeRange": true
+              }
+            },
+            {
+              "type": "metric",
+              "width": 12,
+              "height": 6,
+              "properties": {
+                "title": "Botpress Core Metrics",
+                "metrics": [
+                  [ "Spectra/Botpress", "Requests", { "stat": "Sum" } ],
+                  [ ".", "Errors", { "stat": "Sum" } ],
+                  [ ".", "Latency", { "stat": "Average" } ],
+                  [ ".", "LatencyP95", { "stat": "p95" } ]
+                ],
+                "period": 300,
+                "region": "${AWS::Region}",
+                "view": "timeSeries",
+                "stacked": false
+              }
+            },
+            {
+              "type": "metric",
+              "width": 12,
+              "height": 6,
+              "properties": {
+                "title": "Token Usage Metrics",
+                "metrics": [
+                  [ "Spectra/Botpress", "TokensConsumed", { "stat": "Sum" } ],
+                  [ ".", "TokenUsagePercentage", { "stat": "Maximum" } ],
+                  [ ".", "TokenLimitWarnings", { "stat": "Sum" } ]
+                ],
+                "period": 300,
+                "region": "${AWS::Region}",
+                "view": "timeSeries",
+                "stacked": false,
+                "annotations": {
+                  "horizontal": [
+                    {
+                      "value": ${self:custom.botpressAlarmThresholds.tokenUsage},
+                      "label": "Token Usage Threshold",
+                      "color": "#ff7f0e"
+                    }
+                  ]
+                }
+              }
+            },
+            {
+              "type": "metric",
+              "width": 12,
+              "height": 6,
+              "properties": {
+                "title": "Handoff Metrics",
+                "metrics": [
+                  [ "Spectra/Botpress", "HandoffRequests", { "stat": "Sum" } ],
+                  [ ".", "HandoffSuccessRate", { "stat": "Average" } ],
+                  [ ".", "HandoffQueueSize", { "stat": "Maximum" } ],
+                  [ ".", "HandoffLatency", { "stat": "Average" } ]
+                ],
+                "period": 300,
+                "region": "${AWS::Region}",
+                "view": "timeSeries",
+                "stacked": false
+              }
+            },
+            {
+              "type": "metric",
+              "width": 12,
+              "height": 6,
+              "properties": {
+                "title": "Session Metrics",
+                "metrics": [
+                  [ "Spectra/Botpress", "ActiveSessions", { "stat": "Average" } ],
+                  [ ".", "SessionDuration", { "stat": "Average" } ],
+                  [ ".", "SessionsStarted", { "stat": "Sum" } ],
+                  [ ".", "SessionsEnded", { "stat": "Sum" } ]
+                ],
+                "period": 300,
+                "region": "${AWS::Region}",
+                "view": "timeSeries",
+                "stacked": false
+              }
+            },
+            {
+              "type": "metric",
+              "width": 12,
+              "height": 6,
+              "properties": {
+                "title": "Business KPIs",
+                "metrics": [
+                  [ "Spectra/Botpress", "UserSatisfactionScore", { "stat": "Average" } ],
+                  [ ".", "AutoResolutionRate", { "stat": "Average" } ],
+                  [ ".", "AverageResponseTime", { "stat": "Average" } ]
+                ],
+                "period": 300,
+                "region": "${AWS::Region}",
+                "view": "timeSeries",
+                "stacked": false
+              }
+            },
+            {
+              "type": "metric",
+              "width": 12,
+              "height": 6,
+              "properties": {
+                "title": "Error Distribution",
+                "metrics": [
+                  [ "Spectra/Botpress", "BotpressErrors", { "stat": "Sum" } ],
+                  [ ".", "HandoffErrors", { "stat": "Sum" } ],
+                  [ ".", "TokenErrors", { "stat": "Sum" } ],
+                  [ ".", "SystemErrors", { "stat": "Sum" } ]
+                ],
+                "period": 300,
+                "region": "${AWS::Region}",
+                "view": "pie"
+              }
+            },
+            {
+              "type": "log",
+              "width": 24,
+              "height": 6,
+              "properties": {
+                "query": "SOURCE '/aws/lambda/${self:custom.service}-${self:provider.stage}-botpress' | fields @timestamp, @message\n| filter @message like /ERROR/\n| sort @timestamp desc\n| limit 100",
+                "region": "${AWS::Region}",
+                "title": "Botpress Error Logs",
+                "view": "table"
+              }
+            },
+            {
+              "type": "alarm",
+              "width": 24,
+              "height": 6,
+              "properties": {
+                "title": "Active Botpress Alarms",
+                "alarms": [
+                  "${BotpressHealthAlarm}",
+                  "${BotpressErrorRateAlarm}",
+                  "${BotpressLatencyAlarm}",
+                  "${HandoffQueueSizeAlarm}",
+                  "${TokenLimitAlarm}",
+                  "${HandoffSuccessRateAlarm}"
+                ]
+              }
+            }
+          ]
+        }
+
+  # Alarmas para métricas del dashboard
+  BotpressMetricsAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: ${self:custom.service}-${self:provider.stage}-botpress-metrics
+      AlarmDescription: Monitoring of Botpress metrics collection
+      MetricName: MetricsDelivery
+      Namespace: Spectra/Botpress
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 2
+      Threshold: 1
+      ComparisonOperator: LessThanThreshold
+      AlarmActions:
+        - ${self:custom.snsMediumPriorityTopic}
+      Tags:
+        - Key: Service
+          Value: ${self:custom.service}
+        - Key: Environment
+          Value: ${self:provider.stage}
+
+Outputs:
+  DashboardURL:
+    Description: URL of the Botpress Dashboard
+    Value: !Sub https://${AWS::Region}.console.aws.amazon.com/cloudwatch/home?region=${AWS::Region}#dashboards:name=${self:custom.service}-${self:provider.stage}-botpress
+    Export:
+      Name: ${self:custom.service}-${self:provider.stage}-botpress-dashboard-url

@@ -2,17 +2,32 @@ Resources:
   SpectraWebACL:
     Type: AWS::WAFv2::WebACL
     Properties:
-      Name: ${self:service}-${self:provider.stage}-waf
-      Description: WAF Web ACL for Spectra API
+      Name: ${self:custom.service}-${self:provider.stage}-waf
+      Description: WAF Web ACL for Spectra APIs with enhanced security rules
       Scope: REGIONAL
       DefaultAction:
         Allow: {}
       VisibilityConfig:
         SampledRequestsEnabled: true
         CloudWatchMetricsEnabled: true
-        MetricName: ${self:service}-${self:provider.stage}-waf-metrics
+        MetricName: ${self:custom.service}-${self:provider.stage}-waf-metrics
       Rules:
-        - Name: RateLimit
+        # Common Rule Set
+        - Name: AWSCommonRules
+          Priority: 0
+          OverrideAction:
+            None: {}
+          Statement:
+            ManagedRuleGroupStatement:
+              VendorName: AWS
+              Name: AWSManagedRulesCommonRuleSet
+          VisibilityConfig:
+            SampledRequestsEnabled: true
+            CloudWatchMetricsEnabled: true
+            MetricName: AWSCommonRulesMetric
+
+        # Rate Limiting
+        - Name: IPRateLimit
           Priority: 1
           Action:
             Block: {}
@@ -23,114 +38,180 @@ Resources:
           VisibilityConfig:
             SampledRequestsEnabled: true
             CloudWatchMetricsEnabled: true
-            MetricName: RateLimitMetric
+            MetricName: IPRateLimitMetric
 
-  WebACLAssociationLambda:
-    Type: AWS::Lambda::Function
+        # Geo Blocking
+        - Name: GeoBlockRule
+          Priority: 2
+          Action:
+            Block: {}
+          Statement:
+            GeoMatchStatement:
+              CountryCodes:
+                - CN
+                - RU
+                - KP
+                - IR
+                - SY
+          VisibilityConfig:
+            SampledRequestsEnabled: true
+            CloudWatchMetricsEnabled: true
+            MetricName: GeoBlockMetric
+
+        # Size Restrictions
+        - Name: SizeRestrictionRule
+          Priority: 3
+          Action:
+            Block: {}
+          Statement:
+            SizeConstraintStatement:
+              ComparisonOperator: GT
+              Size: 5242880  # 5MB
+              FieldToMatch:
+                Body: {}
+              TextTransformations:
+                - Priority: 1
+                  Type: NONE
+          VisibilityConfig:
+            SampledRequestsEnabled: true
+            CloudWatchMetricsEnabled: true
+            MetricName: SizeRestrictionMetric
+
+  # IP Sets for dynamic blocking
+  IPSet:
+    Type: AWS::WAFv2::IPSet
     Properties:
-      Handler: index.handler
-      Role: !GetAtt WafAssociationLambdaRole.Arn
-      Code:
-        ZipFile: |
-          const AWS = require('aws-sdk');
-          const https = require('https');
-          const url = require('url');
+      Name: ${self:custom.service}-${self:provider.stage}-ipset
+      Description: IP set for dynamic blocking
+      Scope: REGIONAL
+      IPAddressVersion: IPV4
+      Addresses: []
+      Tags:
+        - Key: Service
+          Value: ${self:custom.service}
+        - Key: Environment
+          Value: ${self:provider.stage}
 
-          const sendResponse = async (event, context, responseStatus, responseData) => {
-            try {
-              const responseBody = JSON.stringify({
-                Status: responseStatus,
-                Reason: responseData.error || 'See the details in CloudWatch Log Stream: ' + context.logStreamName,
-                PhysicalResourceId: context.logStreamName,
-                StackId: event.StackId,
-                RequestId: event.RequestId,
-                LogicalResourceId: event.LogicalResourceId,
-                NoEcho: false,
-                Data: responseData
-              });
+  # WAF Logging Configuration
+  WafLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: /aws/waf/${self:custom.service}-${self:provider.stage}-logs
+      RetentionInDays: ${self:custom.logRetentionInDays}
+      KmsKeyId:
+        Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-system-kms-key-arn
+      Tags:
+        - Key: Service
+          Value: ${self:custom.service}
+        - Key: Environment
+          Value: ${self:provider.stage}
 
-              console.log('Sending response:', responseBody);
+  # WebACLLoggingConfiguration:
+  #   Type: AWS::WAFv2::LoggingConfiguration
+  #   DependsOn:
+  #     - SpectraWebACL
+  #   Properties:
+  #     LogDestinationConfigs:
+  #       - arn:aws:logs:us-east-1:345594559631:log-group:/aws/waf/espectra-backend-dev:*
+  #     ResourceArn: !GetAtt SpectraWebACL.Arn
+  #     RedactedFields:
+  #       - SingleHeader:
+  #           Name: authorization
+  #       - SingleHeader:
+  #           Name: x-api-key
+  #       - SingleHeader:
+  #           Name: cookie
+  #     LoggingFilter:
+  #       DefaultBehavior: KEEP
+  #       Filters:
+  #         - Behavior: DROP
+  #           Requirement: MEETS_ALL
+  #           Conditions:
+  #             - ActionCondition:
+  #                 Action: COUNT
 
-              const parsedUrl = url.parse(event.ResponseURL);
-              const requestOptions = {
-                hostname: parsedUrl.hostname,
-                port: 443,
-                path: parsedUrl.path,
-                method: 'PUT',
-                headers: {
-                  'content-type': '',
-                  'content-length': responseBody.length
-                }
-              };
+  # WAF Associations
+  RestApiWAFAssociation:
+    Type: AWS::WAFv2::WebACLAssociation
+    DependsOn:
+      - SpectraWebACL
+      - RestApi
+      - ApiGatewayStage
+      - ApiDeployment
+    Properties:
+      ResourceArn: !Sub arn:aws:apigateway:us-east-1::/restapis/klb9wtyz8c/stages/dev
+      WebACLArn: !GetAtt SpectraWebACL.Arn
 
-              return new Promise((resolve, reject) => {
-                const request = https.request(requestOptions, resolve);
-                request.on('error', reject);
-                request.write(responseBody);
-                request.end();
-              });
-            } catch (error) {
-              console.error('Error sending response:', error);
-              throw error;
-            }
-          };
+  # CloudWatch Alarms
+  WafBlockedRequestsAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: ${self:custom.service}-${self:provider.stage}-waf-blocked-requests
+      AlarmDescription: WAF blocked request rate is significantly high
+      MetricName: BlockedRequests
+      Namespace: AWS/WAFV2
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 2
+      Threshold: 1000
+      ComparisonOperator: GreaterThanThreshold
+      Dimensions:
+        - Name: WebACL
+          Value: ${self:custom.service}-${self:provider.stage}-waf
+        - Name: Region
+          Value: ${self:provider.region}
+      AlarmActions:
+        - Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-high-priority-topic-arn
 
-          exports.handler = async (event, context) => {
-            console.log('Received event:', JSON.stringify(event, null, 2));
+  WafRuleGroupMatchesAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: ${self:custom.service}-${self:provider.stage}-waf-rule-matches
+      AlarmDescription: High number of WAF rule matches detected
+      MetricName: RuleGroupMatch
+      Namespace: AWS/WAFV2
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 2
+      Threshold: 500
+      ComparisonOperator: GreaterThanThreshold
+      Dimensions:
+        - Name: WebACL
+          Value: ${self:custom.service}-${self:provider.stage}-waf
+        - Name: Region
+          Value: ${self:provider.region}
+      AlarmActions:
+        - Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-medium-priority-topic-arn
 
-            try {
-              // Si es una petición de eliminación
-              if (event.RequestType === 'Delete') {
-                console.log('Processing Delete request');
-                await sendResponse(event, context, 'SUCCESS', {});
-                return;
-              }
-
-              const wafv2 = new AWS.WAFV2({ region: process.env.REGION });
-              const apigateway = new AWS.APIGateway({ region: process.env.REGION });
-
-              // Buscar el API Gateway
-              const apis = await apigateway.getRestApis().promise();
-              console.log('APIs found:', JSON.stringify(apis, null, 2));
-
-              const api = apis.items.find(api => 
-                api.name.toLowerCase().includes(process.env.SERVICE_NAME.toLowerCase())
-              );
-
-              if (!api) {
-                throw new Error('API Gateway not found');
-              }
-
-              const resourceArn = `arn:aws:apigateway:${process.env.REGION}::/restapis/${api.id}/stages/${process.env.STAGE}`;
-              
-              // Asociar WAF
-              await wafv2.associateWebACL({
-                WebACLArn: event.ResourceProperties.WebACLArn,
-                ResourceArn: resourceArn
-              }).promise();
-
-              console.log('Successfully associated WebACL');
-              await sendResponse(event, context, 'SUCCESS', {});
-            } catch (error) {
-              console.error('Error:', error);
-              await sendResponse(event, context, 'FAILED', { error: error.message });
-            }
-          };
-
-      Runtime: nodejs18.x
-      Timeout: 300
-      Environment:
-        Variables:
-          STAGE: ${self:provider.stage}
-          SERVICE_NAME: ${self:service}
-          REGION: ${self:provider.region}
+  # WafFailoverConfig:
+  #   Type: AWS::WAFv2::WebACLAssociation
+  #   DependsOn:
+  #     - WebSocketWAFAssociation
+  #   Properties:
+  #     WebACLArn: !GetAtt SpectraWebACL.Arn
+  #     ResourceArn: !Sub arn:aws:apigateway:${AWS::Region}::/apis/${WebSocketApi}/stages/${self:provider.stage}
 
 Outputs:
   WebACLId:
     Description: ID of the Web ACL
-    Value: !Ref SpectraWebACL
+    Value: !GetAtt SpectraWebACL.Id
+    Export:
+      Name: ${self:custom.service}-${self:provider.stage}-waf-id
+
   WebACLArn:
     Description: ARN of the Web ACL
     Value: !GetAtt SpectraWebACL.Arn
     Export:
-      Name: ${self:service}-${self:provider.stage}-waf-arn
+      Name: ${self:custom.service}-${self:provider.stage}-waf-arn
+
+  IPSetId:
+    Description: ID of the IP Set
+    Value: !Ref IPSet
+    Export:
+      Name: ${self:custom.service}-${self:provider.stage}-ipset-id
+
+  WafLogGroupName:
+    Description: Name of the WAF Log Group
+    Value: !Ref WafLogGroup
+    Export:
+      Name: ${self:custom.service}-${self:provider.stage}-waf-log-group

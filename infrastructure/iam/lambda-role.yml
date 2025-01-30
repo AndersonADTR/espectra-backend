@@ -1,9 +1,99 @@
-# # infrastructure/iam/lambda-role.yml
 # Resources:
-#   WebSocketLambdaRole:
+#   LambdaExecutionRole:
 #     Type: AWS::IAM::Role
 #     Properties:
-#       RoleName: ${self:service}-${self:provider.stage}-ws-lambda-role
+#       RoleName: ${self:custom.service}-${self:provider.stage}-lambda-execution-role
+#       Description: IAM role for Lambda function execution in ${self:custom.service}-${self:provider.stage}
+#       AssumeRolePolicyDocument:
+#         Version: '2012-10-17'
+#         Statement:
+#           - Effect: Allow
+#             Principal:
+#               Service: lambda.amazonaws.com
+#             Action: sts:AssumeRole
+#       ManagedPolicyArns:
+#         - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+#         - arn:aws:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole
+#       Policies:
+#         - PolicyName: ${self:custom.service}-${self:provider.stage}-lambda-policy
+#           PolicyDocument:
+#             Version: '2012-10-17'
+#             Statement:
+#               - Effect: Allow
+#                 Action:
+#                   - dynamodb:PutItem
+#                   - dynamodb:GetItem
+#                   - dynamodb:UpdateItem
+#                   - dynamodb:DeleteItem
+#                   - dynamodb:Query
+#                   - dynamodb:Scan
+#                   - dynamodb:BatchGetItem
+#                   - dynamodb:BatchWriteItem
+#                 Resource:
+#                   - !Sub arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${self:custom.service}-${self:provider.stage}-*
+#                   - !Sub arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${self:custom.service}-${self:provider.stage}-*/index/*
+#               - Effect: Allow
+#                 Action:
+#                   - sqs:SendMessage
+#                   - sqs:ReceiveMessage
+#                   - sqs:DeleteMessage
+#                   - sqs:GetQueueAttributes
+#                   - sqs:GetQueueUrl
+#                 Resource:
+#                   - !GetAtt MessageQueue.Arn
+#                   - !GetAtt MessageDLQ.Arn
+#                   - !GetAtt HandoffQueue.Arn
+#                   - !GetAtt HandoffDLQ.Arn
+#               - Effect: Allow
+#                 Action:
+#                   - events:PutEvents
+#                 Resource: !GetAtt BotpressEventBus.Arn
+#               - Effect: Allow
+#                 Action:
+#                   - cognito-idp:AdminInitiateAuth
+#                   - cognito-idp:AdminCreateUser
+#                   - cognito-idp:AdminSetUserPassword
+#                   - cognito-idp:AdminUpdateUserAttributes
+#                   - cognito-idp:AdminDeleteUser
+#                   - cognito-idp:AdminGetUser
+#                   - cognito-idp:ListUsers
+#                 Resource:
+#                   - Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-user-pool-arn
+#               - Effect: Allow
+#                 Action:
+#                   - execute-api:ManageConnections
+#                 Resource: 
+#                   - !Sub arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:*/*/@connections/*
+#               - Effect: Allow
+#                 Action:
+#                   - kms:Decrypt
+#                   - kms:GenerateDataKey
+#                 Resource:
+#                   - Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-system-kms-key-arn
+#                   - Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-secrets-kms-key-arn
+#                   - Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-websocket-kms-key-arn
+#               - Effect: Allow
+#                 Action:
+#                   - elasticache:DescribeCacheClusters
+#                   - elasticache:ListTagsForResource
+#                 Resource: 
+#                   - !Sub arn:aws:elasticache:${AWS::Region}:${AWS::AccountId}:*
+#               - Effect: Allow
+#                 Action:
+#                   - secretsmanager:GetSecretValue
+#                 Resource: 
+#                   - !Sub arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:${self:custom.service}/*
+#               - Effect: Allow
+#                 Action:
+#                   - xray:PutTraceSegments
+#                   - xray:PutTelemetryRecords
+#                 Resource: "*"
+                
+#   MetricsCollectorRole:
+#     Type: AWS::IAM::Role
+#     Properties:
+#       RoleName: ${self:custom.service}-${self:provider.stage}-metrics-collector-role
+#       Description: IAM role for collecting metrics in ${self:custom.service}-${self:provider.stage}
 #       AssumeRolePolicyDocument:
 #         Version: '2012-10-17'
 #         Statement:
@@ -14,38 +104,32 @@
 #       ManagedPolicyArns:
 #         - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
 #       Policies:
-#         - PolicyName: kms-access
+#         - PolicyName: MetricsCollectorPolicy
 #           PolicyDocument:
 #             Version: '2012-10-17'
 #             Statement:
 #               - Effect: Allow
 #                 Action:
-#                   - kms:Decrypt
-#                   - kms:Encrypt
-#                   - kms:GenerateDataKey
-#                   - kms:DescribeKey
-#                 Resource:
-#                   - arn:aws:kms:${self:provider.region}:${aws:accountId}:key/02f1128a-1710-419f-b3a9-b8104de83d71
-#         - PolicyName: dynamodb-access
-#           PolicyDocument:
-#             Version: '2012-10-17'
-#             Statement:
+#                   - cloudwatch:PutMetricData
+#                   - cloudwatch:GetMetricData
+#                   - cloudwatch:GetMetricStatistics
+#                 Resource: "*"
 #               - Effect: Allow
 #                 Action:
-#                   - dynamodb:PutItem
-#                   - dynamodb:GetItem
-#                   - dynamodb:DeleteItem
 #                   - dynamodb:Query
-#                   - dynamodb:UpdateItem
+#                   - dynamodb:Scan
 #                 Resource:
-#                   - !GetAtt ConnectionsTable.Arn
-#                   - !Sub ${ConnectionsTable.Arn}/index/*
-#         - PolicyName: websocket-management
-#           PolicyDocument:
-#             Version: '2012-10-17'
-#             Statement:
-#               - Effect: Allow
-#                 Action:
-#                   - execute-api:ManageConnections
-#                 Resource:
-#                   - !Sub arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${WebSocketApi}/*
+#                   - !Sub arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${self:custom.service}-${self:provider.stage}-*
+
+# Outputs:
+#   LambdaExecutionRoleArn:
+#     Description: ARN of the Lambda execution IAM role
+#     Value: !GetAtt LambdaExecutionRole.Arn
+#     Export:
+#       Name: ${self:custom.service}-${self:provider.stage}-lambda-execution-role-arn
+      
+#   MetricsCollectorRoleArn:
+#     Description: ARN of the Metrics Collector IAM role
+#     Value: !GetAtt MetricsCollectorRole.Arn
+#     Export:
+#       Name: ${self:custom.service}-${self:provider.stage}-metrics-collector-role-arn

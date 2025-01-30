@@ -1,0 +1,217 @@
+Resources:
+  BackupVault:
+    Type: AWS::Backup::BackupVault
+    Properties:
+      BackupVaultName: ${self:custom.service}-${self:provider.stage}-vault
+      EncryptionKeyArn: !GetAtt BackupKMSKey.Arn
+      Notifications:
+        BackupVaultEvents:
+          - BACKUP_JOB_STARTED
+          - BACKUP_JOB_COMPLETED
+          - BACKUP_JOB_FAILED
+          - RESTORE_JOB_STARTED
+          - RESTORE_JOB_COMPLETED
+          - RESTORE_JOB_FAILED
+        SNSTopicArn: ${self:custom.snsHighPriorityTopic}
+      Tags:
+        - Key: Service
+          Value: ${self:custom.service}
+        - Key: Environment
+          Value: ${self:provider.stage}
+        - Key: Component
+          Value: Backup
+        - Key: ManagedBy
+          Value: CloudFormation
+
+  BackupKMSKey:
+    Type: AWS::KMS::Key
+    Properties:
+      Description: KMS key for backup encryption
+      EnableKeyRotation: true
+      KeyPolicy:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: Enable IAM User Permissions
+            Effect: Allow
+            Principal:
+              AWS: !Sub arn:aws:iam::${AWS::AccountId}:root
+            Action: kms:*
+            Resource: '*'
+          - Sid: Allow Backup Service
+            Effect: Allow
+            Principal:
+              Service: backup.amazonaws.com
+            Action:
+              - kms:Decrypt
+              - kms:GenerateDataKey
+              - kms:DescribeKey
+            Resource: '*'
+      Tags:
+        - Key: Service
+          Value: ${self:custom.service}
+        - Key: Environment
+          Value: ${self:provider.stage}
+        - Key: Purpose
+          Value: Backup
+
+  BackupRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: ${self:custom.service}-${self:provider.stage}-backup-role
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: backup.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSBackupServiceRolePolicyForBackup
+        - arn:aws:iam::aws:policy/service-role/AWSBackupServiceRolePolicyForRestores
+      Policies:
+        - PolicyName: backup-encryption
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - kms:Decrypt
+                  - kms:GenerateDataKey
+                Resource: !GetAtt BackupKMSKey.Arn
+
+  BackupPlan:
+    Type: AWS::Backup::BackupPlan
+    Properties:
+      BackupPlan:
+        BackupPlanName: ${self:custom.service}-${self:provider.stage}-backup-plan
+        BackupPlanRule:
+          - RuleName: DailyBackups
+            TargetBackupVault: !Ref BackupVault
+            ScheduleExpression: cron(0 1 ? * * *)  # 1 AM UTC
+            StartWindowMinutes: 60
+            CompletionWindowMinutes: 120
+            Lifecycle:
+              DeleteAfterDays: 30
+            CopyActions:
+              - DestinationBackupVaultArn: !Sub arn:aws:backup:${AWS::Region}:${AWS::AccountId}:backup-vault:${self:custom.service}-${self:provider.stage}-vault-secondary
+                Lifecycle:
+                  DeleteAfterDays: 30
+          - RuleName: WeeklyBackups
+            TargetBackupVault: !Ref BackupVault
+            ScheduleExpression: cron(0 2 ? * SAT *)  # 2 AM UTC Saturday
+            StartWindowMinutes: 120
+            CompletionWindowMinutes: 360
+            Lifecycle:
+              DeleteAfterDays: 90
+            CopyActions:
+              - DestinationBackupVaultArn: !Sub arn:aws:backup:${AWS::Region}:${AWS::AccountId}:backup-vault:${self:custom.service}-${self:provider.stage}-vault-secondary
+                Lifecycle:
+                  DeleteAfterDays: 90
+          - RuleName: MonthlyBackups
+            TargetBackupVault: !Ref BackupVault
+            ScheduleExpression: cron(0 3 1 * ? *)  # 3 AM UTC first day of month
+            StartWindowMinutes: 180
+            CompletionWindowMinutes: 480
+            Lifecycle:
+              DeleteAfterDays: 365
+            CopyActions:
+              - DestinationBackupVaultArn: !Sub arn:aws:backup:${AWS::Region}:${AWS::AccountId}:backup-vault:${self:custom.service}-${self:provider.stage}-vault-secondary
+                Lifecycle:
+                  DeleteAfterDays: 365
+        AdvancedBackupSettings:
+          - ResourceType: DynamoDB
+            BackupOptions:
+              Vault: !Ref BackupVault
+
+  BackupSelection:
+    Type: AWS::Backup::BackupSelection
+    Properties:
+      BackupPlanId: !Ref BackupPlan
+      BackupSelection:
+        SelectionName: ${self:custom.service}-${self:provider.stage}-backup-selection
+        IamRoleArn: !GetAtt BackupRole.Arn
+        ListOfTags:
+          - ConditionType: STRINGEQUALS
+            ConditionKey: Service
+            ConditionValue: ${self:custom.service}
+        Resources:
+          # DynamoDB Tables
+          - !Sub arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${self:custom.service}-${self:provider.stage}-users
+          - !Sub arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${self:custom.service}-${self:provider.stage}-chat-history
+          - !Sub arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${self:custom.service}-${self:provider.stage}-chat-sessions
+          - !Sub arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${self:custom.service}-${self:provider.stage}-connections
+          - !Sub arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${self:custom.service}-${self:provider.stage}-context
+          - !Sub arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${self:custom.service}-${self:provider.stage}-metrics
+          - !Sub arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${self:custom.service}-${self:provider.stage}-tokens
+
+  # CloudWatch Alarms
+  BackupFailureAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: ${self:custom.service}-${self:provider.stage}-backup-failure
+      AlarmDescription: Alert on backup job failures
+      MetricName: BackupJobsFailed
+      Namespace: AWS/Backup
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanThreshold
+      Dimensions:
+        - Name: BackupVaultName
+          Value: !Ref BackupVault
+      AlarmActions:
+        - ${self:custom.snsHighPriorityTopic}
+      Tags:
+        - Key: Service
+          Value: ${self:custom.service}
+        - Key: Environment
+          Value: ${self:provider.stage}
+
+  BackupCompletionTimeAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: ${self:custom.service}-${self:provider.stage}-backup-completion-time
+      AlarmDescription: Alert when backup jobs take too long
+      MetricName: BackupJobDuration
+      Namespace: AWS/Backup
+      Statistic: Maximum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 14400  # 4 hours
+      ComparisonOperator: GreaterThanThreshold
+      Dimensions:
+        - Name: BackupVaultName
+          Value: !Ref BackupVault
+      AlarmActions:
+        - ${self:custom.snsMediumPriorityTopic}
+      Tags:
+        - Key: Service
+          Value: ${self:custom.service}
+        - Key: Environment
+          Value: ${self:provider.stage}
+
+Outputs:
+  BackupVaultName:
+    Description: Name of the backup vault
+    Value: !Ref BackupVault
+    Export:
+      Name: ${self:custom.service}-${self:provider.stage}-backup-vault-name
+
+  BackupVaultArn:
+    Description: ARN of the backup vault
+    Value: !GetAtt BackupVault.BackupVaultArn
+    Export:
+      Name: ${self:custom.service}-${self:provider.stage}-backup-vault-arn
+
+  BackupKMSKeyId:
+    Description: ID of the backup KMS key
+    Value: !Ref BackupKMSKey
+    Export:
+      Name: ${self:custom.service}-${self:provider.stage}-backup-kms-key-id
+
+  BackupPlanId:
+    Description: ID of the backup plan
+    Value: !Ref BackupPlan
+    Export:
+      Name: ${self:custom.service}-${self:provider.stage}-backup-plan-id

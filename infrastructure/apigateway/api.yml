@@ -1,8 +1,57 @@
 Resources:
+  # REST API Gateway
+  RestApi:
+    Type: AWS::ApiGateway::RestApi
+    Properties:
+      Name: ${self:custom.service}-${self:provider.stage}-api
+      Description: Main REST API for ${self:custom.service} Platform
+      EndpointConfiguration:
+        Types:
+          - REGIONAL
+      MinimumCompressionSize: 1024
+      BinaryMediaTypes:
+        - 'application/json'
+        - 'multipart/form-data'
+      Policy:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal: "*"
+            Action: execute-api:Invoke
+            Resource: "*"
+      ApiKeySourceType: HEADER
+      DisableExecuteApiEndpoint: false
+      Tags:
+        - Key: Service
+          Value: ${self:custom.service}
+        - Key: Environment
+          Value: ${self:provider.stage}
+        - Key: ManagedBy
+          Value: CloudFormation
+
+  # REST API Authorizer
+  RestApiAuthorizer:
+    Type: AWS::ApiGateway::Authorizer
+    DependsOn:
+      - RestApi
+    Properties:
+      Name: ${self:custom.service}-${self:provider.stage}-rest-authorizer
+      Type: COGNITO_USER_POOLS
+      IdentitySource: method.request.header.Authorization
+      AuthorizerResultTtlInSeconds: 300
+      AuthorizerUri:
+        Fn::Sub:
+          - arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${FunctionArn}/invocations
+          - FunctionArn: !GetAtt RestAuthorizerLambdaFunction.Arn
+      ProviderARNs:
+        - Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-user-pool-arn
+      RestApiId: !Ref RestApi
+
+  # CloudWatch Role para API Gateway
   ApiGatewayCloudWatchRole:
     Type: AWS::IAM::Role
     Properties:
-      RoleName: ${self:service}-${self:provider.stage}-apigw-cloudwatch-role
+      RoleName: ${self:custom.service}-${self:provider.stage}-apigw-cloudwatch-role
       AssumeRolePolicyDocument:
         Version: '2012-10-17'
         Statement:
@@ -12,22 +61,223 @@ Resources:
             Action: sts:AssumeRole
       ManagedPolicyArns:
         - arn:aws:iam::aws:policy/service-role/AmazonAPIGatewayPushToCloudWatchLogs
+      Policies:
+        - PolicyName: api-cloudwatch-policy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                  - logs:GetLogEvents
+                  - logs:FilterLogEvents
+                Resource: 
+                  - !Sub arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/apigateway/${self:custom.service}-${self:provider.stage}*
+              - Effect: Allow
+                Action:
+                  - kms:Decrypt
+                  - kms:GenerateDataKey
+                Resource:
+                  - Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-system-kms-key-arn
 
-  ApiGatewayAccount:
-    Type: AWS::ApiGateway::Account
-    Properties:
-      CloudWatchRoleArn: !GetAtt ApiGatewayCloudWatchRole.Arn
-    DependsOn: ApiGatewayCloudWatchRole
-
+  # Log Group para Access Logs
   ApiGatewayAccessLogs:
     Type: AWS::Logs::LogGroup
     Properties:
-      LogGroupName: /aws/apigateway/${self:service}-${self:provider.stage}-access-logs
+      LogGroupName: /aws/apigateway/${self:custom.service}-${self:provider.stage}-access-logs
       RetentionInDays: ${self:custom.logRetentionInDays}
+      KmsKeyId:
+        Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-system-kms-key-arn
+      Tags:
+        - Key: Service
+          Value: ${self:custom.service}
+        - Key: Environment
+          Value: ${self:provider.stage}
+
+  # Stage Configuration
+  ApiGatewayStage:
+    Type: AWS::ApiGateway::Stage
+    DependsOn:
+      - RestApi
+    Properties:
+      RestApiId: !Ref RestApi
+      DeploymentId: !Ref ApiDeployment
+      StageName: ${self:provider.stage}
+      Description: ${self:provider.stage} stage for ${self:custom.service}
+      TracingEnabled: true
+      CacheClusterEnabled: true
+      CacheClusterSize: '0.5'
+      ClientCertificateId: !Ref ApiClientCertificate
+      AccessLogSetting:
+        DestinationArn: !GetAtt ApiGatewayAccessLogs.Arn
+        Format: '{"requestId":"$context.requestId","ip":"$context.identity.sourceIp","caller":"$context.identity.caller","user":"$context.identity.user","requestTime":"$context.requestTime","httpMethod":"$context.httpMethod","resourcePath":"$context.resourcePath","status":"$context.status","protocol":"$context.protocol","responseLength":"$context.responseLength","integrationError":"$context.integrationErrorMessage","xrayTraceId":"$context.xrayTraceId","integrationLatency":"$context.integration.latency","functionError":"$context.integration.error","authorizer":{"principalId":"$context.authorizer.principalId","claims":"$context.authorizer.claims"}}'
+      MethodSettings:
+        - ResourcePath: "/*"
+          HttpMethod: "*"
+          MetricsEnabled: true
+          DataTraceEnabled: true
+          LoggingLevel: INFO
+          CachingEnabled: true
+          CacheTtlInSeconds: 300
+          # RequireAuthorizationForCacheControl: true
+          # UnauthorizedCacheControlHeaderStrategy: SUCCEED_WITH_RESPONSE_HEADER
+          ThrottlingBurstLimit: 5000
+          ThrottlingRateLimit: 10000
+      Variables:
+        stage: ${self:provider.stage}
+        kmsKeyId: 
+          Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-system-kms-key-arn
+      Tags:
+        - Key: Service
+          Value: ${self:custom.service}
+        - Key: Environment
+          Value: ${self:provider.stage}
+
+  # API Deployment
+  ApiDeployment:
+    Type: AWS::ApiGateway::Deployment
+    DependsOn:
+      - CreateSessionMethod
+      - SendMessageMethod 
+      - RestApi
+    Properties:
+      RestApiId: !Ref RestApi
+      Description: Deployment for ${self:provider.stage} stage
+
+  # Client Certificate
+  ApiClientCertificate:
+    Type: AWS::ApiGateway::ClientCertificate
+    Properties:
+      Description: Client certificate for ${self:custom.service}-${self:provider.stage} API
+      Tags:
+        - Key: Service
+          Value: ${self:custom.service}
+        - Key: Environment
+          Value: ${self:provider.stage}
+
+  # Usage Plan y API Key
+  ApiUsagePlan:
+    Type: AWS::ApiGateway::UsagePlan
+    DependsOn:
+      - RestApi
+    Properties:
+      UsagePlanName: ${self:custom.service}-${self:provider.stage}-usage-plan
+      Description: Usage plan for ${self:custom.service} API
+      # ApiStages:
+      #   - ApiId: !Ref RestApi
+      #     Stage: ${self:provider.stage}
+      Throttle:
+        BurstLimit: 5000
+        RateLimit: 10000
+      Quota:
+        Limit: 1000000
+        Period: MONTH
+      Tags:
+        - Key: Service
+          Value: ${self:custom.service}
+        - Key: Environment
+          Value: ${self:provider.stage}
+
+  ApiResponseValidationModel:
+    Type: AWS::ApiGateway::Model
+    DependsOn:
+      - RestApi
+    Properties:
+      RestApiId: !Ref RestApi
+      ContentType: application/json
+      Name: ResponseValidationModel
+      Schema:
+        $schema: 'http://json-schema.org/draft-07/schema#'
+        type: object
+        required: ['statusCode', 'body']
+
+  # CloudWatch Alarms
+  Api5xxErrorAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: ${self:custom.service}-${self:provider.stage}-api-5xx-errors
+      AlarmDescription: API Gateway 5XX errors exceed threshold
+      MetricName: 5XXError
+      Namespace: AWS/ApiGateway
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 2
+      Threshold: ${self:custom.alarmThresholds.api.5xxErrors}
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching
+      Dimensions:
+        - Name: ApiName
+          Value: ${self:custom.service}
+        - Name: Stage
+          Value: ${self:provider.stage}
+      AlarmActions:
+        - Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-high-priority-topic-arn
+
+  Api4xxErrorAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: ${self:custom.service}-${self:provider.stage}-api-4xx-errors
+      AlarmDescription: API Gateway 4XX errors exceed threshold
+      MetricName: 4XXError
+      Namespace: AWS/ApiGateway
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 2
+      Threshold: ${self:custom.alarmThresholds.api.4xxErrors}
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching
+      Dimensions:
+        - Name: ApiName
+          Value: ${self:custom.service}
+        - Name: Stage
+          Value: ${self:provider.stage}
+      AlarmActions:
+        - Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-medium-priority-topic-arn
+
+  ApiLatencyAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: ${self:custom.service}-${self:provider.stage}-api-latency
+      AlarmDescription: API Gateway latency exceeds threshold
+      MetricName: Latency
+      Namespace: AWS/ApiGateway
+      ExtendedStatistic: p95
+      Period: 300
+      EvaluationPeriods: 2
+      Threshold: ${self:custom.alarmThresholds.api.latency}
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching
+      Dimensions:
+        - Name: ApiName
+          Value: ${self:custom.service}
+        - Name: Stage
+          Value: ${self:provider.stage}
+      AlarmActions:
+        - Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-medium-priority-topic-arn
 
 Outputs:
-  ApiGatewayCloudWatchRoleArn:
-    Description: ARN of the API Gateway CloudWatch role
-    Value: !GetAtt ApiGatewayCloudWatchRole.Arn
+  ApiId:
+    Description: REST API Id
+    Value: !Ref RestApi
     Export:
-      Name: ${self:service}-${self:provider.stage}-apigw-cloudwatch-role-arn
+      Name: ${self:custom.service}-${self:provider.stage}-rest-api-id
+
+  RestApiRootResourceId:
+    Description: REST API Root Resource Id
+    Value: !GetAtt RestApi.RootResourceId
+    Export:
+      Name: ${self:custom.service}-${self:provider.stage}-rest-api-root-resource-id
+
+  ApiEndpoint:
+    Description: API Gateway endpoint URL
+    Value: !Sub https://${RestApi}.execute-api.${AWS::Region}.amazonaws.com/${self:provider.stage}
+    Export:
+      Name: ${self:custom.service}-${self:provider.stage}-api-endpoint
+
+  RestApiAuthorizerId:
+    Description: REST API Authorizer ID
+    Value: !Ref RestApiAuthorizer
+    Export:
+      Name: ${self:custom.service}-${self:provider.stage}-rest-authorizer-id

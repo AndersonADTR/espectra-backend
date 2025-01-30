@@ -1,5 +1,4 @@
 service: espectra-backend
-
 frameworkVersion: '4'
 
 provider:
@@ -8,36 +7,88 @@ provider:
   stage: ${opt:stage, 'dev'}
   region: ${opt:region, 'us-east-1'}
   memorySize: 1024
-  timeout: 30
+  timeout: 29
   logRetentionInDays: 14
+  tracing:
+    lambda: true
+    apiGateway: true
+  logs:
+    restApi:
+      accessLogging: true
+      executionLogging: true
+      level: INFO
+      fullExecutionData: true
+  vpc:
+    securityGroupIds:
+      - !Ref LambdaSecurityGroup
+    subnetIds:
+      - !Ref PublicSubnet1
+      - !Ref PublicSubnet2
+  tags:
+    Environment: ${self:provider.stage}
+    Service: ${self:custom.service}
+    Owner: espectra
+    Project: concierge
+
   environment:
+    # System Variables
     STAGE: ${self:provider.stage}
     REGION: ${self:provider.region}
-    SERVICE_NAME: ${self:service}
-    # Variables de entorno para el cognito
+    SERVICE_NAME: ${self:custom.service}
+    NODE_ENV: ${self:provider.stage}
+    LOG_LEVEL: ${self:custom.logLevel.${self:provider.stage}}
+    API_VERSION: "v1"
+
+    # Cognito Variables (from previous deployment)
     COGNITO_USER_POOL_ID: ${self:custom.userPoolId}
     COGNITO_CLIENT_ID: ${self:custom.userPoolClientId}
+
+    # Message Queue URLs
     MESSAGE_QUEUE_URL: !Ref MessageQueue
-    CONNECTION_TABLE: ${self:service}-${self:provider.stage}-connections
-    CHAT_HISTORY_TABLE: ${self:service}-${self:provider.stage}-chat-history
-    # Variables de entorno para el botpress
-    BOTPRESS_API_URL: ${ssm:/${self:service}/${self:provider.stage}/botpress-api-url}
-    BOTPRESS_BOT_ID: ${ssm:/${self:service}/${self:provider.stage}/botpress-bot-id}
-    BOTPRESS_API_KEY: ${ssm:/${self:service}/${self:provider.stage}/botpress-api-key}
-    BOTPRESS_WORKSPACE_ID: ${ssm:/${self:service}/${self:provider.stage}/botpress-workspace-id}
+    MESSAGE_DLQ_URL: !Ref MessageDLQ
+
+    # DynamoDB Tables
+    CONNECTION_TABLE: !Ref ConnectionsTable
+    CHAT_HISTORY_TABLE: !Ref ChatHistoryTable
+    CONTEXT_TABLE: !Ref ConversationContextTable
+    TOKEN_TABLE: !Ref TokenUsageTable
+    HANDOFF_TABLE: !Ref HandoffQueue
+
+    # Botpress Configuration
+    BOTPRESS_API_URL: ${ssm:/espectra/${self:provider.stage}/botpress-api-url}
+    BOTPRESS_BOT_ID: ${ssm:/espectra/${self:provider.stage}/botpress-bot-id}
+    BOTPRESS_API_KEY: ${ssm:/espectra/${self:provider.stage}/botpress-api-key}
+    BOTPRESS_WORKSPACE_ID: ${ssm:/espectra/${self:provider.stage}/botpress-workspace-id}
     BOTPRESS_QUEUE_URL: !Ref MessageQueue
     BOTPRESS_DLQ_URL: !Ref MessageDLQ
     BOTPRESS_EVENT_BUS: !Ref BotpressEventBus
-    # Variables de entorno para el websocket
-    WEBSOCKET_API_ENDPOINT: 
-      !Join
-        - ''
-        - - 'https://'
-          - !Ref WebsocketsApi
-          - '.execute-api.${self:provider.region}.amazonaws.com/${self:provider.stage}'
+
+    # WebSocket
+    WEBSOCKET_API_ENDPOINT: !GetAtt WebSocketApi.ApiEndpoint
+
+    # Redis Configuration
+    REDIS_HOST: !GetAtt RedisCluster.PrimaryEndPoint.Address
+    REDIS_PORT: !GetAtt RedisCluster.PrimaryEndPoint.Port
+
+    # Domain Configuration
+    domainName: ${ssm:/espectra/${self:provider.stage}/domain-name}
+    wsDomainName: ${ssm:/espectra/${self:provider.stage}/ws-domain-name}
+
+    # Monitoring
+    METRICS_NAMESPACE: ${self:custom.service}/${self:provider.stage}
+    XRAY_ENABLED: true
+
   iam:
     role:
       statements:
+        # WAF permissions
+        - Effect: Allow
+          Action:
+            - wafv2:GetWebACL
+            - wafv2:AssociateWebACL
+            - wafv2:DisassociateWebACL
+          Resource: "*"
+        # Cognito permissions
         - Effect: Allow
           Action:
             - cognito-idp:AdminInitiateAuth
@@ -49,8 +100,10 @@ provider:
             - cognito-idp:InitiateAuth
             - cognito-idp:SignUp
             - cognito-idp:AdminConfirmSignUp
-          Resource: !GetAtt SpectraUserPool.Arn
-        
+            - cognito-idp:ListUsers
+          Resource: 
+            - Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-user-pool-arn
+        # DynamoDB permissions
         - Effect: Allow
           Action:
             - dynamodb:PutItem
@@ -59,61 +112,205 @@ provider:
             - dynamodb:DeleteItem
             - dynamodb:Query
             - dynamodb:Scan
-          Resource: 
-            - !GetAtt UsersTable.Arn
-            - !Join ['', [!GetAtt UsersTable.Arn, '/index/*']]
+            - dynamodb:BatchGetItem
+            - dynamodb:BatchWriteItem
+          Resource:
             - !GetAtt ConnectionsTable.Arn
-            - !Join ['', [!GetAtt ConnectionsTable.Arn, '/index/*']]
+            - !GetAtt ChatHistoryTable.Arn
+            - !GetAtt ConversationContextTable.Arn
+            - !GetAtt TokenUsageTable.Arn
+            - !GetAtt ChatSessionsTable.Arn
+            - !GetAtt BotpressMetricsTable.Arn
 
+        # SQS permissions
         - Effect: Allow
           Action:
-            - dynamodb:PutItem
-            - dynamodb:GetItem
-            - dynamodb:Query
-            - dynamodb:UpdateItem
-            - dynamodb:DeleteItem
-          Resource: 
-            - arn:aws:dynamodb:${self:provider.region}:*:table/${self:custom.chatHistoryTable}
-            - arn:aws:dynamodb:${self:provider.region}:*:table/${self:custom.connectionsTableName}
-        
+            - sqs:SendMessage
+            - sqs:ReceiveMessage
+            - sqs:DeleteMessage
+            - sqs:GetQueueAttributes
+            - sqs:GetQueueUrl
+          Resource:
+            - !GetAtt MessageQueue.Arn
+            - !GetAtt MessageDLQ.Arn
+            - !GetAtt HandoffQueue.Arn
+            - !GetAtt HandoffDLQ.Arn
+
+        # EventBridge permissions
+        - Effect: Allow
+          Action:
+            - events:PutEvents
+          Resource:
+            - !GetAtt BotpressEventBus.Arn
+
+        # API Gateway permissions
+        - Effect: Allow
+          Action:
+            - execute-api:ManageConnections
+            - execute-api:Invoke
+          Resource:
+            - !Sub arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:*/*/@connections/*
+            - !Sub arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:*/*/*
+
+        # KMS permissions
+        - Effect: Allow
+          Action:
+            - kms:Decrypt
+            - kms:GenerateDataKey
+          Resource:
+            - Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-system-kms-key-arn
+            - Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-secrets-kms-key-arn
+            - Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-websocket-kms-key-arn
+
+        # CloudWatch permissions
         - Effect: Allow
           Action:
             - logs:CreateLogGroup
             - logs:CreateLogStream
             - logs:PutLogEvents
-          Resource: '*'
+            - logs:DescribeLogGroups
+            - logs:DescribeLogStreams
+          Resource: 
+            - !Sub arn:aws:logs:${AWS::Region}:${AWS::AccountId}:*
 
+        # X-Ray permissions
         - Effect: Allow
           Action:
-            - execute-api:ManageConnections
-          Resource:
-            - arn:aws:execute-api:${self:provider.region}:*:*/*/POST/@connections/*
+            - xray:PutTraceSegments
+            - xray:PutTelemetryRecords
+          Resource: "*"
 
+        # ElastiCache permissions
+        - Effect: Allow
+          Action:
+            - elasticache:DescribeCacheClusters
+            - elasticache:ListTagsForResource
+          Resource: 
+            - !Sub arn:aws:elasticache:${AWS::Region}:${AWS::AccountId}:*
+
+        # Secrets Manager permissions
         - Effect: Allow
           Action:
             - secretsmanager:GetSecretValue
-          Resource: arn:aws:secretsmanager:${self:provider.region}:*:secret:${self:service}/botpress/*
+          Resource: 
+            - !Sub arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:${self:custom.service}/*
 
 custom:
+  service: espectra-backend
+  
+  # Configuración de Table Names
   tableNames:
-    connections: ${self:service}-${self:provider.stage}-connections
-    context: ${self:service}-${self:provider.stage}-context
-    tokens: ${self:service}-${self:provider.stage}-tokens
-    handoff: ${self:service}-${self:provider.stage}-handoff
-  userPoolId: ${cf:${self:service}-${self:provider.stage}.UserPoolId}
-  userPoolClientId: ${cf:${self:service}-${self:provider.stage}.UserPoolClientId}
-  connectionsTableName: ${self:service}-${self:provider.stage}-connections
-  chatHistoryTable: ${self:service}-${self:provider.stage}-chat-history
-  snsAlarmTopic: ${ssm:/${self:service}/${self:provider.stage}/sns-alarm-topic-arn}
+    connections: ${self:custom.service}-${self:provider.stage}-connection-table
+    context: ${self:custom.service}-${self:provider.stage}-conversation-context-table
+    tokens: ${self:custom.service}-${self:provider.stage}-token-usage-table
+    handoff: ${self:custom.service}-${self:provider.stage}-handoff-table
+    metrics: ${self:custom.service}-${self:provider.stage}-botpress-metrics-table
+
+  # Cognito IDs (importados del deploy previo)
+  userPoolId:
+    Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-user-pool-id
+  userPoolClientId:
+    Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-user-pool-client-id
+
+  # VPC y Subnets
+  vpc:
+    securityGroupIds:
+      - Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-lambda-sg-id
+    subnetIds:
+      - Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-public-subnet-1-id
+      - Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-public-subnet-2-id
+
+  # KMS Keys (importados del deploy previo)
+  kms:
+    systemKeyId: ${cf:${self:custom.service}-kms-${self:provider.stage}.SystemKMSKeyId}
+    systemKeyArn: ${cf:${self:custom.service}-kms-${self:provider.stage}.SystemKMSKeyArn}
+    secretsKeyId: ${cf:${self:custom.service}-kms-${self:provider.stage}.SecretsKMSKeyId}
+    secretsKeyArn: ${cf:${self:custom.service}-kms-${self:provider.stage}.SecretsKMSKeyArn}
+    websocketKeyId: ${cf:${self:custom.service}-kms-${self:provider.stage}.WebSocketKMSKeyId}
+    websocketKeyArn: ${cf:${self:custom.service}-kms-${self:provider.stage}.WebSocketKMSKeyArn}
+
+  # Referencias a tablas
+  connectionsTableName: !Ref ConnectionsTable
+  chatHistoryTable: !Ref ChatHistoryTable
+
+  alarmThresholds:
+    lambda:
+      errors: 5
+      throttles: 5
+      duration: 10000  # 10 seconds
+      period: 300      # 5 minutes
+    api:
+      latency: 1000    # 1 second
+      4xxErrors: 5
+      5xxErrors: 1
+      period: 300
+    dynamodb:
+      throttles: 10
+      period: 300
+    websocket:
+      connections: 2000
+      period: 300
+    costs:
+      monthly: 1000    # USD
+  
+  # SNS Topics for different priority levels
+  snsHighPriorityTopic: ${ssm:/espectra/${self:provider.stage}/sns/high-priority-topic}
+  snsMediumPriorityTopic: ${ssm:/espectra/${self:provider.stage}/sns/medium-priority-topic}
+  snsLowPriorityTopic: ${ssm:/espectra/${self:provider.stage}/sns/low-priority-topic}
+
+  # Configuraciones de validación
+  validate:
+    required:
+      - BOTPRESS_API_KEY
+      - COGNITO_USER_POOL_ID
+      - COGNITO_CLIENT_ID
+    environmentCheck: true
+    resourceDependencies: true
+
+  # Configuraciones de monitoreo y logs
   IS_OFFLINE: ${env:IS_OFFLINE, 'false'}
   logRetentionInDays: 14
   logLevel:
     dev: 'DEBUG'
     staging: 'INFO'
     prod: 'WARN'
+
+  # Límites de tokens por plan
+  tokenLimits:
+    basic: 1000
+    pro: 2000
+    business: 4000
+    enterprise: 8000
+
+  # Configuración de handoff
+  handoff:
+    maxQueueSize: 100
+    maxWaitTime: 300
+
+  # Configuración de dominios
+  domainEnabled: ${env:DOMAIN_ENABLED, false}
+  customDomain:
+    domainName: ${ssm:/espectra/${self:provider.stage}/domain-name, 'api.espectra.com'}
+    stage: ${self:provider.stage}
+    createRoute53Record: true
+  websocketDomain:
+    domainName: ${ssm:/espectra/${self:provider.stage}/ws-domain-name, 'ws.espectra.com'}
+    stage: ${self:provider.stage}
+    createRoute53Record: true
+
+  botpressAlarmThresholds:
+    errorRate: 5        # Porcentaje de tasa de errores
+    latency: 1000       # Latencia en milisegundos
+    period: 300         # Periodo en segundos
+    handoffQueueSize: 50 # Tamaño máximo de cola de handoff
+    handoffLatency: 2000 # Latencia de handoff en milisegundos
+    tokenUsage: 80       # Porcentaje de uso de tokens
+    handoffSuccessRate: 90 # Porcentaje de éxito de handoff
+
+  # Configuración de esbuild
   esbuild:
     bundle: true
-    minify: false
+    minify: ${self:provider.stage, 'prod'}
     sourcemap: true
     exclude: 
       - aws-sdk
@@ -129,6 +326,9 @@ custom:
 plugins:
   - serverless-offline
   - serverless-iam-roles-per-function
+  - serverless-domain-manager
+  - serverless-prune-plugin
+  - serverless-plugin-tracing
 
 package:
   individually: true
@@ -149,157 +349,370 @@ package:
     - "shared/**/*.ts"
 
 functions:
-  authorizer:
-    handler: services/auth/authorizer.handler
+  # Auth Functions
+  restAuthorizer:
+    handler: services/auth/handlers/authorizer.handler
+    name: ${self:custom.service}-${self:provider.stage}-rest-authorizer
+    memorySize: 256
+    timeout: 29
     environment:
-      COGNITO_USER_POOL_ID: ${self:custom.userPoolId} #${cf:${self:service}-${self:provider.stage}.UserPoolId}
-      COGNITO_CLIENT_ID: ${self:custom.userPoolClientId} #${cf:${self:service}-${self:provider.stage}.UserPoolClientId}
+      COGNITO_USER_POOL_ID: 
+        Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-user-pool-id
+      COGNITO_CLIENT_ID: 
+        Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-user-pool-client-id
+      LOG_LEVEL: ${self:custom.logLevel.${self:provider.stage}}
+    role:
+      Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-lambda-role-arn
+    vpc:
+      securityGroupIds:
+        - Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-lambda-sg-id
+      subnetIds:
+        - Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-public-subnet-1-id
+        - Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-public-subnet-2-id
+    tracing: Active
 
   register:
     handler: services/auth/handlers/register.handler
+    name: ${self:custom.service}-${self:provider.stage}-register
+    role:
+      Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-lambda-role-arn
     events:
       - http:
           path: auth/register
           method: post
           cors: true
     environment:
-      # Variables de entorno específicas para la función register
       ALLOWED_ORIGINS: '*'
       PASSWORD_MIN_LENGTH: '8'
       USER_POOL_REGION: ${self:provider.region}
+      USER_POOL_ID:
+        Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-user-pool-id
+    vpc: ${self:custom.vpc}
+    tracing: Active
+
+  # WebSocket Functions
+  wsAuthorizer:
+    handler: services/websocket/handlers/authorizer.handler
+    name: ${self:custom.service}-${self:provider.stage}-websocket-authorizer
+    role:
+      Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-websocket-authorizer-role-arn
+    environment:
+      COGNITO_USER_POOL_ID: 
+        Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-user-pool-id
+      COGNITO_CLIENT_ID: 
+        Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-user-pool-client-id
+    vpc: ${self:custom.vpc}
+    tracing: Active
+
+  webSocketConnect:
+    handler: services/websocket/handlers/connect.handler
+    name: ${self:custom.service}-${self:provider.stage}-webSocketConnect
+    role:
+      Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-websocket-role-arn
+    events:
+      - websocket:
+          route: $connect
+          authorizer:
+            name: wsAuthorizer
+            identitySource:
+              - 'route.request.querystring.Auth'
+    environment:
+      CONNECTIONS_TABLE: 
+        Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-connections-table-name
+    vpc: ${self:custom.vpc}
+    tracing: Active
+
+  webSocketDisconnect:
+    handler: services/websocket/handlers/disconnect.handler
+    name: ${self:custom.service}-${self:provider.stage}-webSocketDisconnect
+    exportName: ${self:custom.service}-${self:provider.stage}-websocket-disconnect-function-arn
+    role:
+      Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-websocket-role-arn
+    events:
+      - websocket:
+          route: $disconnect
+    environment:
+      CONNECTIONS_TABLE:
+        Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-connections-table-name
+      WEBSOCKET_API_ENDPOINT: !GetAtt WebSocketApi.ApiEndpoint
+    vpc: ${self:custom.vpc}
+    tracing: Active
+
+  webSocketMessage:
+    handler: services/websocket/handlers/message.handler
+    name: ${self:custom.service}-${self:provider.stage}-webSocketMessage
+    exportName: ${self:custom.service}-${self:provider.stage}-websocket-message-function-arn
+    role:
+      Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-websocket-role-arn
+    events:
+      - websocket:
+          route: $default
+    environment:
+      WEBSOCKET_API_ENDPOINT: !GetAtt WebSocketApi.ApiEndpoint
+      CONNECTION_TABLE:
+        Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-connections-table-name
+      MESSAGE_QUEUE_URL: !Ref MessageQueue
+    vpc: ${self:custom.vpc}
+    tracing: Active
+
+  # Botpress Integration Functions
+  botpressWebhook:
+    handler: services/botpress/handlers/webhook.handler
+    name: ${self:custom.service}-${self:provider.stage}-botpress-webhook
+    role:
+      Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-lambda-role-arn
+    events:
+      - http:
+          path: /botpress/webhook
+          method: post
+          cors: true
+    environment:
+      MESSAGE_QUEUE_URL: !Ref MessageQueue
+      BOTPRESS_API_KEY: ${ssm:/espectra/${self:provider.stage}/botpress-api-key}
+      CONTEXT_TABLE:
+        Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-context-table-name
+    vpc: ${self:custom.vpc}
+    provisionedConcurrency: 2
+    tracing: Active
+
+  processMessage:
+    handler: services/botpress/handlers/message/process-message.handler
+    name: ${self:custom.service}-${self:provider.stage}-process-message
+    role:
+      Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-lambda-role-arn
+    events:
+      - sqs:
+          arn: !GetAtt MessageQueue.Arn
+          batchSize: 1
+          functionResponseType: ReportBatchItemFailures
+    environment:
+      CONTEXT_TABLE:
+        Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-context-table-name
+      TOKEN_TABLE:
+        Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-tokens-table-name
+    vpc: ${self:custom.vpc}
+    tracing: Active
 
   login:
     handler: services/auth/handlers/login.handler
+    name: ${self:custom.service}-${self:provider.stage}-login
+    role:
+      Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-lambda-role-arn
     events:
       - http:
           path: auth/login
           method: post
           cors: true
+    environment:
+      COGNITO_USER_POOL_ID: 
+        Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-user-pool-id
+      COGNITO_CLIENT_ID: 
+        Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-user-pool-client-id
+    vpc: ${self:custom.vpc}
+    tracing: Active
 
   refreshToken:
     handler: services/auth/handlers/refreshToken.handler
+    name: ${self:custom.service}-${self:provider.stage}-refreshToken
+    role:
+      Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-lambda-role-arn
     events:
       - http:
           path: auth/refresh-token
           method: post
           cors: true
+    environment:
+      COGNITO_USER_POOL_ID: 
+        Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-user-pool-id
+      COGNITO_CLIENT_ID: 
+        Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-user-pool-client-id
+    vpc: ${self:custom.vpc}
+    tracing: Active
 
   logout:
     handler: services/auth/handlers/logout.handler
+    name: ${self:custom.service}-${self:provider.stage}-logout
+    role:
+      Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-lambda-role-arn
     events:
       - http:
           path: auth/logout
           method: post
           cors: true
           authorizer:
-            name: authorizer
-            type: token
+            name: restAuthorizer
+    vpc: ${self:custom.vpc}
+    tracing: Active
 
-  getUser:
-    handler: services/auth/handlers/getUser.handler
-    events:
-      - http:
-          path: users/{userId}
-          method: get
-          authorizer:
-            name: authorizer
-            type: token
-
-  websocketAuthorizer:
-    handler: services/websocket/handlers/authorizer.handler
-    environment:
-      COGNITO_USER_POOL_ID: ${self:custom.userPoolId}
-      COGNITO_CLIENT_ID: ${self:custom.userPoolClientId}
-      LOG_LEVEL: 'debug'  # Aumentar nivel de logging para diagnóstico
-    memorySize: 256
-    timeout: 10
-    # Agregar logs específicos para el authorizer
-    logRetentionInDays: 14
-    tags:
-      Function: WebSocketAuthorizer
-      Service: ${self:service}
-      Environment: ${self:provider.stage}
-
-  webSocketConnect:
-    handler: services/websocket/handlers/connect.handler
-    events:
-      - websocket:
-          route: $connect
-          authorizer:
-            name: authorizer
-            identitySource:
-              - 'route.request.querystring.Auth'
-
-  webSocketDisconnect:
-    handler: services/websocket/handlers/disconnect.handler
-    events:
-      - websocket:
-          route: $disconnect
-
-  webSocketMessage:
-    handler: services/websocket/handlers/message.handler
-    events:
-      - websocket:
-          route: $default
-    environment:
-      WEBSOCKET_API_ENDPOINT: ${self:provider.environment.WEBSOCKET_API_ENDPOINT}
-      CONNECTION_TABLE: ${self:custom.connectionsTableName}
-
-  # Webhook Handlers
-  webhookHandler:
-    handler: services/botpress/handlers/webhook/webhook-handler.handler
-    events:
-      - http:
-          path: /botpress/webhook
-          method: post
-          cors: true
-
-  # Message Processing
-  processMessage:
-    handler: services/botpress/handlers/message/process-message.handler
-    events:
-      - sqs:
-          arn: !GetAtt MessageQueue.Arn
-          batchSize: 1
-
-  # Human Handoff
   handoffRequest:
     handler: services/botpress/handlers/handoff/request.handler
+    name: ${self:custom.service}-${self:provider.stage}-handoff-request
+    role:
+      Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-lambda-role-arn
     events:
       - http:
           path: /handoff/request
           method: post
           authorizer:
-            name: authorizer
-            # identitySource:
-            #   - 'route.request.querystring.Auth'
+            name: restAuthorizer
           cors: true
+    environment:
+      HANDOFF_QUEUE_URL: !GetAtt HandoffQueue.Arn
+      CONTEXT_TABLE:
+        Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-context-table-name
+    vpc: ${self:custom.vpc}
+    provisionedConcurrency: 2
+    tracing: Active
 
   handoffAccept:
     handler: services/botpress/handlers/handoff/accept.handler
+    name: ${self:custom.service}-${self:provider.stage}-handoff-accept
+    role:
+      Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-lambda-role-arn
     events:
       - http:
           path: /handoff/accept
           method: post
           authorizer:
-            name: authorizer
-            # identitySource:
-            #   - 'route.request.querystring.Auth'
+            name: restAuthorizer
           cors: true
+    environment:
+      HANDOFF_QUEUE_URL: !GetAtt HandoffQueue.Arn
+      CONTEXT_TABLE:
+        Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-context-table-name
+    vpc: ${self:custom.vpc}
+    provisionedConcurrency: 2
+    tracing: Active
+
+  startSession:
+    handler: services/session/handlers/start.handler
+    name: ${self:custom.service}-${self:provider.stage}-start-session
+    role:
+      Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-lambda-role-arn
+    events:
+      - http:
+          path: /session/start
+          method: post
+          authorizer:
+            name: restAuthorizer
+          cors: true
+    environment:
+      SESSION_TABLE:
+        Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-chat-sessions-table-name
+    vpc: ${self:custom.vpc}
+    tracing: Active
+
+  endSession:
+    handler: services/session/handlers/end.handler
+    name: ${self:custom.service}-${self:provider.stage}-end-session
+    role:
+      Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-lambda-role-arn
+    events:
+      - http:
+          path: /session/end
+          method: post
+          authorizer:
+            name: restAuthorizer
+          cors: true
+    environment:
+      SESSION_TABLE:
+        Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-chat-sessions-table-name
+    vpc: ${self:custom.vpc}
+    tracing: Active
+
+  metricsCollector:
+    handler: services/metrics/handlers/collector.handler
+    name: ${self:custom.service}-${self:provider.stage}-metrics-collector
+    role:
+      Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-metrics-collector-role-arn
+    events:
+      - schedule: rate(1 minute)
+    environment:
+      METRICS_NAMESPACE: ${self:custom.service}/${self:provider.stage}
+      BOTPRESS_METRICS_TABLE:
+        Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-metrics-table-name
+    vpc: ${self:custom.vpc}
+    tracing: Active
 
 resources:
-  - ${file(infrastructure/network/vpc.yml)}
+
+  # 2. IAM Base Roles
   - ${file(infrastructure/iam/roles.yml)}
+  # El archivo lambda-role.yml fue eliminado de la lista de recursos porque su contenido fue unificado con el de roles.yml
+  #- ${file(infrastructure/iam/lambda-role.yml)}
   - ${file(infrastructure/iam/websocket-roles.yml)}
-  - ${file(infrastructure/security/kms.yml)}
-  - ${file(infrastructure/queues/message-queues.yml)}
-  - ${file(infrastructure/cognito/cognito.yml)}
+
+  # 3. Storage Resources
   - ${file(infrastructure/dynamodb/user-tables.yml)}
   - ${file(infrastructure/dynamodb/botpress-tables.yml)}
   - ${file(infrastructure/dynamodb/chat-history-tables.yml)}
-  - ${file(infrastructure/dynamodb/connection-concierge-tables.yml)}
+  - ${file(infrastructure/dynamodb/chat-session-tables.yml)}
+  - ${file(infrastructure/dynamodb/connection-concierge-tables.yml)}  
+
+  # 4. Message & Cache Resources
+  - ${file(infrastructure/queues/message-queues.yml)}
+  - ${file(infrastructure/elasticache/redis.yml)}
   - ${file(infrastructure/eventbridge/botpress-event-bus.yml)}
+
+  # 5. API & Communication
+  - ${file(infrastructure/apigateway/api.yml)}
+  - ${file(infrastructure/apigateway/chat-api-routes.yml)}
   - ${file(infrastructure/websocket/websocket.yml)}
   - ${file(infrastructure/security/websocket-security.yml)}
+
+  # 6. Monitoring & Security
   - ${file(infrastructure/security/waf.yml)}
   - ${file(infrastructure/monitoring/cloudwatch.yml)}
+  - ${file(infrastructure/monitoring/cloudwatch-alarms.yml)}
+  - ${file(infrastructure/monitoring/botpress-cloudwatch-alarms.yml)}
+  - ${file(infrastructure/monitoring/botpress-cloudwatch-dashboard.yml)}
+
+  # 7. Backup
+  - ${file(infrastructure/backup/backup.yml)}
+
+conditions:
+  CreateResources: !Not 
+    - !Equals 
+      - !Ref 'AWS::Region'
+      - ''
+  HasCustomDomain: !Equals 
+    - ${self:custom.domainEnabled}
+    - true
+
+# dependsOn:
+#   # Stacks de Seguridad Fundamentales
+#   - ${self:custom.service}-kms-${self:provider.stage}  # Stack de KMS
+#   - ${self:custom.service}-sns-${self:provider.stage}  # Stack de KMS
+#   - ${self:custom.service}-cognito-${self:provider.stage}  # Stack de Cognito
+
+#   # Infraestructura de Red
+#   - SpectraVPC  # Debe existir antes que otros recursos de red
+#   - LambdaSecurityGroup  # Grupo de seguridad para Lambda
+#   - PublicSubnet1  # Subnet pública 1
+#   - PublicSubnet2  # Subnet pública 2
+#   - VPCEndpointSecurityGroup  # Grupo de seguridad para endpoints VPC
+
+#   # Servicios de Persistencia
+#   - ConnectionsTable  # Tabla de conexiones en DynamoDB
+#   - ChatHistoryTable  # Tabla de historial de chat
+#   - ConversationContextTable  # Tabla de contexto de conversaciones
+#   - UsersTable  # Tabla de usuarios
+
+#   # Servicios de Comunicación
+#   - MessageQueue  # Cola de mensajes SQS
+#   - HandoffQueue  # Cola de transferencia
+#   - BotpressEventBus  # Event Bus para Botpress
+
+#   # Servicios de Comunicación en Tiempo Real
+#   - WebSocketApi  # API de WebSocket
+#   - WebSocketKMSKey  # Clave KMS para WebSocket
+
+#   # Servicios de Autenticación
+#   - WebSocketAuthorizerFunction  # Función de autorización de WebSocket
+  
+#   # Servicios de Monitoreo
+#   - CloudWatchRole  # Rol para CloudWatch
+#   #- AlertsTopic  # Tópico de alertas SNS
+
+#   # Servicios Adicionales
+#   - BackupVault  # Bóveda de respaldos

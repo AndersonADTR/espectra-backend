@@ -1,0 +1,134 @@
+Resources:
+  # Domain Configuration (Commented until domain is available)
+  # ApiDomainName:
+  #   Type: AWS::ApiGateway::DomainName
+  #   Condition: HasCustomDomain # Will be defined in serverless.yml
+  #   Properties:
+  #     DomainName: ${self:custom.customDomain.domainName}
+  #     RegionalCertificateArn: ${ssm:/espectra/${self:provider.stage}/certificate-arn}
+  #     EndpointConfiguration:
+  #       Types:
+  #         - REGIONAL
+  #     SecurityPolicy: TLS_1_2
+  #     Tags:
+  #       - Key: Service
+  #         Value: ${self:custom.service}
+  #       - Key: Environment
+  #         Value: ${self:provider.stage}
+  #       - Key: ManagedBy
+  #         Value: CloudFormation
+
+  # WebSocketDomainName:
+  #   Type: AWS::ApiGatewayV2::DomainName
+  #   Condition: HasCustomDomain
+  #   Properties:
+  #     DomainName: ${self:custom.websocketDomain.domainName}
+  #     DomainNameConfigurations:
+  #       - EndpointType: REGIONAL
+  #         CertificateArn: ${ssm:/espectra/${self:provider.stage}/certificate-arn}
+  #     Tags:
+  #       - Key: Service
+  #         Value: ${self:custom.service}
+  #       - Key: Environment
+  #         Value: ${self:provider.stage}
+  #       - Key: ManagedBy
+  #         Value: CloudFormation
+
+  # Route53 Records (Commented until domain is available)
+  # ApiDomainRecord:
+  #   Type: AWS::Route53::RecordSet
+  #   Condition: HasCustomDomain
+  #   Properties:
+  #     Name: ${self:custom.customDomain.domainName}
+  #     Type: A
+  #     AliasTarget:
+  #       DNSName: !GetAtt ApiDomainName.RegionalDomainName
+  #       HostedZoneId: !GetAtt ApiDomainName.RegionalHostedZoneId
+  #     HostedZoneName: ${ssm:/espectra/${self:provider.stage}/hosted-zone-name}
+
+  # WebSocketDomainRecord:
+  #   Type: AWS::Route53::RecordSet
+  #   Condition: HasCustomDomain
+  #   Properties:
+  #     Name: ${self:custom.websocketDomain.domainName}
+  #     Type: A
+  #     AliasTarget:
+  #       DNSName: !GetAtt WebSocketDomainName.RegionalDomainName
+  #       HostedZoneId: !GetAtt WebSocketDomainName.RegionalHostedZoneId
+  #     HostedZoneName: ${ssm:/espectra/${self:provider.stage}/hosted-zone-name}
+
+  # CloudWatch Alarms (Can be enabled even without domain)
+  ApiLatencyAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: ${self:custom.service}-${self:provider.stage}-api-latency
+      AlarmDescription: API Gateway response time is high
+      MetricName: Latency
+      Namespace: AWS/ApiGateway
+      Statistic: Average
+      Period: 300
+      EvaluationPeriods: 2
+      Threshold: 1000
+      ComparisonOperator: GreaterThanThreshold
+      Dimensions:
+        - Name: ApiId
+          Value: !Ref HttpApi
+      AlarmActions:
+        - ${self:custom.snsHighPriorityTopic}
+      Tags:
+        - Key: Service
+          Value: ${self:custom.service}
+        - Key: Environment
+          Value: ${self:provider.stage}
+
+  WebSocketLatencyAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: ${self:custom.service}-${self:provider.stage}-websocket-latency
+      AlarmDescription: WebSocket API response time is high
+      MetricName: IntegrationLatency
+      Namespace: AWS/ApiGateway
+      Statistic: Average
+      Period: 300
+      EvaluationPeriods: 2
+      Threshold: 1000
+      ComparisonOperator: GreaterThanThreshold
+      Dimensions:
+        - Name: ApiId
+          Value: !Ref WebSocketApi
+      AlarmActions:
+        - ${self:custom.snsHighPriorityTopic}
+      Tags:
+        - Key: Service
+          Value: ${self:custom.service}
+        - Key: Environment
+          Value: ${self:provider.stage}
+
+Outputs:
+  # Domain Outputs (Commented until domain is available)
+  # ApiDomainName:
+  #   Description: API domain name
+  #   Condition: HasCustomDomain
+  #   Value: !Ref ApiDomainName
+  #   Export:
+  #     Name: ${self:custom.service}-${self:provider.stage}-api-domain
+
+  # WebSocketDomainName:
+  #   Description: WebSocket domain name
+  #   Condition: HasCustomDomain
+  #   Value: !Ref WebSocketDomainName
+  #   Export:
+  #     Name: ${self:custom.service}-${self:provider.stage}-ws-domain
+
+  # Active Outputs (Even without domain)
+  # ApiEndpoint:
+  #   Description: Default API Gateway endpoint
+  #   Value: !Sub https://${HttpApi}.execute-api.${AWS::Region}.amazonaws.com/${self:provider.stage}
+  #   Export:
+  #     Name: ${self:custom.service}-${self:provider.stage}-api-endpoint
+
+  # WebSocketEndpoint:
+  #   Description: Default WebSocket endpoint
+  #   Value: !Sub wss://${WebSocketApi}.execute-api.${AWS::Region}.amazonaws.com/${self:provider.stage}
+  #   Export:
+  #     Name: ${self:custom.service}-${self:provider.stage}-websocket-endpoint

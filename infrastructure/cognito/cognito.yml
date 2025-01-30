@@ -2,27 +2,62 @@ Resources:
   SpectraUserPool:
     Type: AWS::Cognito::UserPool
     Properties:
-      UserPoolName: ${self:service}-${self:provider.stage}-user-pool
+      UserPoolName: ${self:custom.service}-${self:provider.stage}-user-pool
+      AdminCreateUserConfig:
+        AllowAdminCreateUserOnly: false
+        InviteMessageTemplate:
+          EmailMessage: "Your username is {username} and temporary password is {####}."
+          EmailSubject: "Welcome to Espectra Platform"
+          SMSMessage: "Your username is {username} and temporary password is {####}"
+      SmsConfiguration:
+        SnsCallerArn: !GetAtt CognitoSMSRole.Arn
+        ExternalId: ${self:custom.service}-${self:provider.stage}-external
       AutoVerifiedAttributes:
         - email
+        - phone_number
       UsernameAttributes:
         - email
+        - phone_number
+      MfaConfiguration: OPTIONAL
+      EnabledMfas:
+        - SMS_MFA
+        - SOFTWARE_TOKEN_MFA
+      AccountRecoverySetting:
+        RecoveryMechanisms:
+          - Name: verified_email
+            Priority: 1
+          - Name: verified_phone_number
+            Priority: 2
+      EmailConfiguration:
+        EmailSendingAccount: COGNITO_DEFAULT
+        #From: "noreply@customDomain" #${self:custom.customDomain.domainName}"
       Policies:
         PasswordPolicy:
-          MinimumLength: 8
+          MinimumLength: 12
           RequireLowercase: true
           RequireNumbers: true
           RequireSymbols: true
           RequireUppercase: true
+          TemporaryPasswordValidityDays: 7
       Schema:
         - Name: email
           AttributeDataType: String
           Mutable: true
           Required: true
+          StringAttributeConstraints:
+            MinLength: "3"
+            MaxLength: "254"
         - Name: name
           AttributeDataType: String
           Mutable: true
-          Required: true
+          Required: false
+          StringAttributeConstraints:
+            MinLength: "1"
+            MaxLength: "256"
+        - Name: phoneNumber
+          AttributeDataType: String
+          Mutable: true
+          Required: false
         - Name: userType
           AttributeDataType: String
           Mutable: true
@@ -30,18 +65,31 @@ Resources:
           StringAttributeConstraints:
             MaxLength: "20"
             MinLength: "1"
+        - Name: language
+          AttributeDataType: String
+          Mutable: true
+          Required: false
+          StringAttributeConstraints:
+            MaxLength: "10"
+            MinLength: "2"
+      UserPoolTags:
+        Service: ${self:custom.service}
+        Environment: ${self:provider.stage}
+        ManagedBy: CloudFormation
+      UserPoolAddOns:
+        AdvancedSecurityMode: ENFORCED
 
   SpectraUserPoolClient:
     Type: AWS::Cognito::UserPoolClient
     Properties:
-      ClientName: ${self:service}-${self:provider.stage}-user-pool-client
+      ClientName: ${self:custom.service}-${self:provider.stage}-user-pool-client
       UserPoolId: !Ref SpectraUserPool
       ExplicitAuthFlows:
         - ALLOW_USER_PASSWORD_AUTH
         - ALLOW_REFRESH_TOKEN_AUTH
         - ALLOW_USER_SRP_AUTH
       PreventUserExistenceErrors: ENABLED
-      GenerateSecret: false
+      GenerateSecret: true
       AccessTokenValidity: 1
       IdTokenValidity: 1
       RefreshTokenValidity: 30
@@ -49,19 +97,129 @@ Resources:
         AccessToken: "hours"
         IdToken: "hours"
         RefreshToken: "days"
+      EnableTokenRevocation: true
+      EnablePropagateAdditionalUserContextData: true
+      AuthSessionValidity: 3
+      ReadAttributes:
+        - email
+        - name
+        - phone_number
+        - custom:userType
+        - custom:language
+      WriteAttributes:
+        - email
+        - name
+        - phone_number
+
+  # Resource Server for API Scopes
+  SpectraUserPoolResourceServer:
+    Type: AWS::Cognito::UserPoolResourceServer
+    Properties:
+      Identifier: espectra-api
+      Name: Espectra API
+      UserPoolId: !Ref SpectraUserPool
+      Scopes:
+        - ScopeName: read
+          ScopeDescription: Read access to API
+        - ScopeName: write
+          ScopeDescription: Write access to API
+        - ScopeName: admin
+          ScopeDescription: Admin access to API
+        - ScopeName: concierge
+          ScopeDescription: Access to concierge services
+
+  # Domain Configuration
+  SpectraUserPoolDomain:
+    Type: AWS::Cognito::UserPoolDomain
+    Properties:
+      Domain: !Sub ${self:custom.service}-${self:provider.stage}-auth
+      UserPoolId: !Ref SpectraUserPool
+
+  # CloudWatch Alarms
+  CognitoSignInErrorsAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: ${self:custom.service}-${self:provider.stage}-cognito-sign-in-errors
+      AlarmDescription: Alert on high number of sign-in failures
+      MetricName: SignInErrors
+      Namespace: AWS/Cognito
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 2
+      Threshold: 10
+      ComparisonOperator: GreaterThanThreshold
+      Dimensions:
+        - Name: UserPool
+          Value: !Ref SpectraUserPool
+      AlarmActions:
+        - Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-high-priority-topic-arn
+      Tags:
+        - Key: Service
+          Value: ${self:custom.service}
+        - Key: Environment
+          Value: ${self:provider.stage}
+
+  CognitoCompromisedCredentialsAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: ${self:custom.service}-${self:provider.stage}-cognito-compromised-credentials
+      AlarmDescription: Alert on compromised credentials detection
+      MetricName: CompromisedCredentialsRisk
+      Namespace: AWS/Cognito
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanThreshold
+      Dimensions:
+        - Name: UserPool
+          Value: !Ref SpectraUserPool
+      AlarmActions:
+        - Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-high-priority-topic-arn
+      Tags:
+        - Key: Service
+          Value: ${self:custom.service}
+        - Key: Environment
+          Value: ${self:provider.stage}
+
+  # Rol para envío de SMS
+  CognitoSMSRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: cognito-idp.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: cognito-sms-policy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - sns:Publish
+                Resource: '*'
 
 Outputs:
   UserPoolId:
     Value: !Ref SpectraUserPool
     Export:
-      Name: ${self:service}-${self:provider.stage}-user-pool-id
+      Name: ${self:custom.service}-${self:provider.stage}-user-pool-id
 
   UserPoolClientId:
     Value: !Ref SpectraUserPoolClient
     Export:
-      Name: ${self:service}-${self:provider.stage}-user-pool-client-id
+      Name: ${self:custom.service}-${self:provider.stage}-user-pool-client-id
 
   UserPoolArn:
     Value: !GetAtt SpectraUserPool.Arn
     Export:
-      Name: ${self:service}-${self:provider.stage}-user-pool-arn
+      Name: ${self:custom.service}-${self:provider.stage}-user-pool-arn
+
+  # UserPoolDomain:
+  #   Value: !Sub ${self:custom.service}-${self:provider.stage}-auth.auth.${AWS::Region}.amazoncognito.com
+  #   Export:
+  #     Name: ${self:custom.service}-${self:provider.stage}-user-pool-domain

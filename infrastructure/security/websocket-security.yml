@@ -1,112 +1,177 @@
-# infrastructure/security/websocket-security.yml
 Resources:
-  WebSocketAuthorizer:
+  
+  # WebSocket Lambda Authorizer
+  WebSocketLambdaAuthorizer:
     Type: AWS::ApiGatewayV2::Authorizer
+    DependsOn:
+      - WsAuthorizerLambdaFunction
     Properties:
       ApiId: !Ref WebSocketApi
       AuthorizerType: REQUEST
       Name: websocket-cognito-authorizer
-      AuthorizerUri: !Sub arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${WebSocketAuthorizerFunction.Arn}/invocations
+      AuthorizerUri: !Sub arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${WsAuthorizerLambdaFunction.Arn}/invocations
       IdentitySource:
         - route.request.querystring.Auth
+      AuthorizerCredentialsArn: 
+        Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-websocket-authorizer-role-arn
 
-  WebSocketAuthorizerFunction:
-    Type: AWS::Lambda::Function
-    Properties:
-      FunctionName: ${self:service}-${self:provider.stage}-ws-authorizer
-      Handler: services/websocket/handlers/authorizer.handler
-      Runtime: nodejs20.x
-      Timeout: 10
-      MemorySize: 256
-      Code:
-        ZipFile: |
-          exports.handler = async (event) => {
-            // Temporary inline code - will be replaced by actual handler
-            console.log('Event:', JSON.stringify(event));
-            throw new Error('Authorizer not implemented');
-          }
-      Environment:
-        Variables:
-          COGNITO_USER_POOL_ID: ${cf:${self:service}-${self:provider.stage}.UserPoolId}
-          COGNITO_CLIENT_ID: ${cf:${self:service}-${self:provider.stage}.UserPoolClientId}
-      Role: !GetAtt WebSocketAuthorizerRole.Arn
-  
-  WebSocketAuthorizerPermission:
-    Type: AWS::Lambda::Permission
-    Properties:
-      Action: lambda:InvokeFunction
-      FunctionName: !GetAtt WebSocketAuthorizerFunction.Arn
-      Principal: apigateway.amazonaws.com
+  # WebSocket WAF Rules
+  # WebSocketWAFRules:
+  #   Type: AWS::WAFv2::WebACL
+  #   Properties:
+  #     Name: ${self:custom.service}-${self:provider.stage}-websocket-waf
+  #     Description: WAF rules for WebSocket API
+  #     Scope: REGIONAL
+  #     DefaultAction:
+  #       Allow: {}
+  #     VisibilityConfig:
+  #       SampledRequestsEnabled: true
+  #       CloudWatchMetricsEnabled: true
+  #       MetricName: WebSocketWAF
+  #     Rules:
+  #       - Name: BotControlRule
+  #         Priority: 0
+  #         Statement:
+  #           ManagedRuleGroupStatement:
+  #             VendorName: AWS
+  #             Name: AWSManagedRulesBotControlRuleSet
+  #         OverrideAction:
+  #           None: {}
+  #         VisibilityConfig:
+  #           SampledRequestsEnabled: true
+  #           CloudWatchMetricsEnabled: true
+  #           MetricName: BotControlMetric
 
-  WebSocketAuthorizerRole:
-    Type: AWS::IAM::Role
-    Properties:
-      RoleName: ${self:service}-${self:provider.stage}-ws-authorizer-role
-      AssumeRolePolicyDocument:
-        Version: '2012-10-17'
-        Statement:
-          - Effect: Allow
-            Principal:
-              Service: lambda.amazonaws.com
-            Action: sts:AssumeRole
-      ManagedPolicyArns:
-        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
-      Policies:
-        - PolicyName: cognito-verify
-          PolicyDocument:
-            Version: '2012-10-17'
-            Statement:
-              - Effect: Allow
-                Action:
-                  - cognito-idp:AdminInitiateAuth
-                Resource:
-                  Fn::Sub: arn:aws:cognito-idp:${AWS::Region}:${AWS::AccountId}:userpool/${cf:${self:service}-${self:provider.stage}.UserPoolId}
-                Condition:
-                  StringEquals:
-                    cognito-idp:client_id: ${cf:${self:service}-${self:provider.stage}.UserPoolClientId}
+  #       - Name: RateLimit
+  #         Priority: 1
+  #         Statement:
+  #           RateBasedStatement:
+  #             Limit: 2000
+  #             AggregateKeyType: IP
+  #         Action:
+  #           Block: {}
+  #         VisibilityConfig:
+  #           SampledRequestsEnabled: true
+  #           CloudWatchMetricsEnabled: true
+  #           MetricName: WebSocketRateLimit
 
-  WebSocketWAFRules:
-    Type: AWS::WAFv2::WebACL
-    Properties:
-      Name: ${self:service}-${self:provider.stage}-websocket-waf
-      Description: WAF rules for WebSocket API
-      Scope: REGIONAL
-      DefaultAction:
-        Allow: {}
-      VisibilityConfig:
-        SampledRequestsEnabled: true
-        CloudWatchMetricsEnabled: true
-        MetricName: WebSocketWAF
-      Rules:
-        - Name: RateLimit
-          Priority: 1
-          Statement:
-            RateBasedStatement:
-              Limit: 2000
-              AggregateKeyType: IP
-          Action:
-            Block: {}
-          VisibilityConfig:
-            SampledRequestsEnabled: true
-            CloudWatchMetricsEnabled: true
-            MetricName: WebSocketRateLimit
-        - Name: IPBlacklist
-          Priority: 2
-          Statement:
-            IPSetReferenceStatement:
-              Arn: !GetAtt WebSocketIPSet.Arn
-          Action:
-            Block: {}
-          VisibilityConfig:
-            SampledRequestsEnabled: true
-            CloudWatchMetricsEnabled: true
-            MetricName: WebSocketIPBlacklist
+  #       - Name: GeoBlockRule
+  #         Priority: 2
+  #         Statement:
+  #           GeoMatchStatement:
+  #             CountryCodes:
+  #               - CN
+  #               - RU
+  #               - KP
+  #               - IR
+  #               - SY
+  #         Action:
+  #           Block: {}
+  #         VisibilityConfig:
+  #           SampledRequestsEnabled: true
+  #           CloudWatchMetricsEnabled: true
+  #           MetricName: GeoBlockMetric
 
+  WebSocketWAFLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: /aws/waf/websocket/${self:custom.service}-${self:provider.stage}-logs
+      RetentionInDays: ${self:custom.logRetentionInDays}
+      KmsKeyId:
+        Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-system-kms-key-arn
+
+  # WAF Association
+  # WebSocketWAFAssociation:
+  #   Type: AWS::WAFv2::WebACLAssociation
+  #   Properties:
+  #     ResourceArn: !Sub arn:aws:apigateway:${AWS::Region}::/apis/${WebSocketApi}/stages/${self:provider.stage}
+  #     WebACLArn: !GetAtt WebSocketWAFRules.Arn
+
+  # Logging Configuration
+  # WebSocketWAFLogging:
+  #   Type: AWS::WAFv2::LoggingConfiguration
+  #   DependsOn:
+  #     - WebSocketWAFRules
+  #   Properties:
+  #     LogDestinationConfigs:
+  #       - arn:aws:logs:us-east-1:345594559631:log-group:/aws/waf/websocket/espectra-backend-dev:*
+  #     ResourceArn: !GetAtt WebSocketWAFRules.Arn
+  #     RedactedFields:
+  #       - SingleHeader:
+  #           Name: Authorization
+  #       - SingleHeader:
+  #           Name: x-api-key
+
+  # IP Set para bloqueos dinámicos
   WebSocketIPSet:
     Type: AWS::WAFv2::IPSet
     Properties:
-      Name: ${self:service}-${self:provider.stage}-websocket-ipset
-      Description: Blocked IPs for WebSocket
+      Name: ${self:custom.service}-${self:provider.stage}-websocket-ipset
+      Description: IP Set for dynamic blocking of WebSocket connections
       Scope: REGIONAL
       IPAddressVersion: IPV4
-      Addresses: []  # Se puede actualizar según necesidad
+      Addresses: []
+      Tags:
+        - Key: Service
+          Value: ${self:custom.service}
+        - Key: Environment
+          Value: ${self:provider.stage}
+
+  # CloudWatch Alarms
+  WebSocketAuthorizerErrorsAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: ${self:custom.service}-${self:provider.stage}-websocket-authorizer-errors
+      AlarmDescription: WebSocket authorizer errors exceeding threshold
+      MetricName: Errors
+      Namespace: AWS/Lambda
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 2
+      Threshold: 5
+      ComparisonOperator: GreaterThanThreshold
+      Dimensions:
+        - Name: FunctionName
+          Value: !Ref WsAuthorizerLambdaFunction
+      AlarmActions:
+        - Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-high-priority-topic-arn
+
+  WebSocketWAFBlocksAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: ${self:custom.service}-${self:provider.stage}-waf-blocks
+      AlarmDescription: High number of WAF blocked requests
+      MetricName: BlockedRequests
+      Namespace: AWS/WAFV2
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 2
+      Threshold: 100
+      ComparisonOperator: GreaterThanThreshold
+      Dimensions:
+        - Name: WebACL
+          Value: ${self:custom.service}-${self:provider.stage}-websocket-waf
+        - Name: Region
+          Value: ${self:provider.region}
+      AlarmActions:
+        - Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-medium-priority-topic-arn
+
+  #  AuthorizerRateLimit:
+  #   Type: AWS::WAFv2::RateBasedStatement
+  #   Properties:
+  #     Limit: 100
+  #     AggregateKeyType: IP
+
+Outputs:
+
+  # WebSocketWAFArn:
+  #   Description: WebSocket WAF ARN
+  #   Value: !GetAtt WebSocketWAFRules.Arn
+  #   Export:
+  #     Name: ${self:custom.service}-${self:provider.stage}-websocket-waf-arn
+
+  WebSocketIPSetId:
+    Description: WebSocket IP Set ID
+    Value: !Ref WebSocketIPSet
+    Export:
+      Name: ${self:custom.service}-${self:provider.stage}-websocket-ipset-id

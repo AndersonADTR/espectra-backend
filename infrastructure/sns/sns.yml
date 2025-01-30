@@ -1,0 +1,185 @@
+Resources:
+  # High Priority Topic
+  HighPriorityTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: ${self:custom.service}-${self:provider.stage}-high-priority
+      KmsMasterKeyId: 
+        Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-system-kms-key-arn
+      Tags:
+        - Key: Service
+          Value: ${self:custom.service}
+        - Key: Environment
+          Value: ${self:provider.stage}
+        - Key: Priority
+          Value: High
+        - Key: ManagedBy
+          Value: CloudFormation
+
+  HighPriorityTopicPolicy:
+    Type: AWS::SNS::TopicPolicy
+    Properties:
+      Topics:
+        - !Ref HighPriorityTopic
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - cloudwatch.amazonaws.com
+                - events.amazonaws.com
+                - lambda.amazonaws.com
+            Action: sns:Publish
+            Resource: !Ref HighPriorityTopic
+
+  # Medium Priority Topic
+  MediumPriorityTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: ${self:custom.service}-${self:provider.stage}-medium-priority
+      KmsMasterKeyId: 
+        Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-system-kms-key-arn
+      Tags:
+        - Key: Service
+          Value: ${self:custom.service}
+        - Key: Environment
+          Value: ${self:provider.stage}
+        - Key: Priority
+          Value: Medium
+        - Key: ManagedBy
+          Value: CloudFormation
+
+  MediumPriorityTopicPolicy:
+    Type: AWS::SNS::TopicPolicy
+    Properties:
+      Topics:
+        - !Ref MediumPriorityTopic
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - cloudwatch.amazonaws.com
+                - events.amazonaws.com
+            Action: sns:Publish
+            Resource: !Ref MediumPriorityTopic
+
+  # Low Priority Topic
+  LowPriorityTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: ${self:custom.service}-${self:provider.stage}-low-priority
+      KmsMasterKeyId: 
+        Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-system-kms-key-arn
+      Tags:
+        - Key: Service
+          Value: ${self:custom.service}
+        - Key: Environment
+          Value: ${self:provider.stage}
+        - Key: Priority
+          Value: Low
+        - Key: ManagedBy
+          Value: CloudFormation
+
+  LowPriorityTopicPolicy:
+    Type: AWS::SNS::TopicPolicy
+    Properties:
+      Topics:
+        - !Ref LowPriorityTopic
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - cloudwatch.amazonaws.com
+                - events.amazonaws.com
+            Action: sns:Publish
+            Resource: !Ref LowPriorityTopic
+
+  # Email Subscriptions (Optional, based on SSM parameters)
+  HighPriorityEmailSubscription:
+    Type: AWS::SNS::Subscription
+    Properties:
+      TopicArn: !Ref HighPriorityTopic
+      Protocol: email
+      Endpoint: ${ssm:/espectra/${self:provider.stage}/alerts-email}
+
+  MediumPriorityEmailSubscription:
+    Type: AWS::SNS::Subscription
+    Properties:
+      TopicArn: !Ref MediumPriorityTopic
+      Protocol: email
+      Endpoint: ${ssm:/espectra/${self:provider.stage}/operations-email}
+
+  LowPriorityEmailSubscription:
+    Type: AWS::SNS::Subscription
+    Properties:
+      TopicArn: !Ref LowPriorityTopic
+      Protocol: email
+      Endpoint: ${ssm:/espectra/${self:provider.stage}/support-email}
+
+  # CloudWatch Alarms
+  TopicDeliveryErrorAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: ${self:custom.service}-${self:provider.stage}-sns-delivery-errors
+      AlarmDescription: Alert on SNS message delivery failures
+      MetricName: NumberOfNotificationsFailed
+      Namespace: AWS/SNS
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanThreshold
+      Dimensions:
+        - Name: TopicName
+          Value: !GetAtt HighPriorityTopic.TopicName
+      AlarmActions:
+        - !Ref HighPriorityTopic
+      Tags:
+        - Key: Service
+          Value: ${self:custom.service}
+        - Key: Environment
+          Value: ${self:provider.stage}
+
+  TopicThrottlingAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: ${self:custom.service}-${self:provider.stage}-sns-throttling
+      AlarmDescription: Alert on SNS throttling
+      MetricName: NumberOfNotificationsFilteredOut-InvalidAttributes
+      Namespace: AWS/SNS
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanThreshold
+      AlarmActions:
+        - !Ref HighPriorityTopic
+      Tags:
+        - Key: Service
+          Value: ${self:custom.service}
+        - Key: Environment
+          Value: ${self:provider.stage}
+
+Outputs:
+  HighPriorityTopicArn:
+    Description: ARN of the high priority SNS topic
+    Value: !Ref HighPriorityTopic
+    Export:
+      Name: ${self:custom.service}-${self:provider.stage}-high-priority-topic-arn
+
+  MediumPriorityTopicArn:
+    Description: ARN of the medium priority SNS topic
+    Value: !Ref MediumPriorityTopic
+    Export:
+      Name: ${self:custom.service}-${self:provider.stage}-medium-priority-topic-arn
+
+  LowPriorityTopicArn:
+    Description: ARN of the low priority SNS topic
+    Value: !Ref LowPriorityTopic
+    Export:
+      Name: ${self:custom.service}-${self:provider.stage}-low-priority-topic-arn

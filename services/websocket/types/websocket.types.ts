@@ -1,31 +1,38 @@
-// services/websocket/types/websocket.types.ts
+import { WebSocketErrorCode, WebSocketSystemMessageType } from '../config/websocket';
+
+export interface WSMetadata {
+  userAgent?: string;
+  lastActivity?: string;
+  platform?: string;
+  createdAt?: string;
+  inHandoff?: boolean;
+  [key: string]: any;
+}
 
 export interface WSConnection {
   connectionId: string;
   userId: string;
   timestamp: string;
   status: WSConnectionStatus;
-  metadata?: {
-    userAgent?: string;
-    lastActivity?: string;
-    platform?: string;
-  };
+  metadata?: WSMetadata;
+  ttl?: number;
 }
-  
+
 export interface WSMessage {
   type: WSMessageType;
   content: string;
   conversationId: string;
   timestamp: string;
-  metadata?: Record<string, any>;
+  metadata?: WSMetadata;
 }
-  
+
 export type WSConnectionStatus = 'CONNECTED' | 'IN_PROGRESS' | 'DISCONNECTED';
 
-export type WSMessageType = 
+export type WSMessageType =
   | 'USER_MESSAGE'
   | 'AGENT_MESSAGE'
   | 'BOT_RESPONSE'
+  | 'SESSION_STARTED'
   | 'HANDOFF_REQUEST'
   | 'HANDOFF_ACCEPTED'
   | 'HANDOFF_REJECTED'
@@ -37,14 +44,17 @@ export type WSMessageType =
   | 'READ_RECEIPT'
   | 'MESSAGE_DELIVERED'
   | 'MESSAGE_READ'
-  | 'ERROR';
+  | 'MESSAGE_RECEIVED'
+  | 'ERROR'
+  | WebSocketSystemMessageType;
 
 export interface WSErrorResponse {
   type: 'ERROR';
-  code: string;
+  code: WebSocketErrorCode;
   message: string;
   timestamp: string;
   conversationId?: string;
+  details?: Record<string, any>;
 }
 
 export interface WSSuccessResponse {
@@ -52,5 +62,12 @@ export interface WSSuccessResponse {
   content: string;
   conversationId: string;
   timestamp: string;
-  metadata?: Record<string, any>;
+  metadata?: WSMetadata;
+}
+
+export interface WSEvent {
+  connectionId: string;
+  timestamp: string;
+  type: string;
+  data?: any;
 }

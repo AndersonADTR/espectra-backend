@@ -1,0 +1,221 @@
+Resources:
+  RedisSubnetGroup:
+    Type: AWS::ElastiCache::SubnetGroup
+    Properties:
+      Description: !Sub "${self:custom.service}-${self:provider.stage} subnet group for Redis cluster"
+      SubnetIds:
+        - ${cf:${self:custom.service}-phase1-${self:provider.stage}.PublicSubnet1Id}
+        - ${cf:${self:custom.service}-phase1-${self:provider.stage}.PublicSubnet2Id}
+      Tags:
+        - Key: Environment
+          Value: ${self:provider.stage}
+        - Key: Service
+          Value: ${self:custom.service}
+        - Key: ManagedBy
+          Value: CloudFormation
+
+  RedisCacheSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: !Sub "${self:custom.service}-${self:provider.stage} security group for Redis cluster"
+      VpcId: 
+        Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-vpc-id
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 6379
+          ToPort: 6379
+          SourceSecurityGroupId:
+            Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-lambda-sg-id
+          Description: Redis access from Lambda functions
+      SecurityGroupEgress:
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 0.0.0.0/0
+          Description: Allow HTTPS outbound for Redis backups
+      Tags:
+        - Key: Environment
+          Value: ${self:provider.stage}
+        - Key: Service
+          Value: ${self:custom.service}
+        - Key: ManagedBy
+          Value: CloudFormation
+
+  RedisParameterGroup:
+    Type: AWS::ElastiCache::ParameterGroup
+    Properties:
+      CacheParameterGroupFamily: redis6.x
+      Description: !Sub "${self:custom.service}-${self:provider.stage} parameter group for Redis cluster"
+      Properties:
+        #maxmemory-policy: volatile-lru
+        timeout: 300
+        notify-keyspace-events: "Ex"
+        #maxmemory-samples: 10
+        activedefrag: "yes"
+        #maxmemory: "75%"
+        tcp-keepalive: 300
+      Tags:
+        - Key: Environment
+          Value: ${self:provider.stage}
+        - Key: Service
+          Value: ${self:custom.service}
+
+  RedisBackupBucket:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Retain
+    Properties:
+      BucketName: !Sub "${self:custom.service}-${self:provider.stage}-redis-backups-bucket"
+      VersioningConfiguration:
+        Status: Enabled
+      LifecycleConfiguration:
+        Rules:
+          - Id: AutoDelete
+            Status: Enabled
+            ExpirationInDays: 30
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: aws:kms
+              KMSMasterKeyID:
+                Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-system-kms-key-arn
+      Tags:
+        - Key: Environment
+          Value: ${self:provider.stage}
+        - Key: Service
+          Value: ${self:custom.service}
+
+  RedisCluster:
+    Type: AWS::ElastiCache::ReplicationGroup
+    Properties:
+      ReplicationGroupId: !Sub "${self:custom.service}-${self:provider.stage}-redis"
+      ReplicationGroupDescription: !Sub "${self:custom.service}-${self:provider.stage} Redis cluster for session management"
+      Engine: redis
+      EngineVersion: "6.x"
+      CacheNodeType: ${self:custom.redis.instanceType}
+      NumCacheClusters: 2
+      AutomaticFailoverEnabled: true
+      MultiAZEnabled: true
+      CacheParameterGroupName: !Ref RedisParameterGroup
+      CacheSubnetGroupName: !Ref RedisSubnetGroup
+      SecurityGroupIds:
+        - !Ref RedisCacheSecurityGroup
+      AtRestEncryptionEnabled: true
+      TransitEncryptionEnabled: true
+      KmsKeyId: 
+        Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-system-kms-key-arn
+      SnapshotRetentionLimit: 7
+      SnapshotWindow: "00:00-01:00"
+      #MaintenanceWindow: "sun:01:00-sun:02:00"
+      Port: 6379
+      PreferredCacheClusterAZs:
+        - !Select [0, !GetAZs ""]
+        - !Select [1, !GetAZs ""]
+      Tags:
+        - Key: Environment
+          Value: ${self:provider.stage}
+        - Key: Service
+          Value: ${self:custom.service}
+        - Key: ManagedBy
+          Value: CloudFormation
+
+  # CloudWatch Alarms
+  RedisCPUAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub "${self:custom.service}-${self:provider.stage}-redis-cpu"
+      AlarmDescription: Redis cluster CPU utilization exceeds threshold
+      MetricName: CPUUtilization
+      Namespace: AWS/ElastiCache
+      Statistic: Average
+      Period: 300
+      EvaluationPeriods: 2
+      Threshold: 75
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: breaching
+      Dimensions:
+        - Name: CacheClusterId
+          Value: !Ref RedisCluster
+      AlarmActions:
+        - Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-high-priority-topic-arn
+
+  RedisMemoryAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub "${self:custom.service}-${self:provider.stage}-redis-memory"
+      AlarmDescription: Redis cluster memory usage exceeds threshold
+      MetricName: DatabaseMemoryUsagePercentage
+      Namespace: AWS/ElastiCache
+      Statistic: Average
+      Period: 300
+      EvaluationPeriods: 2
+      Threshold: 80
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: breaching
+      Dimensions:
+        - Name: CacheClusterId
+          Value: !Ref RedisCluster
+      AlarmActions:
+        - Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-high-priority-topic-arn
+
+  RedisConnectionsAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub "${self:custom.service}-${self:provider.stage}-redis-connections"
+      AlarmDescription: Redis cluster current connections exceeds threshold
+      MetricName: CurrConnections
+      Namespace: AWS/ElastiCache
+      Statistic: Average
+      Period: 300
+      EvaluationPeriods: 2
+      Threshold: 1000
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching
+      Dimensions:
+        - Name: CacheClusterId
+          Value: !Ref RedisCluster
+      AlarmActions:
+        - Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-high-priority-topic-arn
+
+  RedisReplicationLagAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub "${self:custom.service}-${self:provider.stage}-redis-replication-lag"
+      AlarmDescription: Redis cluster replication lag exceeds threshold
+      MetricName: ReplicationLag
+      Namespace: AWS/ElastiCache
+      Statistic: Average
+      Period: 300
+      EvaluationPeriods: 2
+      Threshold: 1000
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: breaching
+      Dimensions:
+        - Name: CacheClusterId
+          Value: !Ref RedisCluster
+      AlarmActions:
+        - Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-high-priority-topic-arn
+
+Outputs:
+  RedisEndpoint:
+    Description: Redis primary endpoint
+    Value: !GetAtt RedisCluster.PrimaryEndPoint.Address
+    Export:
+      Name: ${self:custom.service}-${self:provider.stage}-redis-endpoint
+
+  RedisPort:
+    Description: Redis port
+    Value: !GetAtt RedisCluster.PrimaryEndPoint.Port
+    Export:
+      Name: ${self:custom.service}-${self:provider.stage}-redis-port
+
+  RedisSecurityGroupId:
+    Description: Redis security group ID
+    Value: !Ref RedisCacheSecurityGroup
+    Export:
+      Name: ${self:custom.service}-${self:provider.stage}-redis-cache-sg-id
+
+  RedisConnectionString:
+    Description: Redis connection string with protocol
+    Value: !Sub "redis://${RedisCluster.PrimaryEndPoint.Address}:${RedisCluster.PrimaryEndPoint.Port}"
+    Export:
+      Name: ${self:custom.service}-${self:provider.stage}-redis-connection-string

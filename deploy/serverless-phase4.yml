@@ -1,0 +1,474 @@
+service: espectra-backend-phase4
+
+provider:
+  name: aws
+  runtime: nodejs20.x
+  stage: ${opt:stage, 'dev'}
+  region: ${opt:region, 'us-east-1'}
+  memorySize: 1024
+  timeout: 29
+  logRetentionInDays: 14
+
+  websocket:
+    apiId: !Ref WebSocketApi
+    stage: ${self:provider.stage}
+
+  apiGateway:
+    restApiId: !Ref RestApi
+    restApiRootResourceId: !GetAtt RestApi.RootResourceId
+
+  tracing:
+    lambda: true
+    #apiGateway: true
+
+  # logs:
+  #   restApi:
+  #     accessLogging: true
+  #     executionLogging: true
+  #     level: INFO
+  #     fullExecutionData: true
+  vpc:
+    securityGroupIds:
+      - Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-lambda-sg-id
+    subnetIds:
+      - Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-public-subnet-1-id
+      - Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-public-subnet-2-id
+      
+  environment:
+    # System Variables
+    STAGE: ${self:provider.stage}
+    REGION: ${self:provider.region}
+    SERVICE_NAME: ${self:custom.service}
+    NODE_ENV: ${self:provider.stage}
+    LOG_LEVEL: ${self:custom.logLevel.${self:provider.stage}}
+    API_VERSION: "v1"
+    
+    # Cognito Variables
+    COGNITO_USER_POOL_ID: 
+      Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-user-pool-id
+    COGNITO_CLIENT_ID:
+      Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-user-pool-client-id
+
+    # Message Queue URLs
+    MESSAGE_QUEUE_URL:
+      Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-message-queue-url
+    MESSAGE_DLQ_URL:
+      Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-message-dlq-url
+    HANDOFF_QUEUE_URL:
+      Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-handoff-queue-url
+
+    # DynamoDB Tables
+    CONNECTION_TABLE:
+      Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-connections-table-name
+    CHAT_HISTORY_TABLE:
+      Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-chat-history-table-name
+    CONTEXT_TABLE:
+      Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-context-table-name
+    TOKEN_TABLE:
+      Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-tokens-table-name
+    # HANDOFF_TABLE:
+    #   Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-handoff-table-name
+
+    # Botpress Configuration
+    BOTPRESS_API_URL: ${ssm:/espectra/${self:provider.stage}/botpress-api-url}
+    BOTPRESS_BOT_ID: ${ssm:/espectra/${self:provider.stage}/botpress-bot-id}
+    BOTPRESS_API_KEY: ${ssm:/espectra/${self:provider.stage}/botpress-api-key}
+    BOTPRESS_WORKSPACE_ID: ${ssm:/espectra/${self:provider.stage}/botpress-workspace-id}
+    BOTPRESS_EVENT_BUS:
+      Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-eventbus-name
+
+    # WebSocket
+    WEBSOCKET_API_ENDPOINT: ${self:custom.service}-${self:provider.stage}-websocket-endpoint
+
+    # Redis Configuration
+    REDIS_HOST:
+      Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-redis-endpoint
+    REDIS_PORT:
+      Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-redis-port
+
+custom:
+  service: espectra-backend
+  
+  logRetentionInDays: 14
+  
+  logLevel:
+    dev: 'DEBUG'
+    staging: 'INFO'
+    prod: 'WARN'
+
+  # KMS Keys
+  kms:
+    systemKeyId: ${cf:${self:custom.service}-kms-${self:provider.stage}.SystemKMSKeyId}
+    systemKeyArn: ${cf:${self:custom.service}-kms-${self:provider.stage}.SystemKMSKeyArn}
+    secretsKeyId: ${cf:${self:custom.service}-kms-${self:provider.stage}.SecretsKMSKeyId}
+    secretsKeyArn: ${cf:${self:custom.service}-kms-${self:provider.stage}.SecretsKMSKeyArn}
+    websocketKeyId: ${cf:${self:custom.service}-kms-${self:provider.stage}.WebSocketKMSKeyId}
+    websocketKeyArn: ${cf:${self:custom.service}-kms-${self:provider.stage}.WebSocketKMSKeyArn}
+
+  # SNS Topics
+  snsHighPriorityTopic: ${ssm:/espectra/${self:provider.stage}/sns/high-priority-topic}
+  snsMediumPriorityTopic: ${ssm:/espectra/${self:provider.stage}/sns/medium-priority-topic}
+  snsLowPriorityTopic: ${ssm:/espectra/${self:provider.stage}/sns/low-priority-topic}
+
+  # Handoff Configuration
+  handoff:
+    maxQueueSize: 100
+    maxWaitTime: 300
+
+  # Alarm Thresholds
+  alarmThresholds:
+    api:
+      latency: 1000
+      4xxErrors: 5
+      5xxErrors: 1
+    websocket:
+      connections: 2000
+
+  apiGatewayWebsocket:
+    minimumCompressionSize: 1024
+    websocketApiId: !Ref WebSocketApi
+    stage: ${self:provider.stage}
+
+plugins:
+  - serverless-iam-roles-per-function
+  #- serverless-domain-manager
+  - serverless-prune-plugin
+  - serverless-plugin-tracing
+
+package:
+  individually: true
+  patterns:
+    - "!./**"
+    - "!node_modules/**"
+    - "node_modules/@aws-sdk/**"
+    - "node_modules/@smithy/**"
+    - "node_modules/aws-sdk/**"
+    - "node_modules/@aws-sdk/types/**"
+    - "node_modules/tslib/**"
+    - "node_modules/uuid/**"
+    - "node_modules/aws-jwt-verify/**"
+    - "node_modules/fast-xml-parser/**"
+    - "node_modules/strnum/**"
+    - "node_modules/mnemonist/**"
+    - "!node_modules/@types/**"
+    - "../services/**/*.ts"
+    - "../services/**/*.js"
+    - "../shared/**/*.ts"
+    - "../shared/**/*.js"
+    - "!.build/**"
+    - "!.serverless/**"
+    - "!.git/**"
+    - "!*.test.ts"
+
+functions:
+  # Auth Functions
+  restAuthorizer:
+    handler: services/auth/handlers/authorizer.handler
+    name: ${self:custom.service}-${self:provider.stage}-rest-authorizer
+    memorySize: 256
+    environment:
+      COGNITO_USER_POOL_ID: 
+        Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-user-pool-id
+      COGNITO_CLIENT_ID: 
+        Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-user-pool-client-id
+
+  register:
+    handler: services/auth/handlers/register.handler
+    name: ${self:custom.service}-${self:provider.stage}-register
+    events:
+      - http:
+          path: auth/register
+          method: post
+          cors: true
+          restApi:
+            id: !Ref RestApi
+    environment:
+      ALLOWED_ORIGINS: '*'
+      PASSWORD_MIN_LENGTH: '8'
+      USER_POOL_REGION: ${self:provider.region}
+      USER_POOL_ID:
+        Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-user-pool-id
+
+  login:
+    handler: services/auth/handlers/login.handler
+    name: ${self:custom.service}-${self:provider.stage}-login
+    events:
+      - http:
+          path: auth/login
+          method: post
+          cors: true
+          restApi:
+            id: !Ref RestApi
+
+  refreshToken:
+    handler: services/auth/handlers/refreshToken.handler
+    name: ${self:custom.service}-${self:provider.stage}-refreshToken
+    events:
+      - http:
+          path: auth/refresh-token
+          method: post
+          cors: true
+          restApi:
+            id: !Ref RestApi
+
+  logout:
+    handler: services/auth/handlers/logout.handler
+    name: ${self:custom.service}-${self:provider.stage}-logout
+    events:
+      - http:
+          path: auth/logout
+          method: post
+          cors: true
+          authorizer:
+            name: restAuthorizer
+          restApi:
+            id: !Ref RestApi
+
+  # WebSocket Functions
+  wsAuthorizer:
+    handler: services/websocket/handlers/authorizer.handler
+    name: ${self:custom.service}-${self:provider.stage}-websocket-authorizer
+    memorySize: 256
+    timeout: 29
+    environment:
+      COGNITO_USER_POOL_ID: 
+        Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-user-pool-id
+      COGNITO_CLIENT_ID: 
+        Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-user-pool-client-id
+
+  webSocketConnect:
+    handler: services/websocket/handlers/connect.handler
+    name: ${self:custom.service}-${self:provider.stage}-webSocketConnect
+    events:
+      - websocket:
+          route: $connect
+          authorizer:
+            name: wsAuthorizer
+            identitySource:
+              - 'route.request.querystring.Auth'
+          websocketApi:
+            id: !Ref WebSocketApi
+
+  webSocketDisconnect:
+    handler: services/websocket/handlers/disconnect.handler
+    name: ${self:custom.service}-${self:provider.stage}-webSocketDisconnect
+    events:
+      - websocket:
+          route: $disconnect
+          websocketApi:
+            id: !Ref WebSocketApi
+
+  webSocketMessage:
+    handler: services/websocket/handlers/message.handler
+    name: ${self:custom.service}-${self:provider.stage}-webSocketMessage
+    events:
+      - websocket:
+          route: $default
+          websocketApi:
+            id: !Ref WebSocketApiñ
+
+  # Botpress Integration Functions
+  botpressWebhook:
+    handler: services/botpress/handlers/webhook.handler
+    name: ${self:custom.service}-${self:provider.stage}-botpress-webhook
+    events:
+      - http:
+          path: /botpress/webhook
+          method: post
+          cors: true
+          restApi:
+            id: !Ref RestApi
+    environment:
+      BOTPRESS_API_KEY: ${ssm:/espectra/${self:provider.stage}/botpress-api-key}
+    aliases:
+      - name: webhook-concurrency-${self:provider.stage}
+        provisionedConcurrency: 2
+
+  processMessage:
+    handler: services/botpress/handlers/message/process-message.handler
+    name: ${self:custom.service}-${self:provider.stage}-process-message
+    events:
+      - sqs:
+          arn:
+            Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-message-queue-arn
+          batchSize: 1
+          functionResponseType: ReportBatchItemFailures
+
+  # Handoff Functions
+  handoffRequest:
+    handler: services/botpress/handlers/handoff/request.handler
+    name: ${self:custom.service}-${self:provider.stage}-handoff-request
+    events:
+      - http:
+          path: /handoff/request
+          method: post
+          authorizer:
+            name: restAuthorizer
+          cors: true
+          restApi:
+            id: !Ref RestApi
+    aliases:
+      - name: request-concurrency-${self:provider.stage}
+        provisionedConcurrency: 2
+
+  handoffAccept:
+    handler: services/botpress/handlers/handoff/accept.handler
+    name: ${self:custom.service}-${self:provider.stage}-handoff-accept
+    events:
+      - http:
+          path: /handoff/accept
+          method: post
+          authorizer:
+            name: restAuthorizer
+          cors: true
+          restApi:
+            id: !Ref RestApi
+    aliases:
+      - name: accept-concurrency-${self:provider.stage}
+        provisionedConcurrency: 2
+
+  # Session Management Functions
+  startSession:
+    handler: services/session/handlers/start.handler
+    name: ${self:custom.service}-${self:provider.stage}-start-session
+    events:
+      - http:
+          path: /session/start
+          method: post
+          authorizer:
+            name: restAuthorizer
+          cors: true
+          restApi:
+            id: !Ref RestApi
+
+  endSession:
+    handler: services/session/handlers/end.handler
+    name: ${self:custom.service}-${self:provider.stage}-end-session
+    events:
+      - http:
+          path: /session/end
+          method: post
+          authorizer:
+            name: restAuthorizer
+          cors: true
+          restApi:
+            id: !Ref RestApi
+
+  # Metrics Functions
+  metricsCollector:
+    handler: services/metrics/handlers/collector.handler
+    name: ${self:custom.service}-${self:provider.stage}-metrics-collector
+    events:
+      - schedule: rate(1 minute)
+    environment:
+      METRICS_NAMESPACE: ${self:custom.service}/${self:provider.stage}
+      BOTPRESS_METRICS_TABLE:
+        Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-metrics-table-name
+
+resources:
+  - ${file(../infrastructure/apigateway/api.yml)}
+  - ${file(../infrastructure/apigateway/chat-api-routes.yml)}
+  
+  - ${file(../infrastructure/security/waf.yml)}
+
+  - ${file(../infrastructure/websocket/websocket.yml)}
+  - ${file(../infrastructure/security/websocket-security.yml)}
+
+outputs:
+  ApiId:
+    Description: REST API Id
+    Value: !Ref RestApi
+    Export:
+      Name: ${self:custom.service}-${self:provider.stage}-rest-api-id
+
+  RestApiRootResourceId:
+    Description: REST API Root Resource Id
+    Value: !GetAtt RestApi.RootResourceId
+    Export:
+      Name: ${self:custom.service}-${self:provider.stage}-rest-api-root-resource-id
+
+  ApiEndpoint:
+    Description: API Gateway endpoint URL
+    Value: !Sub https://${RestApi}.execute-api.${AWS::Region}.amazonaws.com/${self:provider.stage}
+    Export:
+      Name: ${self:custom.service}-${self:provider.stage}-api-endpoint
+
+  RestApiAuthorizerId:
+    Description: REST API Authorizer ID
+    Value: !Ref RestApiAuthorizer
+    Export:
+      Name: ${self:custom.service}-${self:provider.stage}-rest-authorizer-id
+      
+  ChatResourceId:
+    Description: Chat Resource ID
+    Value: !Ref ChatResource
+    Export:
+      Name: ${self:custom.service}-${self:provider.stage}-chat-resource-id
+
+  SessionsResourceId:
+    Description: Sessions Resource ID
+    Value: !Ref SessionsResource
+    Export:
+      Name: ${self:custom.service}-${self:provider.stage}-sessions-resource-id
+
+  MessagesResourceId:
+    Description: Messages Resource ID
+    Value: !Ref MessagesResource
+    Export:
+      Name: ${self:custom.service}-${self:provider.stage}-messages-resource-id
+
+  HandoffResourceId:
+    Description: Handoff Resource ID
+    Value: !Ref HandoffResource
+    Export:
+      Name: ${self:custom.service}-${self:provider.stage}-handoff-resource-id
+      
+  WebACLId:
+    Description: ID of the Web ACL
+    Value: !GetAtt SpectraWebACL.Id
+    Export:
+      Name: ${self:custom.service}-${self:provider.stage}-waf-id
+
+  WebACLArn:
+    Description: ARN of the Web ACL
+    Value: !GetAtt SpectraWebACL.Arn
+    Export:
+      Name: ${self:custom.service}-${self:provider.stage}-waf-arn
+
+  IPSetId:
+    Description: ID of the IP Set
+    Value: !Ref IPSet
+    Export:
+      Name: ${self:custom.service}-${self:provider.stage}-ipset-id
+
+  WafLogGroupName:
+    Description: Name of the WAF Log Group
+    Value: !Ref WafLogGroup
+    Export:
+      Name: ${self:custom.service}-${self:provider.stage}-waf-log-group
+
+  WebSocketIPSetId:
+    Description: WebSocket IP Set ID
+    Value: !Ref WebSocketIPSet
+    Export:
+      Name: ${self:custom.service}-${self:provider.stage}-websocket-ipset-id
+      
+  WebSocketApiId:
+    Description: WebSocket API ID
+    Value: !Ref WebSocketApi
+    Export:
+      Name: ${self:custom.service}-${self:provider.stage}-websocket-api-id
+
+  WebSocketApiEndpoint:
+    Description: WebSocket API Endpoint
+    Value: !Sub wss://${WebSocketApi}.execute-api.${AWS::Region}.amazonaws.com/${self:provider.stage}
+    Export:
+      Name: ${self:custom.service}-${self:provider.stage}-websocket-endpoint
+
+  WebSocketStageArn:
+    Description: WebSocket Stage ARN
+    Value: !Sub arn:aws:apigateway:${AWS::Region}::/apis/${WebSocketApi}/stages/${self:provider.stage}
+    Export:
+      Name: ${self:custom.service}-${self:provider.stage}-websocket-stage-arn
+
+# ConnectionRequestModel:

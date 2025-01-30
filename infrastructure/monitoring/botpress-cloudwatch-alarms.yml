@@ -1,0 +1,215 @@
+Resources:
+  # Composite Alarms
+  BotpressHealthAlarm:
+    Type: AWS::CloudWatch::CompositeAlarm
+    Properties:
+      AlarmName: ${self:custom.service}-${self:provider.stage}-botpress-health
+      AlarmDescription: Overall Botpress service health status
+      AlarmRule: !Sub |
+        ALARM(${BotpressErrorRateAlarm}) OR
+        ALARM(${BotpressLatencyAlarm}) OR
+        ALARM(${HandoffQueueSizeAlarm}) OR
+        ALARM(${TokenLimitAlarm})
+      AlarmActions:
+        - ${self:custom.snsHighPriorityTopic}
+      OKActions:
+        - ${self:custom.snsHighPriorityTopic}
+      Tags:
+        - Key: Service
+          Value: ${self:custom.service}
+        - Key: Environment
+          Value: ${self:provider.stage}
+        - Key: Component
+          Value: Botpress
+        - Key: MonitoringLevel
+          Value: High
+
+  # Error Rate Alarms
+  BotpressErrorRateAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: ${self:custom.service}-${self:provider.stage}-botpress-error-rate
+      AlarmDescription: !Sub "Botpress error rate exceeds ${self:custom.botpressAlarmThresholds.errorRate}%"
+      MetricName: ErrorRate
+      Namespace: Spectra/Botpress
+      Statistic: Average
+      Period: ${self:custom.botpressAlarmThresholds.period}
+      EvaluationPeriods: 2
+      DatapointsToAlarm: 2
+      Threshold: ${self:custom.botpressAlarmThresholds.errorRate}
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching
+      AlarmActions:
+        - ${self:custom.snsHighPriorityTopic}
+      Tags:
+        - Key: Service
+          Value: ${self:custom.service}
+        - Key: Environment
+          Value: ${self:provider.stage}
+        - Key: Component
+          Value: Botpress
+        - Key: MonitoringLevel
+          Value: High
+
+  # Latency Alarms
+  BotpressLatencyAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: ${self:custom.service}-${self:provider.stage}-botpress-latency
+      AlarmDescription: !Sub "Botpress response latency exceeds ${self:custom.botpressAlarmThresholds.latency}ms"
+      MetricName: MessageLatency
+      Namespace: Spectra/Botpress
+      ExtendedStatistic: p95
+      Period: ${self:custom.botpressAlarmThresholds.period}
+      EvaluationPeriods: 2
+      DatapointsToAlarm: 2
+      Threshold: ${self:custom.botpressAlarmThresholds.latency}
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching
+      AlarmActions:
+        - ${self:custom.snsMediumPriorityTopic}
+      Tags:
+        - Key: Service
+          Value: ${self:custom.service}
+        - Key: Environment
+          Value: ${self:provider.stage}
+        - Key: Component
+          Value: Botpress
+        - Key: MonitoringLevel
+          Value: Medium
+
+  # Handoff Alarms
+  HandoffQueueSizeAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: ${self:custom.service}-${self:provider.stage}-handoff-queue-size
+      AlarmDescription: !Sub "Handoff queue size exceeds ${self:custom.botpressAlarmThresholds.handoffQueueSize} messages"
+      MetricName: HandoffQueueSize
+      Namespace: Spectra/Botpress
+      Statistic: Maximum
+      Period: ${self:custom.botpressAlarmThresholds.period}
+      EvaluationPeriods: 2
+      DatapointsToAlarm: 2
+      Threshold: ${self:custom.botpressAlarmThresholds.handoffQueueSize}
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching
+      AlarmActions:
+        - ${self:custom.snsMediumPriorityTopic}
+      Tags:
+        - Key: Service
+          Value: ${self:custom.service}
+        - Key: Environment
+          Value: ${self:provider.stage}
+        - Key: Component
+          Value: Botpress
+        - Key: MonitoringLevel
+          Value: Medium
+
+  HandoffLatencyAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: ${self:custom.service}-${self:provider.stage}-handoff-latency
+      AlarmDescription: !Sub "Handoff process latency exceeds ${self:custom.botpressAlarmThresholds.handoffLatency}ms"
+      MetricName: HandoffLatency
+      Namespace: Spectra/Botpress
+      ExtendedStatistic: p95
+      Period: ${self:custom.botpressAlarmThresholds.period}
+      EvaluationPeriods: 2
+      DatapointsToAlarm: 2
+      Threshold: ${self:custom.botpressAlarmThresholds.handoffLatency}
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching
+      AlarmActions:
+        - ${self:custom.snsMediumPriorityTopic}
+      Tags:
+        - Key: Service
+          Value: ${self:custom.service}
+        - Key: Environment
+          Value: ${self:provider.stage}
+        - Key: Component
+          Value: Botpress
+        - Key: MonitoringLevel
+          Value: Medium
+
+  # Token Usage Alarms
+  TokenLimitAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: ${self:custom.service}-${self:provider.stage}-token-usage
+      AlarmDescription: !Sub "Token usage exceeds ${self:custom.botpressAlarmThresholds.tokenUsage}% of limit"
+      MetricName: TokenUsagePercentage
+      Namespace: Spectra/Botpress
+      Statistic: Maximum
+      Period: ${self:custom.botpressAlarmThresholds.period}
+      EvaluationPeriods: 1
+      Threshold: ${self:custom.botpressAlarmThresholds.tokenUsage}
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching
+      AlarmActions:
+        - ${self:custom.snsHighPriorityTopic}
+      Tags:
+        - Key: Service
+          Value: ${self:custom.service}
+        - Key: Environment
+          Value: ${self:provider.stage}
+        - Key: Component
+          Value: Botpress
+        - Key: MonitoringLevel
+          Value: High
+
+  # Business Metrics Alarms
+  HandoffSuccessRateAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: ${self:custom.service}-${self:provider.stage}-handoff-success-rate
+      AlarmDescription: !Sub "Handoff success rate below ${self:custom.botpressAlarmThresholds.handoffSuccessRate}%"
+      MetricName: HandoffSuccessRate
+      Namespace: Spectra/Botpress
+      Statistic: Average
+      Period: ${self:custom.botpressAlarmThresholds.period}
+      EvaluationPeriods: 2
+      DatapointsToAlarm: 2
+      Threshold: ${self:custom.botpressAlarmThresholds.handoffSuccessRate}
+      ComparisonOperator: LessThanThreshold
+      TreatMissingData: notBreaching
+      AlarmActions:
+        - ${self:custom.snsMediumPriorityTopic}
+      Tags:
+        - Key: Service
+          Value: ${self:custom.service}
+        - Key: Environment
+          Value: ${self:provider.stage}
+        - Key: Component
+          Value: Botpress
+        - Key: MonitoringLevel
+          Value: Medium
+
+Outputs:
+  BotpressHealthAlarmArn:
+    Description: ARN of the Botpress health composite alarm
+    Value: !GetAtt BotpressHealthAlarm.Arn
+    Export:
+      Name: ${self:custom.service}-${self:provider.stage}-botpress-health-alarm-arn
+
+  BotpressHighPriorityAlarms:
+    Description: List of Botpress high priority alarm ARNs
+    Value:
+      Fn::Join:
+        - ","
+        - - !GetAtt BotpressHealthAlarm.Arn
+          - !GetAtt BotpressErrorRateAlarm.Arn
+          - !GetAtt TokenLimitAlarm.Arn
+    Export:
+      Name: ${self:custom.service}-${self:provider.stage}-botpress-high-priority-alarms
+
+  BotpressMediumPriorityAlarms:
+    Description: List of Botpress medium priority alarm ARNs
+    Value:
+      Fn::Join:
+        - ","
+        - - !GetAtt BotpressLatencyAlarm.Arn
+          - !GetAtt HandoffQueueSizeAlarm.Arn
+          - !GetAtt HandoffLatencyAlarm.Arn
+          - !GetAtt HandoffSuccessRateAlarm.Arn
+    Export:
+      Name: ${self:custom.service}-${self:provider.stage}-botpress-medium-priority-alarms

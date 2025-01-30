@@ -2,7 +2,8 @@ Resources:
   IamRoleLambdaExecution:
     Type: AWS::IAM::Role
     Properties:
-      RoleName: ${self:service}-${self:provider.stage}-lambda-role
+      RoleName: ${self:custom.service}-${self:provider.stage}-lambda-role
+      Description: IAM role for Lambda functions in ${self:custom.service}-${self:provider.stage}
       AssumeRolePolicyDocument:
         Version: '2012-10-17'
         Statement:
@@ -14,7 +15,7 @@ Resources:
         - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
         - arn:aws:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole
       Policies:
-        - PolicyName: ${self:service}-${self:provider.stage}-lambda-policy
+        - PolicyName: ${self:custom.service}-${self:provider.stage}-lambda-policy
           PolicyDocument:
             Version: '2012-10-17'
             Statement:
@@ -29,7 +30,7 @@ Resources:
                   - cognito-idp:AdminGetUser
                   - cognito-idp:ListUsers
                 Resource: 
-                  - !Sub arn:aws:cognito-idp:${AWS::Region}:${AWS::AccountId}:userpool/*
+                  - Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-user-pool-arn
               - Effect: Allow
                 Action:
                   - dynamodb:PutItem
@@ -38,30 +39,60 @@ Resources:
                   - dynamodb:DeleteItem
                   - dynamodb:Query
                   - dynamodb:Scan
+                  - dynamodb:BatchGetItem
+                  - dynamodb:BatchWriteItem
                 Resource:
-                  - !Sub arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${self:service}-${self:provider.stage}-*
+                  - !Sub arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${self:custom.service}-${self:provider.stage}-*
+                  - !Sub arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${self:custom.service}-${self:provider.stage}-*/index/*
               - Effect: Allow
                 Action:
                   - xray:PutTraceSegments
                   - xray:PutTelemetryRecords
                 Resource: "*"
+              # Agregar permisos de ElastiCache
+              - Effect: Allow
+                Action:
+                  - elasticache:DescribeCacheClusters
+                  - elasticache:ListTagsForResource
+                Resource: 
+                  - !Sub arn:aws:elasticache:${AWS::Region}:${AWS::AccountId}:*
+              # Agregar permisos de Secrets Manager
+              - Effect: Allow
+                Action:
+                  - secretsmanager:GetSecretValue
+                Resource: 
+                  - !Sub arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:${self:custom.service}/*
+              # Agregar permisos detallados de SQS
+              - Effect: Allow
+                Action:
+                  - sqs:SendMessage
+                  - sqs:ReceiveMessage
+                  - sqs:DeleteMessage
+                  - sqs:GetQueueAttributes
+                  - sqs:GetQueueUrl
+                Resource:
+                  - !GetAtt MessageQueue.Arn
+                  - !GetAtt MessageDLQ.Arn
+                  - !GetAtt HandoffQueue.Arn
+                  - !GetAtt HandoffDLQ.Arn
 
   WafAssociationLambdaRole:
     Type: AWS::IAM::Role
     Properties:
-      RoleName: ${self:service}-${self:provider.stage}-waf-association-lambda-role
+      RoleName: ${self:custom.service}-${self:provider.stage}-waf-association-lambda-role
+      Description: IAM role for Lambda functions associating WAF with API Gateway in ${self:custom.service}-${self:provider.stage}
       AssumeRolePolicyDocument:
         Version: '2012-10-17'
         Statement:
           - Effect: Allow
             Principal:
-              Service: 
-                - lambda.amazonaws.com
+              Service: lambda.amazonaws.com
             Action: sts:AssumeRole
       ManagedPolicyArns:
         - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole
       Policies:
-        - PolicyName: ${self:service}-${self:provider.stage}-waf-lambda-policy
+        - PolicyName: ${self:custom.service}-${self:provider.stage}-waf-lambda-policy
           PolicyDocument:
             Version: '2012-10-17'
             Statement:
@@ -69,36 +100,140 @@ Resources:
                 Action:
                   - wafv2:AssociateWebACL
                   - wafv2:DisassociateWebACL
-                  - apigateway:GET
                 Resource: '*'
               - Effect: Allow
                 Action:
                   - apigateway:GET
-                  - apigateway:SetWebACL
+                  - apigateway:PUT
+                  - apigateway:POST
+                  - apigateway:PATCH
+                  - apigateway:DELETE
                 Resource: '*'
-  #             - Effect: Allow
-  #               Action:
-  #                 - lambda:GetLayerVersion
-  #                 - lambda:ListLayerVersions
-  #               Resource: 
-  #                 - !Sub 'arn:aws:lambda:${AWS::Region}:017000801446:layer:AWSLambdaPowertoolsTypeScript:*'
-
-  # LambdaLayerPermission:
-  #   Type: AWS::Lambda::LayerVersionPermission
-  #   Properties:
-  #     Action: lambda:GetLayerVersion
-  #     LayerVersionArn: !Sub 'arn:aws:lambda:${AWS::Region}:017000801446:layer:AWSLambdaPowertoolsTypeScript:13'
-  #     Principal: !Ref AWS::AccountId
+              - Effect: Allow
+                Action:
+                  - dynamodb:PutItem
+                  - dynamodb:GetItem
+                  - dynamodb:UpdateItem
+                  - dynamodb:DeleteItem
+                  - dynamodb:Query
+                  - dynamodb:Scan
+                  - dynamodb:BatchGetItem
+                  - dynamodb:BatchWriteItem
+                Resource:
+                  - !Sub arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${self:custom.service}-${self:provider.stage}-*
+                  - !Sub arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${self:custom.service}-${self:provider.stage}-*/index/*
+              - Effect: Allow
+                Action:
+                  - sqs:SendMessage
+                  - sqs:ReceiveMessage
+                  - sqs:DeleteMessage
+                  - sqs:GetQueueAttributes
+                  - sqs:GetQueueUrl
+                Resource:
+                  - !GetAtt MessageQueue.Arn
+                  - !GetAtt MessageDLQ.Arn
+                  - !GetAtt HandoffQueue.Arn
+                  - !GetAtt HandoffDLQ.Arn
+              - Effect: Allow
+                Action:
+                  - events:PutEvents
+                Resource: !GetAtt BotpressEventBus.Arn
+              - Effect: Allow
+                Action:
+                  - cognito-idp:AdminInitiateAuth
+                  - cognito-idp:AdminCreateUser
+                  - cognito-idp:AdminSetUserPassword
+                  - cognito-idp:AdminUpdateUserAttributes
+                  - cognito-idp:AdminDeleteUser
+                  - cognito-idp:AdminGetUser
+                  - cognito-idp:ListUsers
+                Resource:
+                  - Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-user-pool-arn
+              - Effect: Allow
+                Action:
+                  - execute-api:ManageConnections
+                Resource: 
+                  - !Sub arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:*/*/@connections/*
+              - Effect: Allow
+                Action:
+                  - kms:Decrypt
+                  - kms:GenerateDataKey
+                Resource:
+                  - Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-system-kms-key-arn
+                  - Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-secrets-kms-key-arn
+                  - Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-websocket-kms-key-arn
+              - Effect: Allow
+                Action:
+                  - elasticache:DescribeCacheClusters
+                  - elasticache:ListTagsForResource
+                Resource: 
+                  - !Sub arn:aws:elasticache:${AWS::Region}:${AWS::AccountId}:*
+              - Effect: Allow
+                Action:
+                  - secretsmanager:GetSecretValue
+                Resource: 
+                  - !Sub arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:${self:custom.service}/*
+              - Effect: Allow
+                Action:
+                  - xray:PutTraceSegments
+                  - xray:PutTelemetryRecords
+                Resource: "*"
+                
+  MetricsCollectorRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: ${self:custom.service}-${self:provider.stage}-metrics-collector-role
+      Description: IAM role for collecting metrics in ${self:custom.service}-${self:provider.stage}
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: MetricsCollectorPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - cloudwatch:PutMetricData
+                  - cloudwatch:GetMetricData
+                  - cloudwatch:GetMetricStatistics
+                Resource: "*"
+              - Effect: Allow
+                Action:
+                  - ec2:CreateNetworkInterface
+                  - ec2:DescribeNetworkInterfaces
+                  - ec2:DeleteNetworkInterface
+                  - ec2:AssignPrivateIpAddresses
+                  - ec2:UnassignPrivateIpAddresses
+                Resource: "*"
+              - Effect: Allow
+                Action:
+                  - dynamodb:Query
+                  - dynamodb:Scan
+                Resource:
+                  - !Sub arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${self:custom.service}-${self:provider.stage}-*
 
 Outputs:
   LambdaRoleArn:
-    Description: ARN of the lambda execution role
+    Description: ARN of the Lambda execution IAM role
     Value: !GetAtt IamRoleLambdaExecution.Arn
     Export:
-      Name: ${self:service}-${self:provider.stage}-lambda-role-arn
+      Name: ${self:custom.service}-${self:provider.stage}-lambda-role-arn
 
   WafAssociationLambdaRoleArn:
-    Description: ARN of the WAF Association Lambda role
+    Description: ARN of the WAF Association Lambda IAM role
     Value: !GetAtt WafAssociationLambdaRole.Arn
     Export:
-      Name: ${self:service}-${self:provider.stage}-waf-association-lambda-role-arn
+      Name: ${self:custom.service}-${self:provider.stage}-waf-association-lambda-role-arn
+
+  MetricsCollectorRoleArn:
+    Description: ARN of the Metrics Collector IAM role
+    Value: !GetAtt MetricsCollectorRole.Arn
+    Export:
+      Name: ${self:custom.service}-${self:provider.stage}-metrics-collector-role-arn

@@ -1,33 +1,150 @@
-# infrastructure/dynamodb/connection-concierge-tables.yml
 Resources:
-    ConnectionsTable:
-      Type: AWS::DynamoDB::Table
-      Properties:
-        TableName: ${self:service}-${self:provider.stage}-connections
-        BillingMode: PAY_PER_REQUEST
-        AttributeDefinitions:
-          - AttributeName: connectionId
-            AttributeType: S
-          - AttributeName: userId
-            AttributeType: S
-        KeySchema:
-          - AttributeName: connectionId
-            KeyType: HASH
-        GlobalSecondaryIndexes:
-          - IndexName: UserIdIndex
-            KeySchema:
-              - AttributeName: userId
-                KeyType: HASH
-            Projection:
-              ProjectionType: ALL
-        SSESpecification:
-          SSEEnabled: true
-        PointInTimeRecoverySpecification:
-          PointInTimeRecoveryEnabled: true
-        
-    WebSocketApi:
-      Type: AWS::ApiGatewayV2::Api
-      Properties:
-        Name: ${self:service}-websocket-${self:provider.stage}
-        ProtocolType: WEBSOCKET
-        RouteSelectionExpression: $request.body.action
+  ConnectionsTable:
+    Type: AWS::DynamoDB::Table
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      TableName: ${self:custom.service}-${self:provider.stage}-connections
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: connectionId
+          AttributeType: S
+        - AttributeName: userId
+          AttributeType: S
+        - AttributeName: status
+          AttributeType: S
+        - AttributeName: lastActivity
+          AttributeType: S
+      KeySchema:
+        - AttributeName: connectionId
+          KeyType: HASH
+      GlobalSecondaryIndexes:
+        - IndexName: UserIdIndex
+          KeySchema:
+            - AttributeName: userId
+              KeyType: HASH
+          Projection:
+            ProjectionType: ALL
+        - IndexName: StatusActivityIndex
+          KeySchema:
+            - AttributeName: status
+              KeyType: HASH
+            - AttributeName: lastActivity
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+      TimeToLiveSpecification:
+        AttributeName: ttl
+        Enabled: true
+      SSESpecification:
+        SSEEnabled: true
+        SSEType: KMS
+        KMSMasterKeyId: 
+          Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-websocket-kms-key-id
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
+      StreamSpecification:
+        StreamViewType: NEW_AND_OLD_IMAGES
+      Tags:
+        - Key: Service
+          Value: ${self:custom.service}
+        - Key: Environment
+          Value: ${self:provider.stage}
+        - Key: Purpose
+          Value: WebSocketConnections
+        - Key: Component
+          Value: Concierge
+        - Key: ManagedBy
+          Value: CloudFormation
+
+  # CloudWatch Alarms
+  ConnectionsTableThrottlingAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: ${self:custom.service}-${self:provider.stage}-connections-throttling
+      AlarmDescription: Connections table throttled requests exceed threshold
+      MetricName: ThrottledRequests
+      Namespace: AWS/DynamoDB
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 2
+      Threshold: 10
+      ComparisonOperator: GreaterThanThreshold
+      Dimensions:
+        - Name: TableName
+          Value: !Ref ConnectionsTable
+      AlarmActions:
+        - ${self:custom.snsMediumPriorityTopic}
+      Tags:
+        - Key: Service
+          Value: ${self:custom.service}
+        - Key: Environment
+          Value: ${self:provider.stage}
+
+  ConnectionsLatencyAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: ${self:custom.service}-${self:provider.stage}-connections-latency
+      AlarmDescription: Connection operations latency exceeds threshold
+      MetricName: SuccessfulRequestLatency
+      Namespace: AWS/DynamoDB
+      Statistic: Maximum
+      Period: 300
+      EvaluationPeriods: 3
+      Threshold: 100
+      ComparisonOperator: GreaterThanThreshold
+      Dimensions:
+        - Name: TableName
+          Value: !Ref ConnectionsTable
+      AlarmActions:
+        - ${self:custom.snsMediumPriorityTopic}
+      Tags:
+        - Key: Service
+          Value: ${self:custom.service}
+        - Key: Environment
+          Value: ${self:provider.stage}
+
+  ActiveConnectionsAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: ${self:custom.service}-${self:provider.stage}-active-connections
+      AlarmDescription: Number of active connections exceeds threshold
+      MetricName: ActiveConnections
+      Namespace: ${self:custom.service}/${self:provider.stage}
+      Statistic: Maximum
+      Period: 300
+      EvaluationPeriods: 2
+      Threshold: 2000
+      ComparisonOperator: GreaterThanThreshold
+      AlarmActions:
+        - ${self:custom.snsMediumPriorityTopic}
+      Tags:
+        - Key: Service
+          Value: ${self:custom.service}
+        - Key: Environment
+          Value: ${self:provider.stage}
+
+Outputs:
+  ConnectionsTableName:
+    Description: Name of the Connections table
+    Value: !Ref ConnectionsTable
+    Export:
+      Name: ${self:custom.service}-${self:provider.stage}-connections-table-name
+
+  ConnectionsTableArn:
+    Description: ARN of the Connections table
+    Value: !GetAtt ConnectionsTable.Arn
+    Export:
+      Name: ${self:custom.service}-${self:provider.stage}-connections-table-arn
+
+  UserIdIndexName:
+    Description: Name of the UserId GSI
+    Value: UserIdIndex
+    Export:
+      Name: ${self:custom.service}-${self:provider.stage}-connections-userid-index-name
+
+  StatusActivityIndexName:
+    Description: Name of the Status Activity GSI
+    Value: StatusActivityIndex
+    Export:
+      Name: ${self:custom.service}-${self:provider.stage}-connections-status-activity-index-name

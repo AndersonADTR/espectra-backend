@@ -1,47 +1,240 @@
-# infrastructure/queues/message-queues.yml
 Resources:
   MessageQueue:
     Type: AWS::SQS::Queue
     Properties:
-      QueueName: ${self:service}-${self:provider.stage}-messages.fifo
+      QueueName: ${self:custom.service}-${self:provider.stage}-messages.fifo
       FifoQueue: true
       ContentBasedDeduplication: true
       VisibilityTimeout: 60
+      MessageRetentionPeriod: 345600 # 4 días
       RedrivePolicy:
         deadLetterTargetArn: !GetAtt MessageDLQ.Arn
         maxReceiveCount: 3
+      KmsMasterKeyId: ${self:custom.kms.systemKeyArn}
+      Tags:
+        - Key: Service
+          Value: ${self:custom.service}
+        - Key: Environment
+          Value: ${self:provider.stage}
+        - Key: Purpose
+          Value: Messages
+        - Key: Component
+          Value: Messaging
+        - Key: ManagedBy
+          Value: CloudFormation
 
   MessageDLQ:
     Type: AWS::SQS::Queue
     Properties:
-      QueueName: ${self:service}-${self:provider.stage}-messages-dlq.fifo
+      QueueName: ${self:custom.service}-${self:provider.stage}-messages-dlq.fifo
       FifoQueue: true
       MessageRetentionPeriod: 1209600 # 14 días
+      KmsMasterKeyId: ${self:custom.kms.systemKeyArn}
+      Tags:
+        - Key: Service
+          Value: ${self:custom.service}
+        - Key: Environment
+          Value: ${self:provider.stage}
+        - Key: Purpose
+          Value: DLQ
+        - Key: Component
+          Value: Messaging
+        - Key: ManagedBy
+          Value: CloudFormation
 
-  MessageQueuePolicy:
+  HandoffQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: ${self:custom.service}-${self:provider.stage}-handoff.fifo
+      FifoQueue: true
+      ContentBasedDeduplication: true
+      VisibilityTimeout: ${self:custom.handoff.maxWaitTime}
+      MessageRetentionPeriod: 3600 # 1 hora
+      RedrivePolicy:
+        deadLetterTargetArn: !GetAtt HandoffDLQ.Arn
+        maxReceiveCount: 3
+      KmsMasterKeyId: ${self:custom.kms.systemKeyArn}
+      Tags:
+        - Key: Service
+          Value: ${self:custom.service}
+        - Key: Environment
+          Value: ${self:provider.stage}
+        - Key: Purpose
+          Value: Handoff
+        - Key: Component
+          Value: Messaging
+        - Key: ManagedBy
+          Value: CloudFormation
+
+  HandoffDLQ:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: ${self:custom.service}-${self:provider.stage}-handoff-dlq.fifo
+      FifoQueue: true
+      MessageRetentionPeriod: 86400 # 1 día
+      KmsMasterKeyId: ${self:custom.kms.systemKeyArn}
+      Tags:
+        - Key: Service
+          Value: ${self:custom.service}
+        - Key: Environment
+          Value: ${self:provider.stage}
+        - Key: Purpose
+          Value: DLQ
+        - Key: Component
+          Value: Messaging
+        - Key: ManagedBy
+          Value: CloudFormation
+
+  QueuePolicy:
     Type: AWS::SQS::QueuePolicy
     Properties:
       Queues:
         - !Ref MessageQueue
+        - !Ref HandoffQueue
       PolicyDocument:
         Version: "2012-10-17"
         Statement:
           - Effect: Allow
             Principal:
-              Service: lambda.amazonaws.com
+              Service: 
+                - lambda.amazonaws.com
+                - events.amazonaws.com
             Action:
               - sqs:SendMessage
               - sqs:ReceiveMessage
               - sqs:DeleteMessage
               - sqs:GetQueueAttributes
-            Resource: !GetAtt MessageQueue.Arn
+            Resource: 
+              - !GetAtt MessageQueue.Arn
+              - !GetAtt HandoffQueue.Arn
+
+  # CloudWatch Alarms for Main Queues
+  MessageQueueDepthAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: ${self:custom.service}-${self:provider.stage}-message-queue-depth
+      AlarmDescription: Alert when message queue depth is too high
+      MetricName: ApproximateNumberOfMessagesVisible
+      Namespace: AWS/SQS
+      Statistic: Average
+      Period: 300
+      EvaluationPeriods: 2
+      Threshold: 100
+      ComparisonOperator: GreaterThanThreshold
+      Dimensions:
+        - Name: QueueName
+          Value: !GetAtt MessageQueue.QueueName
+      AlarmActions:
+        - ${self:custom.snsMediumPriorityTopic}
+      Tags:
+        - Key: Service
+          Value: ${self:custom.service}
+        - Key: Environment
+          Value: ${self:provider.stage}
+
+  HandoffQueueDepthAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: ${self:custom.service}-${self:provider.stage}-handoff-queue-depth
+      AlarmDescription: Alert when handoff queue depth is too high
+      MetricName: ApproximateNumberOfMessagesVisible
+      Namespace: AWS/SQS
+      Statistic: Average
+      Period: 300
+      EvaluationPeriods: 2
+      Threshold: 50
+      ComparisonOperator: GreaterThanThreshold
+      Dimensions:
+        - Name: QueueName
+          Value: !GetAtt HandoffQueue.QueueName
+      AlarmActions:
+        - ${self:custom.snsMediumPriorityTopic}
+      Tags:
+        - Key: Service
+          Value: ${self:custom.service}
+        - Key: Environment
+          Value: ${self:provider.stage}
+
+  # CloudWatch Alarms for DLQs
+  MessageDLQDepthAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: ${self:custom.service}-${self:provider.stage}-message-dlq-depth
+      AlarmDescription: Alert when messages appear in message DLQ
+      MetricName: ApproximateNumberOfMessagesVisible
+      Namespace: AWS/SQS
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanThreshold
+      Dimensions:
+        - Name: QueueName
+          Value: !GetAtt MessageDLQ.QueueName
+      AlarmActions:
+        - ${self:custom.snsHighPriorityTopic}
+      Tags:
+        - Key: Service
+          Value: ${self:custom.service}
+        - Key: Environment
+          Value: ${self:provider.stage}
+
+  HandoffDLQDepthAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: ${self:custom.service}-${self:provider.stage}-handoff-dlq-depth
+      AlarmDescription: Alert when messages appear in handoff DLQ
+      MetricName: ApproximateNumberOfMessagesVisible
+      Namespace: AWS/SQS
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanThreshold
+      Dimensions:
+        - Name: QueueName
+          Value: !GetAtt HandoffDLQ.QueueName
+      AlarmActions:
+        - ${self:custom.snsHighPriorityTopic}
+      Tags:
+        - Key: Service
+          Value: ${self:custom.service}
+        - Key: Environment
+          Value: ${self:provider.stage}
 
 Outputs:
   MessageQueueUrl:
+    Description: URL of the message queue
     Value: !Ref MessageQueue
     Export:
-      Name: ${self:service}-${self:provider.stage}-message-queue-url
+      Name: ${self:custom.service}-${self:provider.stage}-message-queue-url
+
   MessageQueueArn:
+    Description: ARN of the message queue
     Value: !GetAtt MessageQueue.Arn
     Export:
-      Name: ${self:service}-${self:provider.stage}-message-queue-arn
+      Name: ${self:custom.service}-${self:provider.stage}-message-queue-arn
+
+  HandoffQueueUrl:
+    Description: URL of the handoff queue
+    Value: !Ref HandoffQueue
+    Export:
+      Name: ${self:custom.service}-${self:provider.stage}-handoff-queue-url
+
+  HandoffQueueArn:
+    Description: ARN of the handoff queue
+    Value: !GetAtt HandoffQueue.Arn
+    Export:
+      Name: ${self:custom.service}-${self:provider.stage}-handoff-queue-arn
+
+  MessageDLQUrl:
+    Description: URL of the message DLQ
+    Value: !Ref MessageDLQ
+    Export:
+      Name: ${self:custom.service}-${self:provider.stage}-message-dlq-url
+
+  HandoffDLQUrl:
+    Description: URL of the handoff DLQ
+    Value: !Ref HandoffDLQ
+    Export:
+      Name: ${self:custom.service}-${self:provider.stage}-handoff-dlq-url

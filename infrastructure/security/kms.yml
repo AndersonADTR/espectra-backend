@@ -1,31 +1,178 @@
-# infrastructure/security/kms.yml
 Resources:
-  WebSocketKMSKey:
+  SystemKMSKey:
     Type: AWS::KMS::Key
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
     Properties:
-      Description: KMS key for WebSocket connections encryption
+      Description: !Sub "${self:custom.service}-${self:provider.stage} main system encryption key"
       EnableKeyRotation: true
+      PendingWindowInDays: 30
+      MultiRegion: false
       KeyPolicy:
         Version: '2012-10-17'
         Statement:
-          - Sid: Enable IAM User Permissions
+          - Sid: EnableIAMUserPermissions
             Effect: Allow
             Principal:
               AWS: !Sub arn:aws:iam::${AWS::AccountId}:root
             Action: kms:*
             Resource: '*'
-          - Sid: Allow Lambda to use the key
+            Condition:
+              StringEquals:
+                'aws:RequestedRegion': !Ref AWS::Region
+          - Sid: AllowLambdaService
             Effect: Allow
             Principal:
-              AWS: '*'
+              Service: 
+                - lambda.amazonaws.com
+                - sqs.amazonaws.com
+                - events.amazonaws.com
             Action:
               - kms:Decrypt
-              - kms:Encrypt
               - kms:GenerateDataKey
+              - kms:DescribeKey
             Resource: '*'
+          - Sid: AllowCloudWatchLogs
+            Effect: Allow
+            Principal:
+              Service: logs.amazonaws.com
+            Action:
+              - kms:Encrypt
+              - kms:Decrypt
+              - kms:ReEncrypt*
+              - kms:GenerateDataKey*
+              - kms:DescribeKey
+            Resource: '*'
+      Tags:
+        - Key: Service
+          Value: ${self:custom.service}
+        - Key: Environment
+          Value: ${self:provider.stage}
+        - Key: Purpose
+          Value: SystemEncryption
+        - Key: ManagedBy
+          Value: Serverless
 
-  WebSocketKMSKeyAlias:
+  SystemKMSAlias:
     Type: AWS::KMS::Alias
     Properties:
-      AliasName: !Sub alias/${self:service}-${self:provider.stage}-websocket
-      TargetKeyId: !Ref WebSocketKMSKey
+      AliasName: !Sub alias/${self:custom.service}-${self:provider.stage}-system
+      TargetKeyId: !Ref SystemKMSKey
+
+  SecretsKMSKey:
+    Type: AWS::KMS::Key
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      Description: !Sub "${self:custom.service}-${self:provider.stage} secrets encryption key"
+      EnableKeyRotation: true
+      PendingWindowInDays: 30
+      MultiRegion: false
+      KeyPolicy:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: EnableIAMUserPermissions
+            Effect: Allow
+            Principal:
+              AWS: !Sub arn:aws:iam::${AWS::AccountId}:root
+            Action: kms:*
+            Resource: '*'
+            Condition:
+              StringEquals:
+                'aws:RequestedRegion': !Ref AWS::Region
+          - Sid: AllowSecretsManager
+            Effect: Allow
+            Principal:
+              Service: secretsmanager.amazonaws.com
+            Action:
+              - kms:Decrypt
+              - kms:GenerateDataKey
+              - kms:CreateGrant
+            Resource: '*'
+      Tags:
+        - Key: Service
+          Value: ${self:custom.service}
+        - Key: Environment
+          Value: ${self:provider.stage}
+        - Key: Purpose
+          Value: SecretsEncryption
+        - Key: ManagedBy
+          Value: Serverless
+
+  WebSocketKMSKey:
+    Type: AWS::KMS::Key
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      Description: !Sub "${self:custom.service}-${self:provider.stage} websocket encryption key"
+      EnableKeyRotation: true
+      PendingWindowInDays: 30
+      MultiRegion: false
+      KeyPolicy:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: EnableIAMUserPermissions
+            Effect: Allow
+            Principal:
+              AWS: !Sub arn:aws:iam::${AWS::AccountId}:root
+            Action: kms:*
+            Resource: '*'
+            Condition:
+              StringEquals:
+                'aws:RequestedRegion': !Ref AWS::Region
+          - Sid: AllowWebSocketService
+            Effect: Allow
+            Principal:
+              Service: 
+                - apigateway.amazonaws.com
+            Action:
+              - kms:Decrypt
+              - kms:GenerateDataKey
+              - kms:CreateGrant
+            Resource: '*'
+      Tags:
+        - Key: Service
+          Value: ${self:custom.service}
+        - Key: Environment
+          Value: ${self:provider.stage}
+        - Key: Purpose
+          Value: WebSocketEncryption
+        - Key: ManagedBy
+          Value: Serverless
+
+Outputs:
+  SystemKMSKeyId:
+    Description: ID of the system KMS key
+    Value: !Ref SystemKMSKey
+    Export:
+      Name: ${self:custom.service}-${self:provider.stage}-system-kms-key-id
+
+  SystemKMSKeyArn:
+    Description: ARN of the system KMS key
+    Value: !GetAtt SystemKMSKey.Arn
+    Export:
+      Name: ${self:custom.service}-${self:provider.stage}-system-kms-key-arn
+
+  SecretsKMSKeyId:
+    Description: ID of the secrets KMS key
+    Value: !Ref SecretsKMSKey
+    Export:
+      Name: ${self:custom.service}-${self:provider.stage}-secrets-kms-key-id
+
+  SecretsKMSKeyArn:
+    Description: ARN of the secrets KMS key
+    Value: !GetAtt SecretsKMSKey.Arn
+    Export:
+      Name: ${self:custom.service}-${self:provider.stage}-secrets-kms-key-arn
+
+  WebSocketKMSKeyId:
+    Description: ID of the WebSocket KMS key
+    Value: !Ref WebSocketKMSKey
+    Export:
+      Name: ${self:custom.service}-${self:provider.stage}-websocket-kms-key-id
+
+  WebSocketKMSKeyArn:
+    Description: ARN of the WebSocket KMS key
+    Value: !GetAtt WebSocketKMSKey.Arn
+    Export:
+      Name: ${self:custom.service}-${self:provider.stage}-websocket-kms-key-arn

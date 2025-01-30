@@ -1,6 +1,5 @@
 // services/botpress/services/cache/handoff-cache.service.ts
 
-import { ElastiCache, CreateReplicationGroupCommand } from '@aws-sdk/client-elasticache';
 import { Redis } from 'ioredis';
 import { HandoffQueue } from '../../types/handoff.types';
 import { HANDOFF_CACHE, HANDOFF_CONSTANTS } from '../../config/handoff.config';

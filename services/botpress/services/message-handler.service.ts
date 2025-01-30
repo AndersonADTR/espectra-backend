@@ -1,149 +1,126 @@
 // services/botpress/services/message-handler.service.ts
 
-import { BotpressService } from './botpress.service';
-import { BotpressValidationError } from '../utils/errors';
-import { ChatMessage, ChatResponse } from '../types/chat.types';
-import { MONITORING_CONFIG, CHAT_CONFIG } from '../config/config';
+import { BotpressChatService } from './chat/botpress-chat.service';
+import { TokenManagementService } from './token/token-management.service';
+import { ConversationContextService } from './context/conversation-context.service';
+import { WebSocketService } from '../../websocket/services/websocket.service';
+import { CHAT_API_CONFIG, MESSAGE_TEMPLATES } from '../config/chat-api.config';
 import { BaseService } from './base/base.service';
+import { ChatMessage, ChatResponse } from '../types/chat.types';
+import { WSMessage } from '../../websocket/types/websocket.types';
 
 export class MessageHandlerService extends BaseService {
-  
-  private readonly botpressService: BotpressService;
+  private readonly chatService: BotpressChatService;
+  private readonly tokenService: TokenManagementService;
+  private readonly contextService: ConversationContextService;
+  private readonly wsService: WebSocketService;
 
   constructor() {
-    super('MessageHandlerService', MONITORING_CONFIG.METRICS.NAMESPACE);
-    this.botpressService = new BotpressService();
+    super('MessageHandlerService');
+    this.chatService = new BotpressChatService();
+    this.tokenService = new TokenManagementService();
+    this.contextService = new ConversationContextService();
+    this.wsService = new WebSocketService();
   }
 
-  async handleIncomingMessage(message: {
-    userId: string;
-    conversationId: string;
-    content: string;
-    metadata?: Record<string, any>;
-  }): Promise<ChatResponse> {
+  async handleIncomingMessage(wsMessage: WSMessage): Promise<void> {
+    const startTime = Date.now();
+
     try {
-      this.validateMessage(message);
+      // Validación de tokens
+      await this.tokenService.validateAndTrackTokens(
+        wsMessage.metadata?.userId,
+        this.calculateTokens(wsMessage.content),
+        wsMessage.metadata?.planType || 'basic'
+      );
 
-      this.logger.info('Processing incoming message', {
-        userId: message.userId,
-        conversationId: message.conversationId
-      });
-
+      // Preparar mensaje para Botpress
       const chatMessage: ChatMessage = {
-        conversationId: message.conversationId,
-        message: message.content,
-        userId: message.userId,
+        message: wsMessage.content,
+        conversationId: wsMessage.conversationId,
+        userId: wsMessage.metadata?.userId,
         metadata: {
           timestamp: new Date().toISOString(),
-          ...message.metadata
-        },
-        text: undefined
+          context: await this.getConversationContext(wsMessage.conversationId),
+          ...wsMessage.metadata
+        }
       };
 
-      const startTime = Date.now();
-      const response = await this.botpressService.sendMessage(chatMessage);
-      const processingTime = Date.now() - startTime;
+      // Enviar mensaje a Botpress
+      const response = await this.chatService.sendMessage(chatMessage);
 
-      this.metrics.recordLatency('MessageProcessingTime', processingTime);
-      
-      // Detectar si necesitamos handoff basado en las respuestas
-      if (this.shouldInitiateHandoff(response)) {
-        await this.handleHandoffRequest(chatMessage);
-      }
+      // Actualizar contexto
+      await this.updateContext(wsMessage.conversationId, response);
 
-      this.metrics.incrementCounter('ProcessedMessages');
+      // Procesar y enviar respuestas
+      await this.handleBotResponse(response, wsMessage);
 
-      this.logger.info('Message processed successfully', {
-        userId: message.userId,
-        conversationId: message.conversationId,
-        processingTime
-      });
+      // Métricas
+      const duration = Date.now() - startTime;
+      this.metrics.recordLatency('MessageProcessingTime', duration);
+      this.metrics.incrementCounter('MessagesProcessed');
 
-      return response;
     } catch (error) {
       this.handleError(error, 'Failed to process message', {
-        operationName: 'MessageProcessing',
-        userId: message.userId,
-        conversationId: message.conversationId
+        operationName: 'handleIncomingMessage',
+        conversationId: wsMessage.conversationId
+      });
+
+      // Notificar error al cliente
+      await this.wsService.sendMessage(wsMessage.metadata?.connectionId, {
+        type: 'ERROR',
+        content: MESSAGE_TEMPLATES.ERROR,
+        conversationId: wsMessage.conversationId,
+        timestamp: new Date().toISOString()
       });
     }
   }
 
-  private validateMessage(message: {
-    content: string;
-    userId: string;
-    conversationId: string;
-  }): void {
-    if (!message.content?.trim()) {
-      throw new BotpressValidationError('Message content cannot be empty');
-    }
+  private async handleBotResponse(response: ChatResponse, originalMessage: WSMessage): Promise<void> {
+    const connectionId = originalMessage.metadata?.connectionId;
+    if (!connectionId) return;
 
-    if (message.content.length > CHAT_CONFIG.MAX_MESSAGE_LENGTH) {
-      throw new BotpressValidationError(
-        `Message exceeds maximum length of ${CHAT_CONFIG.MAX_MESSAGE_LENGTH} characters`
-      );
-    }
-
-    if (!message.userId) {
-      throw new BotpressValidationError('User ID is required');
-    }
-
-    if (!message.conversationId) {
-      throw new BotpressValidationError('Conversation ID is required');
-    }
-  }
-
-  private shouldInitiateHandoff(response: ChatResponse): boolean {
-    return response.responses.some(
-      (r) => 
-        r.type === 'handoff' ||
-        r.tags?.includes('handoff') ||
-        r.metadata?.handoff?.requested
-    );
-  }
-
-  private async handleHandoffRequest(message: ChatMessage): Promise<void> {
-    try {
-      this.logger.info('Initiating handoff request', {
-        conversationId: message.conversationId,
-        userId: message.userId
+    for (const botResponse of response.responses) {
+      // Enviar indicador de escritura
+      await this.wsService.sendMessage(connectionId, {
+        type: 'TYPING_INDICATOR',
+        content: '',
+        conversationId: originalMessage.conversationId,
+        timestamp: new Date().toISOString()
       });
 
-      await this.botpressService.initiateHandoff({
-        conversation_id: message.conversationId,
-        userId: message.userId,
-        message: message.message,
+      // Pequeña pausa para simular escritura
+      await new Promise(resolve => setTimeout(resolve, 500));
+
+      // Enviar respuesta
+      await this.wsService.sendMessage(connectionId, {
+        type: botResponse.type === 'handoff' ? 'HANDOFF_STATUS' : 'BOT_RESPONSE',
+        content: botResponse.message,
+        conversationId: originalMessage.conversationId,
         timestamp: new Date().toISOString(),
-        metadata: {
-          contextData: message.metadata?.context,
-          userInfo: {
-            name: message.metadata?.source,
-            email: message.metadata?.sessionId
-          },
-          connectionId: message.metadata?.context?.connectionId
-        }
+        metadata: botResponse.metadata
       });
-
-      this.metrics.incrementCounter('HandoffRequests');
-    } catch (error) {
-      this.logger.error('Failed to initiate handoff', {
-        error,
-        conversationId: message.conversationId,
-        userId: message.userId
-      });
-      // No relanzamos el error para no interrumpir el flujo del mensaje
     }
   }
 
-  async validateBotHealth(): Promise<boolean> {
-    try {
-      const isHealthy = await this.botpressService.checkBotHealth();
-      this.metrics.recordMetric('BotHealthCheck', isHealthy ? 1 : 0);
-      return isHealthy;
-    } catch (error) {
-      this.logger.error('Bot health check failed', { error });
-      this.metrics.recordMetric('BotHealthCheck', 0);
-      return false;
-    }
+  private async getConversationContext(conversationId: string): Promise<Record<string, any>> {
+    const context = await this.contextService.getContext(conversationId);
+    return context || {};
+  }
+
+  private async updateContext(conversationId: string, response: ChatResponse): Promise<void> {
+    const context = await this.contextService.getContext(conversationId);
+    const messageCount = (context?.messageCount || 0) + 1;
+
+    await this.contextService.updateContext(conversationId, {
+      lastInteraction: new Date().toISOString(),
+      messageCount,
+      handoffRequested: response.responses.some(r => r.type === 'handoff'),
+    });
+  }
+
+  private calculateTokens(content: string): number {
+    // Implementación básica: 1 token por cada 4 caracteres
+    return Math.ceil(content.length / 4);
   }
 }

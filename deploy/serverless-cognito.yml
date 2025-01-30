@@ -1,0 +1,35 @@
+service: espectra-backend-cognito
+
+provider:
+  name: aws
+  runtime: nodejs20.x
+  stage: ${opt:stage, 'dev'}
+  region: ${opt:region, 'us-east-1'}
+  tags:
+    Environment: ${self:provider.stage}
+    Service: ${self:custom.service}
+    Owner: espectra
+    Project: concierge
+
+custom:
+  service: espectra-backend
+
+resources:
+  # Authentication
+  - ${file(../infrastructure/cognito/cognito.yml)}
+
+outputs:
+  UserPoolId:
+    Value: !Ref SpectraUserPool
+    Export:
+      Name: ${self:custom.service}-${self:provider.stage}-user-pool-id
+
+  UserPoolClientId:
+    Value: !Ref SpectraUserPoolClient
+    Export:
+      Name: ${self:custom.service}-${self:provider.stage}-user-pool-client-id
+
+  UserPoolArn:
+    Value: !GetAtt SpectraUserPool.Arn
+    Export:
+      Name: ${self:custom.service}-${self:provider.stage}-user-pool-arn

@@ -1,0 +1,135 @@
+service: espectra-backend-phase3
+
+provider:
+  name: aws
+  runtime: nodejs20.x
+  stage: ${opt:stage, 'dev'}
+  region: ${opt:region, 'us-east-1'}
+  memorySize: 1024
+  timeout: 29
+  logRetentionInDays: 14
+  tracing:
+    lambda: true
+  tags:
+    Environment: ${self:provider.stage}
+    Service: ${self:custom.service}
+    Owner: espectra
+    Project: concierge
+
+custom:
+  service: espectra-backend
+  
+  # Configuración de Table Names
+  tableNames:
+    connections: ${self:custom.service}-${self:provider.stage}-connection-table
+    context: ${self:custom.service}-${self:provider.stage}-conversation-context-table
+    tokens: ${self:custom.service}-${self:provider.stage}-token-usage-table
+    history: ${self:custom.service}-${self:provider.stage}-chat-history-table
+    handoff: ${self:custom.service}-${self:provider.stage}-handoff-table
+    metrics: ${self:custom.service}-${self:provider.stage}-botpress-metrics-table
+
+  # KMS Keys (importados del deploy previo)
+  kms:
+    systemKeyId: ${cf:${self:custom.service}-kms-${self:provider.stage}.SystemKMSKeyId}
+    systemKeyArn: ${cf:${self:custom.service}-kms-${self:provider.stage}.SystemKMSKeyArn}
+    secretsKeyId: ${cf:${self:custom.service}-kms-${self:provider.stage}.SecretsKMSKeyId}
+    secretsKeyArn: ${cf:${self:custom.service}-kms-${self:provider.stage}.SecretsKMSKeyArn}
+    websocketKeyId: ${cf:${self:custom.service}-kms-${self:provider.stage}.WebSocketKMSKeyId}
+    websocketKeyArn: ${cf:${self:custom.service}-kms-${self:provider.stage}.WebSocketKMSKeyArn}
+  
+  # SNS Topics for different priority levels
+  snsHighPriorityTopic: ${ssm:/espectra/${self:provider.stage}/sns/high-priority-topic}
+  snsMediumPriorityTopic: ${ssm:/espectra/${self:provider.stage}/sns/medium-priority-topic}
+  snsLowPriorityTopic: ${ssm:/espectra/${self:provider.stage}/sns/low-priority-topic}
+
+resources:
+  - ${file(../infrastructure/dynamodb/user-tables.yml)}
+  - ${file(../infrastructure/dynamodb/chat-history-tables.yml)}
+  - ${file(../infrastructure/dynamodb/chat-session-tables.yml)}
+  - ${file(../infrastructure/dynamodb/connection-concierge-tables.yml)}
+
+outputs:
+  
+  UsersTableName:
+    Description: Name of the Users table
+    Value: !Ref UsersTable
+    Export:
+      Name: ${self:custom.service}-${self:provider.stage}-users-table-name
+
+  UsersTableArn:
+    Description: ARN of the Users table
+    Value: !GetAtt UsersTable.Arn
+    Export:
+      Name: ${self:custom.service}-${self:provider.stage}-users-table-arn
+      
+  ChatHistoryTableName:
+    Description: Name of the Chat History DynamoDB table
+    Value: !Ref ChatHistoryTable
+    Export:
+      Name: ${self:custom.service}-${self:provider.stage}-chat-history-table-name
+
+  ChatHistoryTableArn:
+    Description: ARN of the Chat History DynamoDB table
+    Value: !GetAtt ChatHistoryTable.Arn
+    Export:
+      Name: ${self:custom.service}-${self:provider.stage}-chat-history-table-arn
+
+  UserConversationsIndexName:
+    Description: Name of the User Conversations GSI
+    Value: UserConversationsIndex
+    Export:
+      Name: ${self:custom.service}-${self:provider.stage}-user-conversations-index-name
+
+  MessageTypeIndexName:
+    Description: Name of the Message Type GSI
+    Value: MessageTypeIndex
+    Export:
+      Name: ${self:custom.service}-${self:provider.stage}-message-type-index-name
+      
+  ChatSessionsTableName:
+    Description: Name of the Chat Sessions table
+    Value: !Ref ChatSessionsTable
+    Export:
+      Name: ${self:custom.service}-${self:provider.stage}-chat-sessions-table-name
+
+  ChatSessionsTableArn:
+    Description: ARN of the Chat Sessions table
+    Value: !GetAtt ChatSessionsTable.Arn
+    Export:
+      Name: ${self:custom.service}-${self:provider.stage}-chat-sessions-table-arn
+
+  SessionMetricsTableName:
+    Description: Name of the Session Metrics table
+    Value: !Ref SessionMetricsTable
+    Export:
+      Name: ${self:custom.service}-${self:provider.stage}-session-metrics-table-name
+
+  SessionMetricsTableArn:
+    Description: ARN of the Session Metrics table
+    Value: !GetAtt SessionMetricsTable.Arn
+    Export:
+      Name: ${self:custom.service}-${self:provider.stage}-session-metrics-table-arn
+
+  ConnectionsTableName:
+    Description: Name of the Connections table
+    Value: !Ref ConnectionsTable
+    Export:
+      Name: ${self:custom.service}-${self:provider.stage}-connections-table-name
+
+  ConnectionsTableArn:
+    Description: ARN of the Connections table
+    Value: !GetAtt ConnectionsTable.Arn
+    Export:
+      Name: ${self:custom.service}-${self:provider.stage}-connections-table-arn
+
+  UserIdIndexName:
+    Description: Name of the UserId GSI
+    Value: UserIdIndex
+    Export:
+      Name: ${self:custom.service}-${self:provider.stage}-connections-userid-index-name
+
+  StatusActivityIndexName:
+    Description: Name of the Status Activity GSI
+    Value: StatusActivityIndex
+    Export:
+      Name: ${self:custom.service}-${self:provider.stage}-connections-status-activity-index-name

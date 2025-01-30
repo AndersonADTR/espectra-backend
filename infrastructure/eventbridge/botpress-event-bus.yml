@@ -1,5 +1,183 @@
 Resources:
   BotpressEventBus:
-      Type: AWS::Events::EventBus
-      Properties:
-        Name: ${self:service}-${self:provider.stage}-botpress-events
+    Type: AWS::Events::EventBus
+    Properties:
+      Name: ${self:custom.service}-${self:provider.stage}-botpress-events
+      Tags:
+        - Key: Service
+          Value: ${self:custom.service}
+        - Key: Environment
+          Value: ${self:provider.stage}
+        - Key: ManagedBy
+          Value: CloudFormation
+
+  BotpressEventRule:
+    Type: AWS::Events::Rule
+    Properties:
+      Name: ${self:custom.service}-${self:provider.stage}-botpress-events-rule
+      Description: Route Botpress events to appropriate targets
+      EventBusName: !Ref BotpressEventBus
+      EventPattern:
+        source:
+          - com.espectra.botpress
+        detail-type:
+          - HandoffRequested
+          - HandoffCompleted
+          - SessionStarted
+          - SessionEnded
+          - TokenLimitWarning
+      State: ENABLED
+      Targets:
+        - Arn: !GetAtt MessageQueue.Arn
+          Id: BotpressEventQueue
+          RetryPolicy:
+            MaximumRetryAttempts: 3
+            MaximumEventAgeInSeconds: 3600
+          SqsParameters:
+            MessageGroupId: botpress-events
+          # KmsKeyArn: 
+          #   Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-system-kms-key-arn
+
+  BotpressMetricsRule:
+    Type: AWS::Events::Rule
+    Properties:
+      Name: ${self:custom.service}-${self:provider.stage}-botpress-metrics-rule
+      Description: Collect Botpress metrics
+      EventBusName: !Ref BotpressEventBus
+      EventPattern:
+        source:
+          - com.espectra.botpress
+        detail-type:
+          - Metric
+      State: ENABLED
+      Targets:
+        - Arn: !GetAtt BotpressMetricsCollectorLambdaFunction.Arn
+          Id: BotpressMetricsProcessor
+          RetryPolicy:
+            MaximumRetryAttempts: 3
+            MaximumEventAgeInSeconds: 1800
+          DeadLetterConfig:
+            Arn: !GetAtt BotpressMetricsDLQ.Arn
+
+  BotpressMetricsDLQ:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: ${self:custom.service}-${self:provider.stage}-botpress-metrics-dlq
+      MessageRetentionPeriod: 1209600 # 14 days
+      KmsMasterKeyId: 
+        Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-system-kms-key-arn
+      Tags:
+        - Key: Service
+          Value: ${self:custom.service}
+        - Key: Environment
+          Value: ${self:provider.stage}
+
+  # BotpressMetricsFunction:
+  #   Type: AWS::Lambda::Function
+  #   Properties:
+  #     FunctionName: ${self:custom.service}-${self:provider.stage}-botpress-metrics
+  #     Handler: index.handler
+  #     Runtime: nodejs20.x
+  #     MemorySize: 256
+  #     Timeout: 30
+  #     Environment:
+  #       Variables:
+  #         METRICS_TABLE: !Ref BotpressMetricsTable
+  #         SERVICE_NAME: ${self:custom.service}
+  #         STAGE: ${self:provider.stage}
+  #         KMS_KEY_ARN:
+  #           Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-system-kms-key-arn
+  #     KmsKeyArn:
+  #       Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-system-kms-key-arn
+  #     TracingConfig:
+  #       Mode: Active
+  #     Role: !GetAtt BotpressMetricsRole.Arn
+  #     Tags:
+  #       - Key: Service
+  #         Value: ${self:custom.service}
+  #       - Key: Environment
+  #         Value: ${self:provider.stage}
+
+  BotpressMetricsRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: ${self:custom.service}-${self:provider.stage}-botpress-metrics-role
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+        - arn:aws:iam::aws:policy/AWSXRayDaemonWriteAccess
+      Policies:
+        - PolicyName: botpress-metrics-policy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - dynamodb:PutItem
+                  - dynamodb:Query
+                  - dynamodb:UpdateItem
+                Resource: !GetAtt BotpressMetricsTable.Arn
+              - Effect: Allow
+                Action:
+                  - kms:Decrypt
+                  - kms:GenerateDataKey
+                Resource:
+                  Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-system-kms-key-arn
+
+  # CloudWatch Alarms
+  BotpressEventFailureAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: ${self:custom.service}-${self:provider.stage}-botpress-events-failure
+      AlarmDescription: Alert on Botpress event processing failures
+      MetricName: FailedInvocations
+      Namespace: AWS/Events
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 2
+      Threshold: 1
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching
+      Dimensions:
+        - Name: RuleName
+          Value: !Ref BotpressEventRule
+      AlarmActions:
+        - Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-high-priority-topic-arn
+
+  BotpressMetricsDLQAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: ${self:custom.service}-${self:provider.stage}-botpress-metrics-dlq
+      AlarmDescription: Alert on messages in Botpress metrics DLQ
+      MetricName: ApproximateNumberOfMessagesVisible
+      Namespace: AWS/SQS
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching
+      Dimensions:
+        - Name: QueueName
+          Value: !GetAtt BotpressMetricsDLQ.QueueName
+      AlarmActions:
+        - Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-high-priority-topic-arn
+
+Outputs:
+  EventBusArn:
+    Description: ARN of the Botpress Event Bus
+    Value: !GetAtt BotpressEventBus.Arn
+    Export:
+      Name: ${self:custom.service}-${self:provider.stage}-eventbus-arn
+
+  EventBusName:
+    Description: Name of the Botpress Event Bus
+    Value: !Ref BotpressEventBus
+    Export:
+      Name: ${self:custom.service}-${self:provider.stage}-eventbus-name

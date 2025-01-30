@@ -1,0 +1,55 @@
+service: espectra-backend-kms
+
+provider:
+  name: aws
+  runtime: nodejs20.x
+  stage: ${opt:stage, 'dev'}
+  region: ${opt:region, 'us-east-1'}
+  tags:
+    Environment: ${self:provider.stage}
+    Service: ${self:custom.service}
+    Owner: espectra
+    Project: concierge
+
+custom:
+  service: espectra-backend
+
+resources:
+  - ${file(../infrastructure/security/kms.yml)}
+
+outputs:
+  SystemKMSKeyId:
+    Description: ID of the system KMS key
+    Value: !Ref SystemKMSKey
+    Export:
+      Name: ${self:custom.service}-${self:provider.stage}-system-kms-key-id
+
+  SystemKMSKeyArn:
+    Description: ARN of the system KMS key
+    Value: !GetAtt SystemKMSKey.Arn
+    Export:
+      Name: ${self:custom.service}-${self:provider.stage}-system-kms-key-arn
+
+  SecretsKMSKeyId:
+    Description: ID of the secrets KMS key
+    Value: !Ref SecretsKMSKey
+    Export:
+      Name: ${self:custom.service}-${self:provider.stage}-secrets-kms-key-id
+
+  SecretsKMSKeyArn:
+    Description: ARN of the secrets KMS key
+    Value: !GetAtt SecretsKMSKey.Arn
+    Export:
+      Name: ${self:custom.service}-${self:provider.stage}-secrets-kms-key-arn
+
+  WebSocketKMSKeyId:
+    Description: ID of the WebSocket KMS key
+    Value: !Ref WebSocketKMSKey
+    Export:
+      Name: ${self:custom.service}-${self:provider.stage}-websocket-kms-key-id
+
+  WebSocketKMSKeyArn:
+    Description: ARN of the WebSocket KMS key
+    Value: !GetAtt WebSocketKMSKey.Arn
+    Export:
+      Name: ${self:custom.service}-${self:provider.stage}-websocket-kms-key-arn

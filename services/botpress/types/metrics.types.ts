@@ -12,3 +12,11 @@ export interface MetricData {
     unit: string;
     dimensions?: MetricDimensions;
 }
+
+export interface BotpressMetric {
+    type: string;
+    value: number;
+    userId?: string;
+    sessionId?: string;
+    metadata?: Record<string, any>;
+  }

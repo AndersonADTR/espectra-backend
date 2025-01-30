@@ -1,0 +1,111 @@
+service: espectra-backend-phase1
+
+provider:
+  name: aws
+  runtime: nodejs20.x
+  stage: ${opt:stage, 'dev'}
+  region: ${opt:region, 'us-east-1'}
+  tags:
+    Environment: ${self:provider.stage}
+    Service: ${self:custom.service}
+    Owner: espectra
+    Project: concierge
+
+custom:
+  service: espectra-backend
+  logRetentionInDays: 14
+
+resources:
+  - ${file(../infrastructure/network/vpc.yml)}
+  - ${file(../infrastructure/network/security-groups.yml)}
+
+outputs:
+  VpcId:
+    Description: VPC ID
+    Value: !Ref SpectraVPC
+    Export:
+      Name: ${self:custom.service}-${self:provider.stage}-vpc-id
+
+  VpcCidr:
+    Description: VPC CIDR Block
+    Value: !GetAtt SpectraVPC.CidrBlock
+    Export:
+      Name: ${self:custom.service}-${self:provider.stage}-vpc-cidr
+
+  PublicSubnet1Id:
+    Description: Public Subnet 1 ID
+    Value: !Ref PublicSubnet1
+    Export:
+      Name: ${self:custom.service}-${self:provider.stage}-public-subnet-1-id
+
+  PublicSubnet1Cidr:
+    Description: Public Subnet 1 CIDR Block
+    Value: !GetAtt PublicSubnet1.CidrBlock
+    Export:
+      Name: ${self:custom.service}-${self:provider.stage}-public-subnet-1-cidr
+
+  PublicSubnet2Id:
+    Description: Public Subnet 2 ID
+    Value: !Ref PublicSubnet2
+    Export:
+      Name: ${self:custom.service}-${self:provider.stage}-public-subnet-2-id
+
+  PublicSubnet2Cidr:
+    Description: Public Subnet 2 CIDR Block
+    Value: !GetAtt PublicSubnet2.CidrBlock
+    Export:
+      Name: ${self:custom.service}-${self:provider.stage}-public-subnet-2-cidr
+
+  PublicRouteTableId:
+    Description: Public Route Table ID
+    Value: !Ref PublicRouteTable
+    Export:
+      Name: ${self:custom.service}-${self:provider.stage}-public-route-table-id
+      
+  LambdaSecurityGroupId:
+    Description: ID of the Lambda Security Group
+    Value: !Ref LambdaSecurityGroup
+    Export:
+      Name: ${self:custom.service}-${self:provider.stage}-lambda-sg-id
+
+  RedisSecurityGroupId:
+    Description: ID of the Redis Security Group
+    Value: !Ref RedisSecurityGroup
+    Export:
+      Name: ${self:custom.service}-${self:provider.stage}-redis-sg-id
+
+  InternalApiSecurityGroupId:
+    Description: ID of the Internal API Security Group
+    Value: !Ref InternalApiSecurityGroup
+    Export:
+      Name: ${self:custom.service}-${self:provider.stage}-internal-api-sg-id
+
+  VPCEndpointSecurityGroupId:
+    Description: ID of the VPC Endpoint Security Group
+    Value: !Ref VPCEndpointSecurityGroup
+    Export:
+      Name: ${self:custom.service}-${self:provider.stage}-vpce-sg-id
+
+  DynamoDBEndpointId:
+    Description: ID of the DynamoDB VPC Endpoint
+    Value: !Ref DynamoDBEndpoint
+    Export:
+      Name: ${self:custom.service}-${self:provider.stage}-dynamodb-endpoint-id
+
+  ApiGatewayEndpointId:
+    Description: ID of the API Gateway VPC Endpoint
+    Value: !Ref ApiGatewayEndpoint
+    Export:
+      Name: ${self:custom.service}-${self:provider.stage}-api-endpoint-id
+
+  SecretsManagerEndpointId:
+    Description: ID of the Secrets Manager VPC Endpoint
+    Value: !Ref SecretsManagerEndpoint
+    Export:
+      Name: ${self:custom.service}-${self:provider.stage}-secrets-endpoint-id
+
+  CloudWatchLogsEndpointId:
+    Description: ID of the CloudWatch Logs VPC Endpoint
+    Value: !Ref CloudWatchLogsEndpoint
+    Export:
+      Name: ${self:custom.service}-${self:provider.stage}-cwlogs-endpoint-id

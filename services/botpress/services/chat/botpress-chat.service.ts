@@ -1,43 +1,44 @@
 // services/botpress/services/chat/botpress-chat.service.ts
 
 import axios, { AxiosInstance } from 'axios';
-import { BOTPRESS_CONFIG } from 'services/botpress/config/config';
-import { BotpressError } from 'services/botpress/utils/errors';
+import { CHAT_API_CONFIG, MESSAGE_TEMPLATES } from '../../config/chat-api.config';
+import { BotpressError } from '../../utils/errors';
 import { 
   ChatMessage, 
   ChatResponse, 
-  ConversationContext,
-  ProcessMessageRequest 
-} from 'services/botpress/types/chat.types';
+  HandoffRequest 
+} from '../../types/chat.types';
 import { BaseService } from '../base/base.service';
+import { RetryHandlerService } from '../retry/retry-handler.service';
+import { HANDOFF_CONFIG } from '@services/botpress/config/config';
 
 export class BotpressChatService extends BaseService {
-
-  private readonly requestTimeout = 10000;
   private readonly client: AxiosInstance;
+  private readonly retryHandler: RetryHandlerService;
 
   constructor() {
     super('BotpressChatService');
     
     this.client = axios.create({
-      baseURL: BOTPRESS_CONFIG.webhookUrl,
-      timeout: this.requestTimeout,
-      headers: {
-        'Content-Type': 'application/json'
-      }
+      baseURL: CHAT_API_CONFIG.BASE_URL,
+      timeout: CHAT_API_CONFIG.TIMEOUTS.REQUEST,
+      headers: CHAT_API_CONFIG.HEADERS
     });
 
+    this.retryHandler = new RetryHandlerService();
     this.setupInterceptors();
   }
 
   private setupInterceptors(): void {
     this.client.interceptors.request.use(
       (config) => {
-        const requestId = Math.random().toString(36).substring(7);
-        this.logger.info('Outgoing request to Botpress', {
+        const requestId = `req_${Date.now()}_${Math.random().toString(36).substring(7)}`;
+        this.logger.info('Outgoing request to Botpress Chat API', {
           requestId,
+          method: config.method,
           url: config.url
         });
+        config.params = { startTime: Date.now(), requestId };
         return config;
       },
       (error) => {
@@ -48,137 +49,104 @@ export class BotpressChatService extends BaseService {
 
     this.client.interceptors.response.use(
       (response) => {
-        this.metrics.recordLatency('BotpressResponseTime', Date.now() - response.config.data?.startTime);
+        const duration = Date.now() - (response.config.params?.startTime || 0);
+        this.metrics.recordLatency('BotpressResponseTime', duration);
         return response;
       },
       (error) => {
         this.metrics.incrementCounter('BotpressErrors');
-        this.logger.error('Botpress request failed', { error });
-        throw new BotpressError('Failed to communicate with Botpress', error);
+        throw new BotpressError('Chat API request failed', error);
       }
     );
   }
 
   async sendMessage(message: ChatMessage): Promise<ChatResponse> {
-    try {
-      const startTime = Date.now();
-      
-      const response = await this.client.post('', {
-        conversation_id: message.conversationId,
-        message: message.text,
-        userId: message.userId,
-        metadata: message.metadata
-      });
+    return this.retryHandler.withRetry({
+      execute: async () => {
+        const response = await this.client.post('', {
+          message: message.message,
+          conversation_id: message.conversationId,
+          userId: message.userId,
+          metadata: {
+            ...message.metadata,
+            timestamp: new Date().toISOString()
+          }
+        });
 
-      this.metrics.incrementCounter('BotpressMessages');
-      this.metrics.recordLatency('BotpressProcessingTime', Date.now() - startTime);
-
-      this.logger.info('Message sent successfully to Botpress', {
-        conversationId: message.conversationId,
-        userId: message.userId
-      });
-
-      return this.processResponse(response.data);
-    } catch (error) {
-      this.handleError(error, 'Failed to send message to Botpress', {
-        operationName: 'SendMessage',
-        conversationId: message.conversationId,
-        userId: message.userId
-      });
-    }
-  }
-
-  async processMessage(request: ProcessMessageRequest): Promise<ChatResponse> {
-    try {
-      this.logger.info('Processing message', {
-        conversationId: request.conversationId,
-        userId: request.userId
-      });
-  
-      const message: ChatMessage = {
-        conversationId: request.conversationId,
-        message: request.text,
-        userId: request.userId,
-        metadata: {
-          ...request.metadata,
-          timestamp: new Date().toISOString()
-        },
-        text: undefined
-      };
-  
-      const response = await this.sendMessage(message);
-  
-      this.metrics.incrementCounter('ProcessedMessages');
-      this.metrics.recordLatency('MessageProcessingTime', Date.now());
-  
-      return response;
-    } catch (error) {
-      this.handleError(error, 'Failed to process message', {
-        operationName: 'ProcessMessage',
-        conversationId: request.conversationId,
-        userId: request.userId
-      });
-    }
+        this.metrics.incrementCounter('MessagesSent');
+        return this.processResponse(response.data);
+      },
+      onSuccess: async (result) => {
+        if (this.shouldInitiateHandoff(result)) {
+          await this.initiateHandoff({
+            conversation_id: message.conversationId,
+            userId: message.userId,
+            message: message.message,
+            timestamp: new Date().toISOString(),
+            metadata: message.metadata,
+            priority: HANDOFF_CONFIG.DEFAULT_PRIORITY
+          });
+        }
+      },
+      onFinalFailure: async (error) => {
+        this.logger.error('Failed to send message after retries', {
+          error,
+          messageId: message.conversationId
+        });
+      }
+    });
   }
 
   private processResponse(response: any): ChatResponse {
-    // Verificar si la respuesta indica necesidad de human handoff
-    const needsHandoff = this.checkForHandoff(response);
-    
     return {
-        responses: response.responses.map((r: any) => ({
-            message: r.message,
-            conversation_id: r.conversation_id,
-            type: r.type,
-            tags: r.tags,
-            metadata: {
-                handoff: {
-                    requested: r.metadata?.handoff?.requested,
-                    reason: r.metadata?.handoff?.reason
-                },
-                confidence: r.metadata?.confidence,
-                context: r.metadata?.context
-            }
-        }))
-    }
+      responses: response.responses.map((r: any) => ({
+        message: r.message,
+        conversation_id: r.conversation_id,
+        type: r.type,
+        tags: r.tags,
+        metadata: {
+          handoff: r.metadata?.handoff,
+          confidence: r.metadata?.confidence,
+          context: r.metadata?.context
+        }
+      }))
+    };
   }
 
-  private checkForHandoff(response: any): boolean {
-    return response.responses.some((r: any) => (
-      r.type === 'handoff' ||
-      r.tags?.includes('handoff') ||
+  private shouldInitiateHandoff(response: ChatResponse): boolean {
+    return response.responses.some(r => 
+      r.type === CHAT_API_CONFIG.MESSAGE_TYPES.HANDOFF ||
       r.metadata?.handoff?.requested ||
-      r.confidence < BOTPRESS_CONFIG.HANDOFF_CONFIDENCE_THRESHOLD
-    ));
+      (r.metadata?.confidence && r.metadata.confidence < CHAT_API_CONFIG.HANDOFF.CONFIDENCE_THRESHOLD) ||
+      this.containsHandoffTrigger(r.message)
+    );
   }
 
-  async getConversationContext(conversationId: string): Promise<ConversationContext> {
+  private containsHandoffTrigger(message: string): boolean {
+    return CHAT_API_CONFIG.HANDOFF.AUTO_TRIGGER_PATTERNS.some(
+      pattern => message.toLowerCase().includes(pattern)
+    );
+  }
+
+  async initiateHandoff(request: HandoffRequest): Promise<void> {
     try {
-      const response = await this.client.get(`/conversations/${conversationId}/context`);
-      return response.data;
-    } catch (error) {
-      this.handleError(error, 'Failed to get conversation context', {
-        operationName: 'GetConversationContext',
-        conversationId
+      await this.client.post('/handoff', {
+        conversation_id: request.conversation_id,
+        userId: request.userId,
+        message: request.message,
+        metadata: request.metadata
       });
-    }
-  }
 
-  async updateConversationContext(
-    conversationId: string, 
-    context: Partial<ConversationContext>
-  ): Promise<void> {
-    try {
-      await this.client.post(`/conversations/${conversationId}/context`, context);
+      this.metrics.incrementCounter('HandoffRequests');
       
-      this.logger.info('Conversation context updated', {
-        conversationId,
-        contextKeys: Object.keys(context)
+      this.logger.info('Handoff initiated', {
+        conversationId: request.conversation_id,
+        userId: request.userId
       });
     } catch (error) {
-      this.handleError(error, 'Failed to update conversation context', {
-        operationName: 'UpdateConversationContext',
-        conversationId
+      this.handleError(error as Error, 'Failed to initiate handoff', {
+        operationName: 'InitiateHandoff',
+        conversationId: request.conversation_id
       });
     }
   }

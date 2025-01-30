@@ -1,0 +1,37 @@
+service: espectra-backend-sns
+
+provider:
+  name: aws
+  runtime: nodejs20.x
+  stage: ${opt:stage, 'dev'}
+  region: ${opt:region, 'us-east-1'}
+  tags:
+    Environment: ${self:provider.stage}
+    Service: ${self:custom.service}
+    Owner: espectra
+    Project: concierge
+
+custom:
+  service: espectra-backend
+
+resources:
+  - ${file(../infrastructure/sns/sns.yml)}
+
+outputs:
+  HighPriorityTopicArn:
+    Description: ARN of the high priority SNS topic
+    Value: !Ref HighPriorityTopic
+    Export:
+      Name: ${self:custom.service}-${self:provider.stage}-high-priority-topic-arn
+
+  MediumPriorityTopicArn:
+    Description: ARN of the medium priority SNS topic
+    Value: !Ref MediumPriorityTopic
+    Export:
+      Name: ${self:custom.service}-${self:provider.stage}-medium-priority-topic-arn
+
+  LowPriorityTopicArn:
+    Description: ARN of the low priority SNS topic
+    Value: !Ref LowPriorityTopic
+    Export:
+      Name: ${self:custom.service}-${self:provider.stage}-low-priority-topic-arn

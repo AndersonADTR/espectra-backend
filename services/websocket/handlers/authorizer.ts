@@ -1,28 +1,47 @@
 // services/websocket/handlers/authorizer.ts
-
-import { APIGatewayAuthorizerResult, APIGatewayTokenAuthorizerEvent } from 'aws-lambda';
+import { APIGatewayTokenAuthorizerEvent, APIGatewayAuthorizerResult } from 'aws-lambda';
 import { CognitoJwtVerifier } from 'aws-jwt-verify';
 import { Logger } from '@shared/utils/logger';
-
-// Configuración del verificador de JWT de Cognito
-const jwtVerifier = CognitoJwtVerifier.create({
-  userPoolId: process.env.COGNITO_USER_POOL_ID!,
-  tokenUse: 'id',
-  clientId: process.env.COGNITO_CLIENT_ID!,
-});
+import { MetricsService } from '@shared/utils/metrics';
+import { MONITORING_CONFIG } from '../../botpress/config/config';
 
 const logger = new Logger('WebSocketAuthorizer');
+const metrics = new MetricsService(MONITORING_CONFIG.METRICS.NAMESPACE);
+
+if (!process.env.COGNITO_USER_POOL_ID || !process.env.COGNITO_CLIENT_ID) {
+  throw new Error('Missing required environment variables');
+}
+
+const jwtVerifier = CognitoJwtVerifier.create({
+  userPoolId: process.env.COGNITO_USER_POOL_ID,
+  tokenUse: 'id',
+  clientId: process.env.COGNITO_CLIENT_ID,
+});
 
 export const handler = async (event: APIGatewayTokenAuthorizerEvent): Promise<APIGatewayAuthorizerResult> => {
-  const token = event.authorizationToken;
-
+  const startTime = Date.now();
+  
   try {
-    // Verificar y decodificar el token JWT
+    const token = event.authorizationToken;
+    
+    logger.debug('WebSocket authorization request received', {
+      methodArn: event.methodArn
+    });
+
+    if (!token) {
+      throw new Error('No authentication token provided');
+    }
+
     const payload = await jwtVerifier.verify(token);
 
-    logger.info('Token verification successful', { userId: payload.sub });
+    logger.info('WebSocket authorization successful', { 
+      userId: payload.sub,
+      latency: Date.now() - startTime
+    });
 
-    // Devolver una política de IAM que permite el acceso
+    metrics.incrementCounter('WebSocketAuthorizationSuccess');
+    metrics.recordMetric('WebSocketAuthorizationLatency', Date.now() - startTime);
+
     return {
       principalId: payload.sub,
       policyDocument: {
@@ -35,13 +54,24 @@ export const handler = async (event: APIGatewayTokenAuthorizerEvent): Promise<AP
           },
         ],
       },
+      context: {
+        userId: payload.sub,
+        email: typeof payload.email === 'string' ? payload.email : '',
+        scope: typeof payload.scope === 'string' ? payload.scope : JSON.stringify(payload.scope),
+        userPlan: payload['custom:userPlan'] as string || 'basic'
+      }
     };
   } catch (error) {
-    logger.error('Token verification failed', { error });
+    logger.error('WebSocket authorization failed', {
+      error: error instanceof Error ? error.message : 'Unknown error',
+      latency: Date.now() - startTime
+    });
 
-    // Devolver una política de IAM que deniega el acceso
+    metrics.incrementCounter('WebSocketAuthorizationFailure');
+    metrics.recordMetric('WebSocketAuthorizationLatency', Date.now() - startTime);
+
     return {
-      principalId: 'user',
+      principalId: 'unauthorized',
       policyDocument: {
         Version: '2012-10-17',
         Statement: [

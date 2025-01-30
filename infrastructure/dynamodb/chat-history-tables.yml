@@ -2,8 +2,9 @@ Resources:
   ChatHistoryTable:
     Type: AWS::DynamoDB::Table
     DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
     Properties:
-      TableName: ${self:custom.chatHistoryTable}
+      TableName: ${self:custom.tableNames.history}
       AttributeDefinitions:
         - AttributeName: conversationId
           AttributeType: S
@@ -12,6 +13,8 @@ Resources:
         - AttributeName: userId
           AttributeType: S
         - AttributeName: timestamp
+          AttributeType: S
+        - AttributeName: type
           AttributeType: S
       KeySchema:
         - AttributeName: conversationId
@@ -27,13 +30,15 @@ Resources:
               KeyType: RANGE
           Projection:
             ProjectionType: ALL
-          ProvisionedThroughput:
-            ReadCapacityUnits: 5
-            WriteCapacityUnits: 5
-      BillingMode: PROVISIONED
-      ProvisionedThroughput:
-        ReadCapacityUnits: 5
-        WriteCapacityUnits: 5
+        - IndexName: MessageTypeIndex
+          KeySchema:
+            - AttributeName: type
+              KeyType: HASH
+            - AttributeName: timestamp
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+      BillingMode: PAY_PER_REQUEST
       StreamSpecification:
         StreamViewType: NEW_AND_OLD_IMAGES
       TimeToLiveSpecification:
@@ -43,64 +48,137 @@ Resources:
         PointInTimeRecoveryEnabled: true
       SSESpecification:
         SSEEnabled: true
+        SSEType: KMS
+        KMSMasterKeyId: 
+          Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-system-kms-key-arn
       Tags:
+        - Key: Service
+          Value: ${self:custom.service}
         - Key: Environment
           Value: ${self:provider.stage}
-        - Key: Project
-          Value: Spectra
-        - Key: Service
-          Value: Concierge
+        - Key: Purpose
+          Value: ChatHistory
+        - Key: ManagedBy
+          Value: CloudFormation
 
-  # Alarmas CloudWatch para monitoreo
+  # CloudWatch Alarms
   ChatHistoryTableReadCapacityAlarm:
     Type: AWS::CloudWatch::Alarm
     Properties:
-      AlarmDescription: Alarm if read capacity reaches 80% of provisioned capacity
+      AlarmName: ${self:custom.service}-${self:provider.stage}-chat-history-read-throttling
+      AlarmDescription: Chat History table read capacity throttling
+      MetricName: ReadThrottleEvents
       Namespace: AWS/DynamoDB
-      MetricName: ConsumedReadCapacityUnits
       Dimensions:
         - Name: TableName
-          Value: ${self:custom.chatHistoryTable}
+          Value: ${self:custom.tableNames.history}
       Statistic: Sum
       Period: 300
-      EvaluationPeriods: 1
-      Threshold: 20
+      EvaluationPeriods: 2
+      Threshold: 10
       ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching
       AlarmActions:
-        - ${self:custom.snsAlarmTopic}
+        - ${self:custom.snsMediumPriorityTopic}
+      Tags:
+        - Key: Service
+          Value: ${self:custom.service}
+        - Key: Environment
+          Value: ${self:provider.stage}
 
   ChatHistoryTableWriteCapacityAlarm:
     Type: AWS::CloudWatch::Alarm
     Properties:
-      AlarmDescription: Alarm if write capacity reaches 80% of provisioned capacity
+      AlarmName: ${self:custom.service}-${self:provider.stage}-chat-history-write-throttling
+      AlarmDescription: Chat History table write capacity throttling
+      MetricName: WriteThrottleEvents
       Namespace: AWS/DynamoDB
-      MetricName: ConsumedWriteCapacityUnits
       Dimensions:
         - Name: TableName
-          Value: ${self:custom.chatHistoryTable}
+          Value: ${self:custom.tableNames.history}
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 2
+      Threshold: 10
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching
+      AlarmActions:
+        - ${self:custom.snsMediumPriorityTopic}
+      Tags:
+        - Key: Service
+          Value: ${self:custom.service}
+        - Key: Environment
+          Value: ${self:provider.stage}
+
+  ChatHistoryTableErrorAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: ${self:custom.service}-${self:provider.stage}-chat-history-errors
+      AlarmDescription: Chat History table system errors
+      MetricName: SystemErrors
+      Namespace: AWS/DynamoDB
+      Dimensions:
+        - Name: TableName
+          Value: ${self:custom.tableNames.history}
       Statistic: Sum
       Period: 300
       EvaluationPeriods: 1
-      Threshold: 20
+      Threshold: 1
       ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching
       AlarmActions:
-        - ${self:custom.snsAlarmTopic}
+        - ${self:custom.snsMediumPriorityTopic}
+      Tags:
+        - Key: Service
+          Value: ${self:custom.service}
+        - Key: Environment
+          Value: ${self:provider.stage}
+
+  ChatHistoryTableLatencyAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: ${self:custom.service}-${self:provider.stage}-chat-history-latency
+      AlarmDescription: Chat History table high latency
+      MetricName: SuccessfulRequestLatency
+      Namespace: AWS/DynamoDB
+      Dimensions:
+        - Name: TableName
+          Value: ${self:custom.tableNames.history}
+      Statistic: Average
+      Period: 300
+      EvaluationPeriods: 3
+      Threshold: 100
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching
+      AlarmActions:
+        - ${self:custom.snsMediumPriorityTopic}
+      Tags:
+        - Key: Service
+          Value: ${self:custom.service}
+        - Key: Environment
+          Value: ${self:provider.stage}
 
 Outputs:
   ChatHistoryTableName:
     Description: Name of the Chat History DynamoDB table
-    Value: ${self:custom.chatHistoryTable}
+    Value: !Ref ChatHistoryTable
     Export:
-      Name: ${self:service}-${self:provider.stage}-ChatHistoryTableName
+      Name: ${self:custom.service}-${self:provider.stage}-chat-history-table-name
 
   ChatHistoryTableArn:
     Description: ARN of the Chat History DynamoDB table
     Value: !GetAtt ChatHistoryTable.Arn
     Export:
-      Name: ${self:service}-${self:provider.stage}-ChatHistoryTableArn
+      Name: ${self:custom.service}-${self:provider.stage}-chat-history-table-arn
 
-  ChatHistoryTableStreamArn:
-    Description: ARN of the Chat History DynamoDB table stream
-    Value: !GetAtt ChatHistoryTable.StreamArn
+  UserConversationsIndexName:
+    Description: Name of the User Conversations GSI
+    Value: UserConversationsIndex
     Export:
-      Name: ${self:service}-${self:provider.stage}-ChatHistoryTableStreamArn
+      Name: ${self:custom.service}-${self:provider.stage}-user-conversations-index-name
+
+  MessageTypeIndexName:
+    Description: Name of the Message Type GSI
+    Value: MessageTypeIndex
+    Export:
+      Name: ${self:custom.service}-${self:provider.stage}-message-type-index-name

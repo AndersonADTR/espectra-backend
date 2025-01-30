@@ -1,0 +1,272 @@
+Resources:
+  # API Resources
+  ChatResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref RestApi
+      ParentId: !GetAtt RestApi.RootResourceId
+      PathPart: chat
+
+  SessionsResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref RestApi
+      ParentId: !Ref ChatResource
+      PathPart: sessions
+
+  MessagesResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref RestApi
+      ParentId: !Ref ChatResource
+      PathPart: messages
+
+  HandoffResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref RestApi
+      ParentId: !Ref ChatResource
+      PathPart: handoff
+
+  # Request Validator
+  RequestValidator:
+    Type: AWS::ApiGateway::RequestValidator
+    Properties:
+      Name: ${self:custom.service}-${self:provider.stage}-validator
+      RestApiId: !Ref RestApi
+      ValidateRequestBody: true
+      ValidateRequestParameters: true
+
+  # Data Models
+  MessageModel:
+    Type: AWS::ApiGateway::Model
+    Properties:
+      RestApiId: !Ref RestApi
+      ContentType: application/json
+      Name: MessageModel
+      Schema:
+        $schema: 'http://json-schema.org/draft-07/schema#'
+        title: MessageModel
+        type: object
+        required:
+          - content
+          - sessionId
+        properties:
+          content:
+            type: string
+            minLength: 1
+            maxLength: 4096
+            pattern: "^[\\S\\s]*\\S[\\S\\s]*$"
+          sessionId:
+            type: string
+            pattern: "^[a-zA-Z0-9-_]{1,128}$"
+          metadata:
+            type: object
+            additionalProperties: true
+        additionalProperties: false
+
+  SessionModel:
+    Type: AWS::ApiGateway::Model
+    Properties:
+      RestApiId: !Ref RestApi
+      ContentType: application/json
+      Name: SessionModel
+      Schema:
+        $schema: 'http://json-schema.org/draft-07/schema#'
+        title: SessionModel
+        type: object
+        required:
+          - userId
+        properties:
+          userId:
+            type: string
+            pattern: "^[a-zA-Z0-9-_]{1,128}$"
+          metadata:
+            type: object
+            additionalProperties: true
+
+  SessionResponseModel:
+    Type: AWS::ApiGateway::Model
+    Properties:
+      RestApiId: !Ref RestApi
+      ContentType: application/json
+      Name: SessionResponseModel
+      Schema:
+        $schema: 'http://json-schema.org/draft-07/schema#'
+        title: SessionResponseModel
+        type: object
+        required:
+          - sessionId
+          - status
+        properties:
+          sessionId:
+            type: string
+            pattern: "^[a-zA-Z0-9-_]{1,128}$"
+          status:
+            type: string
+            enum: ['active', 'inactive']
+          createdAt:
+            type: string
+            format: date-time
+          metadata:
+            type: object
+            additionalProperties: true
+
+  ErrorModel:
+    Type: AWS::ApiGateway::Model
+    Properties:
+      RestApiId: !Ref RestApi
+      ContentType: application/json
+      Name: ErrorModel
+      Schema:
+        $schema: 'http://json-schema.org/draft-07/schema#'
+        title: ErrorModel
+        type: object
+        required:
+          - code
+          - message
+        properties:
+          code:
+            type: string
+          message:
+            type: string
+          details:
+            type: object
+            additionalProperties: true
+
+  # Methods
+  CreateSessionMethod:
+    Type: AWS::ApiGateway::Method
+    DependsOn:
+      - SessionsResource
+      - RestApiAuthorizer
+    Properties:
+      RestApiId: !Ref RestApi
+      ResourceId: !Ref SessionsResource
+      HttpMethod: POST
+      AuthorizationType: COGNITO_USER_POOLS
+      AuthorizerId: !Ref RestApiAuthorizer
+      ApiKeyRequired: true
+      OperationName: CreateSession
+      RequestValidatorId: !Ref RequestValidator
+      RequestModels:
+        application/json: !Ref SessionModel
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub 
+          - arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${FunctionArn}/invocations
+          - FunctionArn: !GetAtt StartSessionLambdaFunction.Arn
+        TimeoutInMillis: 29000
+        ContentHandling: CONVERT_TO_TEXT
+        PassthroughBehavior: WHEN_NO_TEMPLATES
+      MethodResponses:
+        - StatusCode: '200'
+          ResponseModels:
+            application/json: !Ref SessionResponseModel
+        - StatusCode: '400'
+          ResponseModels:
+            application/json: !Ref ErrorModel
+        - StatusCode: '401'
+          ResponseModels:
+            application/json: !Ref ErrorModel
+        - StatusCode: '500'
+          ResponseModels:
+            application/json: !Ref ErrorModel
+
+  SendMessageMethod:
+    Type: AWS::ApiGateway::Method
+    DependsOn:
+      - MessagesResource
+      - RestApiAuthorizer
+    Properties:
+      RestApiId: !Ref RestApi
+      ResourceId: !Ref MessagesResource
+      HttpMethod: POST
+      AuthorizationType: COGNITO_USER_POOLS
+      AuthorizerId: !Ref RestApiAuthorizer
+      ApiKeyRequired: true
+      OperationName: SendMessage
+      RequestValidatorId: !Ref RequestValidator
+      RequestModels:
+        application/json: !Ref MessageModel
+      RequestParameters:
+        method.request.path.sessionId: true
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub 
+          - arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${FunctionArn}/invocations
+          - FunctionArn: !GetAtt WebSocketMessageLambdaFunction.Arn
+        TimeoutInMillis: 29000
+        ContentHandling: CONVERT_TO_TEXT
+        PassthroughBehavior: WHEN_NO_TEMPLATES
+        CacheNamespace: !Ref MessagesResource
+        CacheKeyParameters:
+          - method.request.path.sessionId
+      MethodResponses:
+        - StatusCode: '200'
+          ResponseModels:
+            application/json: !Ref MessageModel
+        - StatusCode: '400'
+          ResponseModels:
+            application/json: !Ref ErrorModel
+        - StatusCode: '401'
+          ResponseModels:
+            application/json: !Ref ErrorModel
+        - StatusCode: '500'
+          ResponseModels:
+            application/json: !Ref ErrorModel
+
+  # Method Settings
+  # ApiMethodSettings:
+  #   Type: AWS::ApiGateway::MethodSettings
+  #   DependsOn:
+  #     - RestApiAuthorizer
+  #   Properties:
+  #     RestApiId: !Ref RestApi
+  #     StageName: ${self:provider.stage}
+  #     MethodSettings:
+  #       - ResourcePath: "/*"
+  #         HttpMethod: "*"
+  #         ThrottlingBurstLimit: 5000
+  #         ThrottlingRateLimit: 10000
+  #         CachingEnabled: true
+  #         CacheTtlInSeconds: 300
+  #         CacheDataEncrypted: true
+  #         MetricsEnabled: true
+  #         LoggingLevel: INFO
+  #         DataTraceEnabled: true
+
+  ErrorResponseMapping:
+    Type: AWS::ApiGateway::GatewayResponse
+    Properties:
+      RestApiId: !Ref RestApi
+      ResponseType: DEFAULT_4XX
+      ResponseTemplates:
+        application/json: '{"message":$context.error.messageString,"code":"$context.error.responseType"}'
+
+Outputs:
+  ChatResourceId:
+    Description: Chat Resource ID
+    Value: !Ref ChatResource
+    Export:
+      Name: ${self:custom.service}-${self:provider.stage}-chat-resource-id
+
+  SessionsResourceId:
+    Description: Sessions Resource ID
+    Value: !Ref SessionsResource
+    Export:
+      Name: ${self:custom.service}-${self:provider.stage}-sessions-resource-id
+
+  MessagesResourceId:
+    Description: Messages Resource ID
+    Value: !Ref MessagesResource
+    Export:
+      Name: ${self:custom.service}-${self:provider.stage}-messages-resource-id
+
+  HandoffResourceId:
+    Description: Handoff Resource ID
+    Value: !Ref HandoffResource
+    Export:
+      Name: ${self:custom.service}-${self:provider.stage}-handoff-resource-id

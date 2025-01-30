@@ -7,7 +7,7 @@ import { WebSocketService } from './websocket.service';
 import { Connection } from '../models/connection';
 import { Logger } from '@shared/utils/logger';
 import { MetricsService } from '@shared/utils/metrics';
-import { MONITORING_CONFIG } from '../../botpress/config/config';
+import { HANDOFF_CONFIG, MONITORING_CONFIG } from '../../botpress/config/config';
 import { HandoffRequest } from '@services/botpress/types/chat.types';
 import { WebSocketError } from '../utils/errors';
 
@@ -70,7 +70,8 @@ export class MessageService {
           connectionId: connection.connectionId,
           ...message.metadata
         },
-        timestamp: new Date().toISOString()
+        timestamp: new Date().toISOString(),
+        priority: HANDOFF_CONFIG.DEFAULT_PRIORITY
       };
   
       await this.webSocketService.sendToUser(connection.userId, agentMessage);
