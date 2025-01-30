@@ -45,6 +45,36 @@ Resources:
         - Key: Component
           Value: Metrics
 
+  BotpressLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: /custom/${self:custom.service}-${self:provider.stage}/botpress
+      RetentionInDays: ${self:custom.logRetentionInDays}
+      KmsKeyId: 
+        Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-system-kms-key-arn
+      Tags:
+        - Key: Service
+          Value: ${self:custom.service}
+        - Key: Environment
+          Value: ${self:provider.stage}
+        - Key: Component
+          Value: Botpress
+
+  WebSocketLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: /custom/${self:custom.service}-${self:provider.stage}/websocket
+      RetentionInDays: ${self:custom.logRetentionInDays}
+      KmsKeyId: 
+        Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-system-kms-key-arn
+      Tags:
+        - Key: Service
+          Value: ${self:custom.service}
+        - Key: Environment
+          Value: ${self:provider.stage}
+        - Key: Component
+          Value: WebSocket
+
   # IAM Roles
   CloudWatchRole:
     Type: AWS::IAM::Role
@@ -82,6 +112,11 @@ Resources:
                   - !Sub arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/custom/*
               - Effect: Allow
                 Action:
+                  - xray:PutTraceSegments
+                  - xray:PutTelemetryRecords
+                Resource: "*"
+              - Effect: Allow
+                Action:
                   - kms:Decrypt
                   - kms:GenerateDataKey
                 Resource:
@@ -105,7 +140,9 @@ Resources:
                   [ "AWS/ApiGateway", "4XXError", "ApiName", "${self:custom.service}" ],
                   [ ".", "5XXError", ".", "." ],
                   [ "AWS/Lambda", "Errors", "FunctionName", "${self:custom.service}-${self:provider.stage}-*" ],
-                  [ "AWS/DynamoDB", "ThrottledRequests", "TableName", "${self:custom.service}-${self:provider.stage}-*" ]
+                  [ "AWS/DynamoDB", "ThrottledRequests", "TableName", "${self:custom.service}-${self:provider.stage}-*" ],
+                  [ "${self:custom.service}/${self:provider.stage}", "ActiveConnections", "Service", "WebSocket" ],
+                  [ ".", "BotpressErrors", "Service", "Botpress" ]
                 ],
                 "region": "${AWS::Region}",
                 "period": 300,
@@ -183,6 +220,18 @@ Outputs:
     Value: !Ref MetricsLogGroup
     Export:
       Name: ${self:custom.service}-${self:provider.stage}-metrics-log-group
+
+  BotpressLogGroupName:
+    Description: Name of the Botpress log group
+    Value: !Ref BotpressLogGroup
+    Export:
+      Name: ${self:custom.service}-${self:provider.stage}-botpress-log-group
+
+  WebSocketLogGroupName:
+    Description: Name of the WebSocket log group
+    Value: !Ref WebSocketLogGroup
+    Export:
+      Name: ${self:custom.service}-${self:provider.stage}-websocket-log-group
 
   MainDashboardURL:
     Description: URL of the main CloudWatch dashboard

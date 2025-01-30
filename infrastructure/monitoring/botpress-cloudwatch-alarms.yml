@@ -5,14 +5,24 @@ Resources:
     Properties:
       AlarmName: ${self:custom.service}-${self:provider.stage}-botpress-health
       AlarmDescription: Overall Botpress service health status
-      AlarmRule: !Sub |
-        ALARM(${BotpressErrorRateAlarm}) OR
-        ALARM(${BotpressLatencyAlarm}) OR
-        ALARM(${HandoffQueueSizeAlarm}) OR
-        ALARM(${TokenLimitAlarm})
+      AlarmRule: !Join
+        - ''
+        - - 'ALARM('
+          - !Ref BotpressErrorRateAlarm
+          - ') OR ALARM('
+          - !Ref BotpressLatencyAlarm
+          - ') OR ALARM('
+          - !Ref HandoffQueueSizeAlarm
+          - ') OR ALARM('
+          - !Ref TokenLimitAlarm
+          - ') OR ALARM('
+          - !Ref HandoffSuccessRateAlarm
+          - ')'
       AlarmActions:
         - ${self:custom.snsHighPriorityTopic}
       OKActions:
+        - ${self:custom.snsHighPriorityTopic}
+      InsufficientDataActions:
         - ${self:custom.snsHighPriorityTopic}
       Tags:
         - Key: Service
@@ -157,6 +167,32 @@ Resources:
         - Key: MonitoringLevel
           Value: High
 
+  # Token Exhaustion Alarm
+  TokenExhaustionAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: ${self:custom.service}-${self:provider.stage}-token-exhaustion
+      AlarmDescription: Alert when token usage is near exhaustion
+      MetricName: TokenUsagePercentage
+      Namespace: Spectra/Botpress
+      Statistic: Maximum
+      Period: ${self:custom.botpressAlarmThresholds.period}
+      EvaluationPeriods: 1
+      Threshold: 95
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching
+      AlarmActions:
+        - ${self:custom.snsHighPriorityTopic}
+      Tags:
+        - Key: Service
+          Value: ${self:custom.service}
+        - Key: Environment
+          Value: ${self:provider.stage}
+        - Key: Component
+          Value: Botpress
+        - Key: MonitoringLevel
+          Value: Critical
+
   # Business Metrics Alarms
   HandoffSuccessRateAlarm:
     Type: AWS::CloudWatch::Alarm
@@ -184,6 +220,33 @@ Resources:
         - Key: MonitoringLevel
           Value: Medium
 
+  # Integration Health Alarm
+  BotpressIntegrationHealthAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: ${self:custom.service}-${self:provider.stage}-botpress-integration-health
+      AlarmDescription: Monitor Botpress integration health status
+      MetricName: IntegrationHealth
+      Namespace: Spectra/Botpress
+      Statistic: Minimum
+      Period: ${self:custom.botpressAlarmThresholds.period}
+      EvaluationPeriods: 2
+      DatapointsToAlarm: 2
+      Threshold: 1
+      ComparisonOperator: LessThanThreshold
+      TreatMissingData: breaching
+      AlarmActions:
+        - ${self:custom.snsHighPriorityTopic}
+      Tags:
+        - Key: Service
+          Value: ${self:custom.service}
+        - Key: Environment
+          Value: ${self:provider.stage}
+        - Key: Component
+          Value: Botpress
+        - Key: MonitoringLevel
+          Value: High
+
 Outputs:
   BotpressHealthAlarmArn:
     Description: ARN of the Botpress health composite alarm
@@ -199,6 +262,8 @@ Outputs:
         - - !GetAtt BotpressHealthAlarm.Arn
           - !GetAtt BotpressErrorRateAlarm.Arn
           - !GetAtt TokenLimitAlarm.Arn
+          - !GetAtt TokenExhaustionAlarm.Arn
+          - !GetAtt BotpressIntegrationHealthAlarm.Arn
     Export:
       Name: ${self:custom.service}-${self:provider.stage}-botpress-high-priority-alarms
 

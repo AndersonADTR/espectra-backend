@@ -1,15 +1,25 @@
 Resources:
-  # Composite Alarms for Overall Health
+  # Composite Alarms
   ServiceHealthAlarm:
     Type: AWS::CloudWatch::CompositeAlarm
     Properties:
-      AlarmName: ${self:custom.service}-${self:provider.stage}-service-health
+      AlarmName: ${self:custom.service}-${self:provider.stage}-service-health-cw-alarm
       AlarmDescription: Overall service health based on critical components
-      AlarmRule: !Sub |
-        ALARM(${Api5xxErrorAlarm}) OR
-        ALARM(${LambdaErrorsAlarm}) OR
-        ALARM(${DynamoDBThrottlesAlarm}) OR
-        ALARM(${WebSocketConnectionsAlarm})
+      AlarmRule: !Join
+        - ''
+        - - 'ALARM('
+          - !Ref Api5xxErrorAlarm
+          - ') OR ALARM('
+          - !Ref LambdaErrorsAlarm
+          - ') OR ALARM('
+          - !Ref DynamoDBThrottlesAlarm
+          - ') OR ALARM('
+          - !Ref WebSocketConnectionsAlarm
+          - ') OR ALARM('
+          - !Ref BotpressHealthAlarm
+          - ') OR ALARM('
+          - !Ref KMSKeyErrorAlarm
+          - ')'
       AlarmActions: 
         - ${self:custom.snsHighPriorityTopic}
       OKActions:
@@ -26,13 +36,11 @@ Resources:
         - Key: MonitoringLevel
           Value: High
 
-      # ALARM(${KMSKeyErrorAlarm}) OR
-
   # Lambda Function Alarms
   LambdaErrorsAlarm:
     Type: AWS::CloudWatch::Alarm
     Properties:
-      AlarmName: ${self:custom.service}-${self:provider.stage}-lambda-errors
+      AlarmName: ${self:custom.service}-${self:provider.stage}-lambda-errors-cw-alarm
       AlarmDescription: !Sub "Lambda function error rate exceeds ${self:custom.alarmThresholds.lambda.errors} errors in ${self:custom.alarmThresholds.lambda.period} minutes"
       MetricName: Errors
       Namespace: AWS/Lambda
@@ -61,7 +69,7 @@ Resources:
   LambdaThrottlesAlarm:
     Type: AWS::CloudWatch::Alarm
     Properties:
-      AlarmName: ${self:custom.service}-${self:provider.stage}-lambda-throttles
+      AlarmName: ${self:custom.service}-${self:provider.stage}-lambda-throttles-cw-alarm
       AlarmDescription: !Sub "Lambda function throttles exceed ${self:custom.alarmThresholds.lambda.throttles} in ${self:custom.alarmThresholds.lambda.period} minutes"
       MetricName: Throttles
       Namespace: AWS/Lambda
@@ -90,7 +98,7 @@ Resources:
   LambdaDurationAlarm:
     Type: AWS::CloudWatch::Alarm
     Properties:
-      AlarmName: ${self:custom.service}-${self:provider.stage}-lambda-duration
+      AlarmName: ${self:custom.service}-${self:provider.stage}-lambda-duration-cw-alarm
       AlarmDescription: !Sub "Lambda function duration exceeds ${self:custom.alarmThresholds.lambda.duration}ms"
       MetricName: Duration
       Namespace: AWS/Lambda
@@ -120,7 +128,7 @@ Resources:
   ApiLatencyAlarm:
     Type: AWS::CloudWatch::Alarm
     Properties:
-      AlarmName: ${self:custom.service}-${self:provider.stage}-api-latency
+      AlarmName: ${self:custom.service}-${self:provider.stage}-api-latency-cw-alarm
       AlarmDescription: !Sub "API Gateway latency exceeds ${self:custom.alarmThresholds.api.latency}ms"
       MetricName: Latency
       Namespace: AWS/ApiGateway
@@ -149,7 +157,7 @@ Resources:
   Api4xxErrorAlarm:
     Type: AWS::CloudWatch::Alarm
     Properties:
-      AlarmName: ${self:custom.service}-${self:provider.stage}-api-4xx-errors
+      AlarmName: ${self:custom.service}-${self:provider.stage}-api-4xx-errors-cw-alarm
       AlarmDescription: !Sub "API Gateway 4XX error rate exceeds ${self:custom.alarmThresholds.api.4xxErrors}%"
       MetricName: 4XXError
       Namespace: AWS/ApiGateway
@@ -178,7 +186,7 @@ Resources:
   Api5xxErrorAlarm:
     Type: AWS::CloudWatch::Alarm
     Properties:
-      AlarmName: ${self:custom.service}-${self:provider.stage}-api-5xx-errors
+      AlarmName: ${self:custom.service}-${self:provider.stage}-api-5xx-errors-cw-alarm
       AlarmDescription: !Sub "API Gateway 5XX error rate exceeds ${self:custom.alarmThresholds.api.5xxErrors}%"
       MetricName: 5XXError
       Namespace: AWS/ApiGateway
@@ -203,12 +211,12 @@ Resources:
           Value: APIGateway
         - Key: MonitoringLevel
           Value: High
-          
+
   # DynamoDB Alarms
   DynamoDBThrottlesAlarm:
     Type: AWS::CloudWatch::Alarm
     Properties:
-      AlarmName: ${self:custom.service}-${self:provider.stage}-dynamodb-throttles
+      AlarmName: ${self:custom.service}-${self:provider.stage}-dynamodb-throttles-cw-alarm
       AlarmDescription: !Sub "DynamoDB throttled requests exceed ${self:custom.alarmThresholds.dynamodb.throttles}"
       MetricName: ThrottledRequests
       Namespace: AWS/DynamoDB
@@ -237,7 +245,7 @@ Resources:
   DynamoDBSystemErrorsAlarm:
     Type: AWS::CloudWatch::Alarm
     Properties:
-      AlarmName: ${self:custom.service}-${self:provider.stage}-dynamodb-errors
+      AlarmName: ${self:custom.service}-${self:provider.stage}-dynamodb-errors-cw-alarm
       AlarmDescription: DynamoDB system errors detected
       MetricName: SystemErrors
       Namespace: AWS/DynamoDB
@@ -267,7 +275,7 @@ Resources:
   WebSocketConnectionsAlarm:
     Type: AWS::CloudWatch::Alarm
     Properties:
-      AlarmName: ${self:custom.service}-${self:provider.stage}-websocket-connections
+      AlarmName: ${self:custom.service}-${self:provider.stage}-websocket-connections-cw-alarm
       AlarmDescription: !Sub "WebSocket connections exceed ${self:custom.alarmThresholds.websocket.connections}"
       MetricName: ConnectorConnections
       Namespace: AWS/ApiGateway
@@ -280,7 +288,8 @@ Resources:
       TreatMissingData: notBreaching
       Dimensions:
         - Name: ApiId
-          Value: !Ref WebSocketApi
+          Value: 
+            Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-websocket-api-id
       AlarmActions:
         - ${self:custom.snsMediumPriorityTopic}
       Tags:
@@ -293,11 +302,37 @@ Resources:
         - Key: MonitoringLevel
           Value: Medium
 
+  # KMS Key Alarms
+  KMSKeyErrorAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: ${self:custom.service}-${self:provider.stage}-kms-errors-cw-alarm
+      AlarmDescription: KMS key operation errors detected
+      MetricName: KeyUsageErrors
+      Namespace: AWS/KMS
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching
+      AlarmActions:
+        - ${self:custom.snsHighPriorityTopic}
+      Tags:
+        - Key: Service
+          Value: ${self:custom.service}
+        - Key: Environment
+          Value: ${self:provider.stage}
+        - Key: Category
+          Value: KMS
+        - Key: MonitoringLevel
+          Value: High
+
   # Cost Alarms
   MonthlyEstimatedChargesAlarm:
     Type: AWS::CloudWatch::Alarm
     Properties:
-      AlarmName: ${self:custom.service}-${self:provider.stage}-monthly-costs
+      AlarmName: ${self:custom.service}-${self:provider.stage}-monthly-costs-cw-alarm
       AlarmDescription: !Sub "Monthly estimated charges exceed ${self:custom.alarmThresholds.costs.monthly} USD"
       MetricName: EstimatedCharges
       Namespace: AWS/Billing
@@ -327,7 +362,7 @@ Outputs:
     Description: ARN of the composite service health alarm
     Value: !GetAtt ServiceHealthAlarm.Arn
     Export:
-      Name: ${self:custom.service}-${self:provider.stage}-service-health-alarm-arn
+      Name: ${self:custom.service}-${self:provider.stage}-service-health-cw-alarm-arn
 
   LowPriorityAlarms:
     Description: List of low priority alarm ARNs
@@ -337,7 +372,7 @@ Outputs:
         - - !GetAtt LambdaDurationAlarm.Arn
           - !GetAtt Api4xxErrorAlarm.Arn
     Export:
-      Name: ${self:custom.service}-${self:provider.stage}-low-priority-alarms
+      Name: ${self:custom.service}-${self:provider.stage}-low-priority-cw-alarms
 
   MediumPriorityAlarms:
     Description: List of medium priority alarm ARNs
@@ -350,7 +385,7 @@ Outputs:
           - !GetAtt DynamoDBThrottlesAlarm.Arn
           - !GetAtt WebSocketConnectionsAlarm.Arn
     Export:
-      Name: ${self:custom.service}-${self:provider.stage}-medium-priority-alarms
+      Name: ${self:custom.service}-${self:provider.stage}-medium-priority-cw-alarms
 
   HighPriorityAlarms:
     Description: List of high priority alarm ARNs
@@ -360,6 +395,13 @@ Outputs:
         - - !GetAtt ServiceHealthAlarm.Arn
           - !GetAtt Api5xxErrorAlarm.Arn
           - !GetAtt DynamoDBSystemErrorsAlarm.Arn
+          - !GetAtt KMSKeyErrorAlarm.Arn
           - !GetAtt MonthlyEstimatedChargesAlarm.Arn
     Export:
-      Name: ${self:custom.service}-${self:provider.stage}-high-priority-alarms
+      Name: ${self:custom.service}-${self:provider.stage}-high-priority-cw-alarms
+
+  BillingAlarmArn:
+    Description: ARN of the monthly billing alarm
+    Value: !GetAtt MonthlyEstimatedChargesAlarm.Arn
+    Export:
+      Name: ${self:custom.service}-${self:provider.stage}-billing-cw-alarm-arn
