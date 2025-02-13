@@ -83,16 +83,16 @@ functions:
         - Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-public-subnet-2-id
 
 resources:
-  - ${file(../infrastructure/dynamodb/botpress-tables.yml)}
+  - ${file(infrastructure/dynamodb/botpress-tables.yml)}
 
-  - ${file(../infrastructure/queues/message-queues.yml)}
+  - ${file(infrastructure/queues/message-queues.yml)}
   
-  - ${file(../infrastructure/elasticache/redis.yml)}
+  - ${file(infrastructure/elasticache/redis.yml)}
 
-  - ${file(../infrastructure/eventbridge/botpress-event-bus.yml)}
+  - ${file(infrastructure/eventbridge/botpress-event-bus.yml)}
 
-  - ${file(../infrastructure/iam/roles.yml)}
-  - ${file(../infrastructure/iam/websocket-roles.yml)}
+  - ${file(infrastructure/iam/roles.yml)}
+  - ${file(infrastructure/iam/websocket-roles.yml)}
 
 outputs:
   BotpressMetricsCollectorArn:
@@ -202,3 +202,39 @@ outputs:
     Value: !Sub "redis://${RedisCluster.PrimaryEndPoint.Address}:${RedisCluster.PrimaryEndPoint.Port}"
     Export:
       Name: ${self:custom.service}-${self:provider.stage}-redis-connection-string
+      
+  ConversationContextTableName:
+    Description: Name of the Conversation Context table
+    Value: ${self:custom.tableNames.context}
+    Export:
+      Name: ${self:custom.service}-${self:provider.stage}-context-table-name
+
+  ConversationContextTableArn:
+    Description: ARN of the Conversation Context table
+    Value: !GetAtt ConversationContextTable.Arn
+    Export:
+      Name: ${self:custom.service}-${self:provider.stage}-context-table-arn
+
+  BotpressMetricsTableName:
+    Description: Name of the Botpress Metrics table
+    Value: ${self:custom.tableNames.metrics}
+    Export:
+      Name: ${self:custom.service}-${self:provider.stage}-metrics-table-name
+
+  BotpressMetricsTableArn:
+    Description: ARN of the Botpress Metrics table
+    Value: !GetAtt BotpressMetricsTable.Arn
+    Export:
+      Name: ${self:custom.service}-${self:provider.stage}-metrics-table-arn
+
+  TokenUsageTableName:
+    Description: Name of the Token Usage table
+    Value: ${self:custom.tableNames.tokens}
+    Export:
+      Name: ${self:custom.service}-${self:provider.stage}-tokens-table-name
+
+  TokenUsageTableArn:
+    Description: ARN of the Token Usage table
+    Value: !GetAtt TokenUsageTable.Arn
+    Export:
+      Name: ${self:custom.service}-${self:provider.stage}-tokens-table-arn

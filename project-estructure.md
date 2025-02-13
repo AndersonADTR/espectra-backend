@@ -7,11 +7,15 @@ espectra-backend/
 ├── .serverless/
 ├── node_modules/
 ├── deploy/
+│   ├── serverless-sns.yml
+│   ├── serverless-kms.yml
 │   ├── serverless-cognito.yml
 │   ├── serverless-phase1.yml
 │   ├── serverless-phase2.yml
 │   ├── serverless-phase3.yml
 │   ├── serverless-phase4.yml
+│   ├── serverless-phase5.yml
+│   └── create-parameters.bat
 │   └── deploy.bat
 ├── infrastructure/
 │   ├── apigateway/
@@ -32,7 +36,6 @@ espectra-backend/
 │   ├── eventbridge/
 │   │   └── botpress-event-bus.yml
 │   ├── iam/
-│   │   ├── lambda-role.yml
 │   │   ├── roles.yml
 │   │   └── websocket-roles.yml
 │   ├── monitoring/
@@ -68,9 +71,20 @@ espectra-backend/
 │   │   │   ├── logout.ts
 │   │   │   ├── refreshToken.ts
 │   │   │   ├── register.ts
+│   │   │   ├── session.handler.ts
 │   │   │   └── verify.ts 
 │   │   ├── models/
-│   │   │   └── users.ts
+│   │   │   ├── metrics.model.ts
+│   │   │   ├── session.model.ts
+│   │   │   └── user.model.ts
+│   │   ├── services/
+│   │   │   ├── authentication.service.ts
+│   │   │   ├── cognito.service.ts
+│   │   │   ├── session.service.ts
+│   │   │   └── token.service.ts
+│   │   ├── types/
+│   │   │   ├── auth.types.ts
+│   │   │   └── metric.types.ts
 │   │   └── utils/
 │   │   │   ├── password.ts
 │   │   │   └── validation.ts 
@@ -179,14 +193,36 @@ espectra-backend/
 │           ├── errors.ts
 │           └── websocket.utils.ts
 └── shared/
+    ├── config/
+    │   └── config-service.ts
     ├── middleware/
+    │   ├── error/
+    │   │   └── error-handling.middleware.ts
+    │   ├── rate-limit/
+    │   │   └── rate-limit.middleware.ts
+    │   ├── security/
+    │   │   ├── security.context.ts
+    │   │   ├── security.middleware.ts
+    │   │   └── security.service.ts
+    │   └── validation/
+    │       └── validation.middleware.ts
     ├── models/
+    ├── services/
+    │   ├── cache/
+    │   │   ├── cache.decorator.ts
+    │   │   ├── cache.service.ts
+    │   │   └── redis.service.ts
+    │   ├── observability/
+    │   │   ├── anomaly-detection.service.ts
+    │   │   └── observability.service.ts
     └── utils/
         ├── errors/
         │   ├── base-error.ts
         │   ├── error-handler.ts
         │   ├── http-error.ts
         │   ├── index.ts
+        │   ├── rate-limit-error.ts
+        │   ├── session-error.ts
         │   └── types.ts
         ├── metrics/
         │   ├── index.ts

@@ -23,7 +23,7 @@ export class AuthenticationMiddleware {
     this.logger = new Logger('AuthenticationMiddleware');
     this.metrics = new MetricsService('Spectra/Botpress');
     this.config = config;
-
+    this.config.botId;
     this.jwtVerifier = CognitoJwtVerifier.create({
       userPoolId: process.env.COGNITO_USER_POOL_ID!,
       clientId: process.env.COGNITO_CLIENT_ID!,
@@ -160,6 +160,7 @@ export class AuthenticationMiddleware {
   private async getUserPermissions(userId: string): Promise<string[]> {
     // Implementar lógica para obtener permisos del usuario
     // Esto podría venir de DynamoDB, Redis, o otro almacenamiento
+    userId.length;
     return ['botpress:chat', 'botpress:history'];
   }
 
@@ -169,7 +170,7 @@ export class AuthenticationMiddleware {
   ): Promise<boolean> {
     // Verificar acceso basado en plan y estado de la cuenta
     // Esto podría incluir verificación de pagos, límites, etc.
-    return true;
+    return userId === 'admin' || planType !== 'basic';
   }
 
   public createAuthContext(authRequest: AuthenticatedRequest): Record<string, any> {

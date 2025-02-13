@@ -35,7 +35,6 @@ aws ssm put-parameter --name "/espectra/%STAGE%/redis/max-connections" --type "S
 
 :: Claves de Seguridad
 aws ssm put-parameter --name "/espectra/%STAGE%/encryption-key" --type "SecureString" --value "ENCRYPTION_KEY" --description "Clave de encriptación principal" --overwrite
-aws ssm put-parameter --name "/espectra/%STAGE%/jwt-secret" --type "SecureString" --value "JWT_SECRET" --description "Secreto para tokens JWT" --overwrite
 aws ssm put-parameter --name "/espectra/%STAGE%/webhook-signing-key" --type "SecureString" --value "WEBHOOK_SIGNING_KEY" --description "Clave para firmar webhooks" --overwrite
 
 :: Configuraciones de Despliegue
@@ -62,6 +61,17 @@ aws ssm put-parameter --name "/espectra/%STAGE%/token-limits/enterprise-plan" --
 aws ssm put-parameter --name "/espectra/%STAGE%/sns/high-priority-topic" --type "String" --value "arn:aws:sns:us-east-1:345594559631:high-priority" --description "Tópico SNS de alta prioridad" --overwrite
 aws ssm put-parameter --name "/espectra/%STAGE%/sns/medium-priority-topic" --type "String" --value "arn:aws:sns:us-east-1:345594559631:medium-priority" --description "Tópico SNS de prioridad media" --overwrite
 aws ssm put-parameter --name "/espectra/%STAGE%/sns/low-priority-topic" --type "String" --value "arn:aws:sns:us-east-1:345594559631" --description "Tópico SNS de baja prioridad" --overwrite
+
+:: Configuraciones de Sesión
+aws ssm put-parameter --name "/espectra/%STAGE%/session/ttl" --type "String" --value "86400" --description "Session TTL in seconds (24 hours)" --overwrite
+aws ssm put-parameter --name "/espectra/%STAGE%/session/extend-duration" --type "String" --value "3600" --description "Session extension duration in seconds (1 hour)" --overwrite
+
+:: Configuraciones de Observabilidad
+aws ssm put-parameter --name "/espectra/%STAGE%/monitoring/metrics-retention" --type "String" --value "90" --description "Metrics retention in days" --overwrite
+aws ssm put-parameter --name "/espectra/%STAGE%/monitoring/session-alert-threshold" --type "String" --value "1000" --description "Session count alert threshold" --overwrite
+
+:: Configuraciones de Rate Limiting
+aws ssm put-parameter --name "/espectra/%STAGE%/rate-limit/session-creation" --type "String" --value "100" --description "Session creation rate limit per hour" --overwrite
 
 echo Parámetros creados exitosamente.
 pause

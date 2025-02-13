@@ -1,6 +1,6 @@
 Resources:
   # REST API Gateway
-  RestApi:
+  RestApiId:
     Type: AWS::ApiGateway::RestApi
     Properties:
       Name: ${self:custom.service}-${self:provider.stage}-api
@@ -33,7 +33,7 @@ Resources:
   RestApiAuthorizer:
     Type: AWS::ApiGateway::Authorizer
     DependsOn:
-      - RestApi
+      - RestApiId
     Properties:
       Name: ${self:custom.service}-${self:provider.stage}-rest-authorizer
       Type: COGNITO_USER_POOLS
@@ -45,7 +45,7 @@ Resources:
           - FunctionArn: !GetAtt RestAuthorizerLambdaFunction.Arn
       ProviderARNs:
         - Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-user-pool-arn
-      RestApiId: !Ref RestApi
+      RestApiId: !Ref RestApiId
 
   # CloudWatch Role para API Gateway
   ApiGatewayCloudWatchRole:
@@ -96,15 +96,26 @@ Resources:
         - Key: Environment
           Value: ${self:provider.stage}
 
+  # API Deployment
+  ApiDeployment:
+    Type: AWS::ApiGateway::Deployment
+    DependsOn:
+      - CreateSessionMethod
+      - SendMessageMethod 
+      - RestApiId
+    Properties:
+      RestApiId: !Ref RestApiId
+      Description: Deployment for ${self:provider.stage} stage
+
   # Stage Configuration
   ApiGatewayStage:
     Type: AWS::ApiGateway::Stage
     DependsOn:
-      - RestApi
+      - RestApiId
     Properties:
-      RestApiId: !Ref RestApi
+      RestApiId: !Ref RestApiId
       DeploymentId: !Ref ApiDeployment
-      StageName: ${self:provider.stage}
+      StageName: api-${self:provider.stage}
       Description: ${self:provider.stage} stage for ${self:custom.service}
       TracingEnabled: true
       CacheClusterEnabled: true
@@ -135,17 +146,6 @@ Resources:
         - Key: Environment
           Value: ${self:provider.stage}
 
-  # API Deployment
-  ApiDeployment:
-    Type: AWS::ApiGateway::Deployment
-    DependsOn:
-      - CreateSessionMethod
-      - SendMessageMethod 
-      - RestApi
-    Properties:
-      RestApiId: !Ref RestApi
-      Description: Deployment for ${self:provider.stage} stage
-
   # Client Certificate
   ApiClientCertificate:
     Type: AWS::ApiGateway::ClientCertificate
@@ -161,7 +161,7 @@ Resources:
   ApiUsagePlan:
     Type: AWS::ApiGateway::UsagePlan
     DependsOn:
-      - RestApi
+      - RestApiId
     Properties:
       UsagePlanName: ${self:custom.service}-${self:provider.stage}-usage-plan
       Description: Usage plan for ${self:custom.service} API
@@ -183,9 +183,9 @@ Resources:
   ApiResponseValidationModel:
     Type: AWS::ApiGateway::Model
     DependsOn:
-      - RestApi
+      - RestApiId
     Properties:
-      RestApiId: !Ref RestApi
+      RestApiId: !Ref RestApiId
       ContentType: application/json
       Name: ResponseValidationModel
       Schema:
@@ -260,19 +260,19 @@ Resources:
 Outputs:
   ApiId:
     Description: REST API Id
-    Value: !Ref RestApi
+    Value: !Ref RestApiId
     Export:
       Name: ${self:custom.service}-${self:provider.stage}-rest-api-id
 
   RestApiRootResourceId:
     Description: REST API Root Resource Id
-    Value: !GetAtt RestApi.RootResourceId
+    Value: !GetAtt RestApiId.RootResourceId
     Export:
       Name: ${self:custom.service}-${self:provider.stage}-rest-api-root-resource-id
 
   ApiEndpoint:
     Description: API Gateway endpoint URL
-    Value: !Sub https://${RestApi}.execute-api.${AWS::Region}.amazonaws.com/${self:provider.stage}
+    Value: !Sub https://${RestApiId}.execute-api.${AWS::Region}.amazonaws.com/${self:provider.stage}
     Export:
       Name: ${self:custom.service}-${self:provider.stage}-api-endpoint
 

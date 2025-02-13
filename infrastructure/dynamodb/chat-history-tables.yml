@@ -4,7 +4,7 @@ Resources:
     DeletionPolicy: Retain
     UpdateReplacePolicy: Retain
     Properties:
-      TableName: ${self:custom.tableNames.history}
+      TableName: ${self:custom.service}-${self:provider.stage}-chat-history-table
       AttributeDefinitions:
         - AttributeName: conversationId
           AttributeType: S
@@ -71,7 +71,7 @@ Resources:
       Namespace: AWS/DynamoDB
       Dimensions:
         - Name: TableName
-          Value: ${self:custom.tableNames.history}
+          Value: ${self:custom.service}-${self:provider.stage}-chat-history-table
       Statistic: Sum
       Period: 300
       EvaluationPeriods: 2
@@ -95,7 +95,7 @@ Resources:
       Namespace: AWS/DynamoDB
       Dimensions:
         - Name: TableName
-          Value: ${self:custom.tableNames.history}
+          Value: ${self:custom.service}-${self:provider.stage}-chat-history-table
       Statistic: Sum
       Period: 300
       EvaluationPeriods: 2
@@ -119,7 +119,7 @@ Resources:
       Namespace: AWS/DynamoDB
       Dimensions:
         - Name: TableName
-          Value: ${self:custom.tableNames.history}
+          Value: ${self:custom.service}-${self:provider.stage}-chat-history-table
       Statistic: Sum
       Period: 300
       EvaluationPeriods: 1
@@ -143,7 +143,7 @@ Resources:
       Namespace: AWS/DynamoDB
       Dimensions:
         - Name: TableName
-          Value: ${self:custom.tableNames.history}
+          Value: ${self:custom.service}-${self:provider.stage}-chat-history-table
       Statistic: Average
       Period: 300
       EvaluationPeriods: 3

@@ -6,7 +6,6 @@ Resources:
       EnableDnsSupport: true
       EnableDnsHostnames: true
       InstanceTenancy: default
-      #EnableNetworkAddressUsageMetrics: true
       Tags:
         - Key: Name
           Value: !Sub ${self:custom.service}-${self:provider.stage}-vpc
@@ -92,6 +91,33 @@ Resources:
       VpcId: !Ref SpectraVPC
       InternetGatewayId: !Ref SpectraIGW
 
+  # NAT Gateway Components
+  NatGatewayEIP:
+    Type: AWS::EC2::EIP
+    DependsOn: AttachGateway
+    Properties:
+      Domain: vpc
+      Tags:
+        - Key: Name
+          Value: ${self:custom.service}-${self:provider.stage}-nat-eip
+        - Key: Service
+          Value: ${self:custom.service}
+        - Key: Environment
+          Value: ${self:provider.stage}
+
+  NatGateway:
+    Type: AWS::EC2::NatGateway
+    Properties:
+      AllocationId: !GetAtt NatGatewayEIP.AllocationId
+      SubnetId: !Ref PublicSubnet1
+      Tags:
+        - Key: Name
+          Value: ${self:custom.service}-${self:provider.stage}-nat
+        - Key: Service
+          Value: ${self:custom.service}
+        - Key: Environment
+          Value: ${self:provider.stage}
+
   # Public Subnets
   PublicSubnet1:
     Type: AWS::EC2::Subnet
@@ -140,6 +166,18 @@ Resources:
         - Key: Environment
           Value: ${self:provider.stage}
 
+  PrivateRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref SpectraVPC
+      Tags:
+        - Key: Name
+          Value: ${self:custom.service}-${self:provider.stage}-private-rt
+        - Key: Service
+          Value: ${self:custom.service}
+        - Key: Environment
+          Value: ${self:provider.stage}
+
   PublicRoute:
     Type: AWS::EC2::Route
     DependsOn: AttachGateway
@@ -148,6 +186,14 @@ Resources:
       DestinationCidrBlock: 0.0.0.0/0
       GatewayId: !Ref SpectraIGW
 
+  PrivateRoute:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref PrivateRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      NatGatewayId: !Ref NatGateway
+
+  # Route Table Associations
   PublicSubnet1RouteTableAssociation:
     Type: AWS::EC2::SubnetRouteTableAssociation
     Properties:
@@ -262,3 +308,15 @@ Outputs:
     Value: !Ref PublicRouteTable
     Export:
       Name: ${self:custom.service}-${self:provider.stage}-public-route-table-id
+
+  PrivateRouteTableId:
+    Description: Private Route Table ID
+    Value: !Ref PrivateRouteTable
+    Export:
+      Name: ${self:custom.service}-${self:provider.stage}-private-route-table-id
+
+  NatGatewayId:
+    Description: ID of the NAT Gateway
+    Value: !Ref NatGateway
+    Export:
+      Name: ${self:custom.service}-${self:provider.stage}-nat-gateway-id

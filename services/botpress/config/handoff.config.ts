@@ -1,6 +1,5 @@
 // services/botpress/config/handoff.config.ts
 
-import { MAX } from 'uuid';
 import { HandoffConfig, HandoffPriority } from '../types/handoff.types';
 
 // Configuración principal del sistema de handoff

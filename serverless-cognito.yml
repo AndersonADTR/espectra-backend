@@ -16,7 +16,7 @@ custom:
 
 resources:
   # Authentication
-  - ${file(../infrastructure/cognito/cognito.yml)}
+  - ${file(infrastructure/cognito/cognito.yml)}
 
 outputs:
   UserPoolId:

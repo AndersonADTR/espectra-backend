@@ -12,21 +12,18 @@ provider:
   websocket:
     apiId: !Ref WebSocketApi
     stage: ${self:provider.stage}
-
+  
+  httpApi:
+    cors: true
   apiGateway:
-    restApiId: !Ref RestApi
-    restApiRootResourceId: !GetAtt RestApi.RootResourceId
+    restApiId: !Ref RestApiId
+    restApiRootResourceId: !GetAtt RestApiId.RootResourceId
+    binaryMediaTypes:
+      - '*/*'
 
   tracing:
     lambda: true
-    #apiGateway: true
 
-  # logs:
-  #   restApi:
-  #     accessLogging: true
-  #     executionLogging: true
-  #     level: INFO
-  #     fullExecutionData: true
   vpc:
     securityGroupIds:
       - Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-lambda-sg-id
@@ -86,6 +83,14 @@ provider:
     REDIS_PORT:
       Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-redis-port
 
+    SESSION_TTL: ${self:custom.session.ttl}
+    SESSION_EXTEND_DURATION: ${self:custom.session.extendDuration}
+    METRICS_RETENTION_DAYS: ${self:custom.monitoring.metricsRetention}
+    SESSION_ALERT_THRESHOLD: ${self:custom.monitoring.sessionAlertThreshold}
+    RATE_LIMIT_SESSION_CREATION: ${self:custom.rateLimit.sessionCreation}
+    
+    COGNITO_CLIENT_SECRET: ${ssm:/espectra/${self:provider.stage}/cognito/client-secret}
+
 custom:
   service: espectra-backend
   
@@ -95,6 +100,25 @@ custom:
     dev: 'DEBUG'
     staging: 'INFO'
     prod: 'WARN'
+  
+  # Configuración de Table Names
+  tableNames:
+    connections: ${self:custom.service}-${self:provider.stage}-connection-table
+    context: ${self:custom.service}-${self:provider.stage}-conversation-context-table
+    tokens: ${self:custom.service}-${self:provider.stage}-token-usage-table
+    handoff: ${self:custom.service}-${self:provider.stage}-handoff-table
+    metrics: ${self:custom.service}-${self:provider.stage}-botpress-metrics-table
+
+  session:
+    ttl: ${ssm:/espectra/${self:provider.stage}/session/ttl}
+    extendDuration: ${ssm:/espectra/${self:provider.stage}/session/extend-duration}
+  
+  monitoring:
+    metricsRetention: ${ssm:/espectra/${self:provider.stage}/monitoring/metrics-retention}
+    sessionAlertThreshold: ${ssm:/espectra/${self:provider.stage}/monitoring/session-alert-threshold}
+
+  rateLimit:
+    sessionCreation: ${ssm:/espectra/${self:provider.stage}/rate-limit/session-creation}
 
   # KMS Keys
   kms:
@@ -129,42 +153,58 @@ custom:
     websocketApiId: !Ref WebSocketApi
     stage: ${self:provider.stage}
 
+  serverless-offline:
+    httpPort: 3000
+    websocketPort: 3001
+    lambdaPort: 3002
+    noPrependStageInUrl: true
+
+  dynamodb:
+    stages:
+      - dev
+    start:
+      port: 8000
+      inMemory: true
+      migrate: true
+      seed: true
+
+  # Configuración de mocks para servicios AWS
+  localstack:
+    stages:
+      - dev
+    endpointFile: config/localEndpoints.json
+
 plugins:
   - serverless-iam-roles-per-function
-  #- serverless-domain-manager
   - serverless-prune-plugin
   - serverless-plugin-tracing
+  # - serverless-offline
+  # - serverless-dynamodb-local
+  # - serverless-webpack
+  # - serverless-offline-sns
+  # - serverless-offline-sqs
 
 package:
   individually: true
   patterns:
-    - "!./**"
-    - "!node_modules/**"
-    - "node_modules/@aws-sdk/**"
-    - "node_modules/@smithy/**"
-    - "node_modules/aws-sdk/**"
-    - "node_modules/@aws-sdk/types/**"
-    - "node_modules/tslib/**"
-    - "node_modules/uuid/**"
-    - "node_modules/aws-jwt-verify/**"
-    - "node_modules/fast-xml-parser/**"
-    - "node_modules/strnum/**"
-    - "node_modules/mnemonist/**"
-    - "!node_modules/@types/**"
-    - "../services/**/*.ts"
-    - "../services/**/*.js"
-    - "../shared/**/*.ts"
-    - "../shared/**/*.js"
-    - "!.build/**"
-    - "!.serverless/**"
-    - "!.git/**"
-    - "!*.test.ts"
+    - "src/**"
+    # - "!node_modules/**"
+    # - "!dist/**"
+    # - "!**/*.spec.ts"
+    # - "!**/*.test.ts"
+    # - "!**/*.md"
+    # - "!**/*.yml"
+    # - "!**/*.yaml"
+    # - "!**/.git/**"
+    # - "!**/.serverless/**"
 
 functions:
   # Auth Functions
   restAuthorizer:
     handler: services/auth/handlers/authorizer.handler
     name: ${self:custom.service}-${self:provider.stage}-rest-authorizer
+    role: 
+      Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-lambda-role-arn
     memorySize: 256
     environment:
       COGNITO_USER_POOL_ID: 
@@ -175,45 +215,58 @@ functions:
   register:
     handler: services/auth/handlers/register.handler
     name: ${self:custom.service}-${self:provider.stage}-register
+    role: 
+      Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-lambda-role-arn
     events:
       - http:
           path: auth/register
           method: post
           cors: true
           restApi:
-            id: !Ref RestApi
+            id: !Ref RestApiId
+    vpc: null
+    memorySize: 1024
     environment:
       ALLOWED_ORIGINS: '*'
       PASSWORD_MIN_LENGTH: '8'
       USER_POOL_REGION: ${self:provider.region}
       USER_POOL_ID:
         Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-user-pool-id
+      USER_POOL_CLIENT_ID:
+        Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-user-pool-client-id
+      COGNITO_CLIENT_SECRET: ${ssm:/espectra/${self:provider.stage}/cognito/client-secret}
 
   login:
     handler: services/auth/handlers/login.handler
     name: ${self:custom.service}-${self:provider.stage}-login
+    role: 
+      Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-lambda-role-arn
     events:
       - http:
           path: auth/login
           method: post
           cors: true
           restApi:
-            id: !Ref RestApi
+            id: !Ref RestApiId
 
   refreshToken:
     handler: services/auth/handlers/refreshToken.handler
     name: ${self:custom.service}-${self:provider.stage}-refreshToken
+    role: 
+      Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-lambda-role-arn
     events:
       - http:
           path: auth/refresh-token
           method: post
           cors: true
           restApi:
-            id: !Ref RestApi
+            id: !Ref RestApiId
 
   logout:
     handler: services/auth/handlers/logout.handler
     name: ${self:custom.service}-${self:provider.stage}-logout
+    role: 
+      Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-lambda-role-arn
     events:
       - http:
           path: auth/logout
@@ -222,12 +275,14 @@ functions:
           authorizer:
             name: restAuthorizer
           restApi:
-            id: !Ref RestApi
+            id: !Ref RestApiId
 
   # WebSocket Functions
   wsAuthorizer:
     handler: services/websocket/handlers/authorizer.handler
     name: ${self:custom.service}-${self:provider.stage}-websocket-authorizer
+    role: 
+      Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-lambda-role-arn
     memorySize: 256
     timeout: 29
     environment:
@@ -239,6 +294,8 @@ functions:
   webSocketConnect:
     handler: services/websocket/handlers/connect.handler
     name: ${self:custom.service}-${self:provider.stage}-webSocketConnect
+    role: 
+      Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-lambda-role-arn
     events:
       - websocket:
           route: $connect
@@ -252,6 +309,8 @@ functions:
   webSocketDisconnect:
     handler: services/websocket/handlers/disconnect.handler
     name: ${self:custom.service}-${self:provider.stage}-webSocketDisconnect
+    role: 
+      Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-lambda-role-arn
     events:
       - websocket:
           route: $disconnect
@@ -261,6 +320,8 @@ functions:
   webSocketMessage:
     handler: services/websocket/handlers/message.handler
     name: ${self:custom.service}-${self:provider.stage}-webSocketMessage
+    role: 
+      Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-lambda-role-arn
     events:
       - websocket:
           route: $default
@@ -271,13 +332,15 @@ functions:
   botpressWebhook:
     handler: services/botpress/handlers/webhook.handler
     name: ${self:custom.service}-${self:provider.stage}-botpress-webhook
+    role: 
+      Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-lambda-role-arn
     events:
       - http:
           path: /botpress/webhook
           method: post
           cors: true
           restApi:
-            id: !Ref RestApi
+            id: !Ref RestApiId
     environment:
       BOTPRESS_API_KEY: ${ssm:/espectra/${self:provider.stage}/botpress-api-key}
     aliases:
@@ -287,6 +350,8 @@ functions:
   processMessage:
     handler: services/botpress/handlers/message/process-message.handler
     name: ${self:custom.service}-${self:provider.stage}-process-message
+    role: 
+      Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-lambda-role-arn
     events:
       - sqs:
           arn:
@@ -298,6 +363,8 @@ functions:
   handoffRequest:
     handler: services/botpress/handlers/handoff/request.handler
     name: ${self:custom.service}-${self:provider.stage}-handoff-request
+    role: 
+      Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-lambda-role-arn
     events:
       - http:
           path: /handoff/request
@@ -306,7 +373,7 @@ functions:
             name: restAuthorizer
           cors: true
           restApi:
-            id: !Ref RestApi
+            id: !Ref RestApiId
     aliases:
       - name: request-concurrency-${self:provider.stage}
         provisionedConcurrency: 2
@@ -314,6 +381,8 @@ functions:
   handoffAccept:
     handler: services/botpress/handlers/handoff/accept.handler
     name: ${self:custom.service}-${self:provider.stage}-handoff-accept
+    role: 
+      Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-lambda-role-arn
     events:
       - http:
           path: /handoff/accept
@@ -322,7 +391,7 @@ functions:
             name: restAuthorizer
           cors: true
           restApi:
-            id: !Ref RestApi
+            id: !Ref RestApiId
     aliases:
       - name: accept-concurrency-${self:provider.stage}
         provisionedConcurrency: 2
@@ -331,6 +400,8 @@ functions:
   startSession:
     handler: services/session/handlers/start.handler
     name: ${self:custom.service}-${self:provider.stage}-start-session
+    role: 
+      Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-lambda-role-arn
     events:
       - http:
           path: /session/start
@@ -339,11 +410,56 @@ functions:
             name: restAuthorizer
           cors: true
           restApi:
-            id: !Ref RestApi
+            id: !Ref RestApiId
+
+  createSession:
+    handler: services/auth/handlers/session.createSession
+    name: ${self:custom.service}-${self:provider.stage}-create-session
+    role: 
+      Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-lambda-role-arn
+    events:
+      - http:
+          path: /sessions/create
+          method: post
+          authorizer:
+            name: restAuthorizer
+          cors: true
+          restApi:
+            id: !Ref RestApiId
+    environment:
+      SESSION_TABLE:
+        Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-chat-sessions-table-name
+      METRICS_NAMESPACE: ${self:custom.service}/${self:provider.stage}
+    # iamRoleStatements:
+    #   - Effect: Allow
+    #     Action:
+    #       - dynamodb:PutItem
+    #     Resource: 
+    #       Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-chat-sessions-table-arn
+
+  extendSession:
+    handler: services/auth/handlers/session.extendSession
+    name: ${self:custom.service}-${self:provider.stage}-extend-session
+    role: 
+      Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-lambda-role-arn
+    events:
+      - http:
+          path: /sessions/update/{sessionId}
+          method: put
+          authorizer:
+            name: restAuthorizer
+          cors: true
+          restApi:
+            id: !Ref RestApiId
+    environment:
+      SESSION_TABLE:
+        Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-chat-sessions-table-name
 
   endSession:
     handler: services/session/handlers/end.handler
     name: ${self:custom.service}-${self:provider.stage}-end-session
+    role: 
+      Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-lambda-role-arn
     events:
       - http:
           path: /session/end
@@ -352,12 +468,14 @@ functions:
             name: restAuthorizer
           cors: true
           restApi:
-            id: !Ref RestApi
+            id: !Ref RestApiId
 
   # Metrics Functions
   metricsCollector:
     handler: services/metrics/handlers/collector.handler
     name: ${self:custom.service}-${self:provider.stage}-metrics-collector
+    role: 
+      Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-lambda-role-arn
     events:
       - schedule: rate(1 minute)
     environment:
@@ -366,30 +484,30 @@ functions:
         Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-metrics-table-name
 
 resources:
-  - ${file(../infrastructure/apigateway/api.yml)}
-  - ${file(../infrastructure/apigateway/chat-api-routes.yml)}
+  - ${file(infrastructure/apigateway/api.yml)}
+  - ${file(infrastructure/apigateway/chat-api-routes.yml)}
   
-  - ${file(../infrastructure/security/waf.yml)}
+  - ${file(infrastructure/security/waf.yml)}
 
-  - ${file(../infrastructure/websocket/websocket.yml)}
-  - ${file(../infrastructure/security/websocket-security.yml)}
+  - ${file(infrastructure/websocket/websocket.yml)}
+  - ${file(infrastructure/security/websocket-security.yml)}
 
 outputs:
   ApiId:
     Description: REST API Id
-    Value: !Ref RestApi
+    Value: !Ref RestApiId
     Export:
       Name: ${self:custom.service}-${self:provider.stage}-rest-api-id
 
   RestApiRootResourceId:
     Description: REST API Root Resource Id
-    Value: !GetAtt RestApi.RootResourceId
+    Value: !GetAtt RestApiId.RootResourceId
     Export:
       Name: ${self:custom.service}-${self:provider.stage}-rest-api-root-resource-id
 
   ApiEndpoint:
     Description: API Gateway endpoint URL
-    Value: !Sub https://${RestApi}.execute-api.${AWS::Region}.amazonaws.com/${self:provider.stage}
+    Value: !Sub https://${RestApiId}.execute-api.${AWS::Region}.amazonaws.com/${self:provider.stage}
     Export:
       Name: ${self:custom.service}-${self:provider.stage}-api-endpoint
 
@@ -470,5 +588,3 @@ outputs:
     Value: !Sub arn:aws:apigateway:${AWS::Region}::/apis/${WebSocketApi}/stages/${self:provider.stage}
     Export:
       Name: ${self:custom.service}-${self:provider.stage}-websocket-stage-arn
-
-# ConnectionRequestModel:

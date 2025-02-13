@@ -15,7 +15,7 @@ custom:
   service: espectra-backend
 
 resources:
-  - ${file(../infrastructure/security/kms.yml)}
+  - ${file(infrastructure/security/kms.yml)}
 
 outputs:
   SystemKMSKeyId:

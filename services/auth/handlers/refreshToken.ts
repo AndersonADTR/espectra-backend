@@ -1,77 +1,92 @@
-import { 
-  CognitoIdentityProviderClient,
-  InitiateAuthCommand
-} from "@aws-sdk/client-cognito-identity-provider";
-import { APIGatewayProxyHandler } from 'aws-lambda';
+// services/auth/handlers/refreshToken.ts
 
-const cognito = new CognitoIdentityProviderClient({
-  region: process.env.REGION || 'us-east-1'
+import { APIGatewayProxyHandler } from 'aws-lambda';
+import { AuthenticationService } from '../services/authentication.service';
+import { validateRequest } from '@shared/middleware/validation/validation.middleware';
+import { withErrorHandling } from '@shared/middleware/error/error-handling.middleware';
+import { Logger } from '@shared/utils/logger';
+import { AuthenticationError } from '@shared/utils/errors';
+import * as Joi from 'joi';
+
+const logger = new Logger('RefreshTokenHandler');
+
+// Schema de validación
+const refreshTokenSchema = Joi.object({
+  refreshToken: Joi.string()
+    .required()
+    .messages({
+      'any.required': 'Refresh token is required',
+      'string.empty': 'Refresh token cannot be empty'
+    })
 });
 
-export const handler: APIGatewayProxyHandler = async (event) => {
-  console.log('RefreshToken handler started');
+const refreshTokenHandler: APIGatewayProxyHandler = async (event) => {
+  logger.info('Processing refresh token request');
 
+  const authService = new AuthenticationService();
+  
   try {
-    if (!event.body) {
-      return {
-        statusCode: 400,
-        headers: {
-          'Content-Type': 'application/json',
-          'Access-Control-Allow-Origin': '*'
-        },
-        body: JSON.stringify({ message: 'Missing request body' })
-      };
-    }
+    let refreshToken: string;
 
-    const { refreshToken } = JSON.parse(event.body);
-
-    if (!refreshToken) {
-      return {
-        statusCode: 400,
-        headers: {
-          'Content-Type': 'application/json',
-          'Access-Control-Allow-Origin': '*'
-        },
-        body: JSON.stringify({ message: 'Refresh token is required' })
-      };
-    }
-
-    const response = await cognito.send(new InitiateAuthCommand({
-      AuthFlow: 'REFRESH_TOKEN_AUTH',
-      ClientId: process.env.COGNITO_CLIENT_ID!,
-      AuthParameters: {
-        REFRESH_TOKEN: refreshToken
+    // En producción, obtener el refresh token de la cookie
+    if (process.env.STAGE === 'prod') {
+      const cookies = event.headers.Cookie || event.headers.cookie;
+      if (!cookies) {
+        throw new AuthenticationError('No refresh token cookie found');
       }
-    }));
+
+      const refreshTokenCookie = cookies
+        .split(';')
+        .find(cookie => cookie.trim().startsWith('refresh_token='));
+
+      if (!refreshTokenCookie) {
+        throw new AuthenticationError('No refresh token cookie found');
+      }
+
+      refreshToken = refreshTokenCookie.split('=')[1].trim();
+    } else {
+      // En desarrollo, obtener el refresh token del body
+      const body = JSON.parse(event.body || '{}');
+      refreshToken = body.refreshToken;
+    }
+
+    // Validar y refrescar los tokens
+    const result = await authService.refreshTokens(refreshToken);
+
+    // Configurar la cookie del nuevo refresh token en producción
+    const cookies = [];
+    if (process.env.STAGE === 'prod') {
+      cookies.push(
+        `refresh_token=${result.tokens.refreshToken}; HttpOnly; Secure; SameSite=Strict; Max-Age=604800` // 7 días
+      );
+    }
 
     return {
       statusCode: 200,
       headers: {
         'Content-Type': 'application/json',
-        'Access-Control-Allow-Origin': '*'
+        'Access-Control-Allow-Origin': '*',
+        ...(cookies.length > 0 && { 'Set-Cookie': cookies.join(', ') })
       },
       body: JSON.stringify({
-        message: 'Token refreshed successfully',
+        message: 'Token refresh successful',
         tokens: {
-          accessToken: response.AuthenticationResult?.AccessToken,
-          idToken: response.AuthenticationResult?.IdToken,
-          expiresIn: response.AuthenticationResult?.ExpiresIn
+          accessToken: result.tokens.accessToken,
+          idToken: result.tokens.idToken,
+          expiresIn: result.tokens.expiresIn,
+          ...(process.env.STAGE !== 'prod' && { refreshToken: result.tokens.refreshToken })
         }
       })
     };
 
-  } catch (error) {
-    console.error('Refresh token error:', error);
-    return {
-      statusCode: 500,
-      headers: {
-        'Content-Type': 'application/json',
-        'Access-Control-Allow-Origin': '*'
-      },
-      body: JSON.stringify({
-        message: 'Error refreshing token',
-        error: process.env.STAGE === 'dev' ? error : 'Internal server error'
-      })
-    };
+  } finally {
+    await authService.cleanup();
   }
 };
+
+// Exportar el handler con los middlewares aplicados
+export const handler = withErrorHandling(
+  validateRequest(refreshTokenSchema)(
+    refreshTokenHandler
+  )
+);

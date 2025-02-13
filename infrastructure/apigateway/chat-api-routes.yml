@@ -3,28 +3,35 @@ Resources:
   ChatResource:
     Type: AWS::ApiGateway::Resource
     Properties:
-      RestApiId: !Ref RestApi
-      ParentId: !GetAtt RestApi.RootResourceId
+      RestApiId: !Ref RestApiId
+      ParentId: !GetAtt RestApiId.RootResourceId
       PathPart: chat
 
   SessionsResource:
     Type: AWS::ApiGateway::Resource
     Properties:
-      RestApiId: !Ref RestApi
+      RestApiId: !Ref RestApiId
       ParentId: !Ref ChatResource
       PathPart: sessions
+
+  SessionByIdRoute:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref RestApiId
+      ParentId: !Ref SessionsResource
+      PathPart: "{sessionId}"
 
   MessagesResource:
     Type: AWS::ApiGateway::Resource
     Properties:
-      RestApiId: !Ref RestApi
+      RestApiId: !Ref RestApiId
       ParentId: !Ref ChatResource
       PathPart: messages
 
   HandoffResource:
     Type: AWS::ApiGateway::Resource
     Properties:
-      RestApiId: !Ref RestApi
+      RestApiId: !Ref RestApiId
       ParentId: !Ref ChatResource
       PathPart: handoff
 
@@ -33,7 +40,7 @@ Resources:
     Type: AWS::ApiGateway::RequestValidator
     Properties:
       Name: ${self:custom.service}-${self:provider.stage}-validator
-      RestApiId: !Ref RestApi
+      RestApiId: !Ref RestApiId
       ValidateRequestBody: true
       ValidateRequestParameters: true
 
@@ -41,7 +48,7 @@ Resources:
   MessageModel:
     Type: AWS::ApiGateway::Model
     Properties:
-      RestApiId: !Ref RestApi
+      RestApiId: !Ref RestApiId
       ContentType: application/json
       Name: MessageModel
       Schema:
@@ -68,7 +75,7 @@ Resources:
   SessionModel:
     Type: AWS::ApiGateway::Model
     Properties:
-      RestApiId: !Ref RestApi
+      RestApiId: !Ref RestApiId
       ContentType: application/json
       Name: SessionModel
       Schema:
@@ -88,7 +95,7 @@ Resources:
   SessionResponseModel:
     Type: AWS::ApiGateway::Model
     Properties:
-      RestApiId: !Ref RestApi
+      RestApiId: !Ref RestApiId
       ContentType: application/json
       Name: SessionResponseModel
       Schema:
@@ -115,7 +122,7 @@ Resources:
   ErrorModel:
     Type: AWS::ApiGateway::Model
     Properties:
-      RestApiId: !Ref RestApi
+      RestApiId: !Ref RestApiId
       ContentType: application/json
       Name: ErrorModel
       Schema:
@@ -141,7 +148,7 @@ Resources:
       - SessionsResource
       - RestApiAuthorizer
     Properties:
-      RestApiId: !Ref RestApi
+      RestApiId: !Ref RestApiId
       ResourceId: !Ref SessionsResource
       HttpMethod: POST
       AuthorizationType: COGNITO_USER_POOLS
@@ -180,7 +187,7 @@ Resources:
       - MessagesResource
       - RestApiAuthorizer
     Properties:
-      RestApiId: !Ref RestApi
+      RestApiId: !Ref RestApiId
       ResourceId: !Ref MessagesResource
       HttpMethod: POST
       AuthorizationType: COGNITO_USER_POOLS
@@ -241,7 +248,7 @@ Resources:
   ErrorResponseMapping:
     Type: AWS::ApiGateway::GatewayResponse
     Properties:
-      RestApiId: !Ref RestApi
+      RestApiId: !Ref RestApiId
       ResponseType: DEFAULT_4XX
       ResponseTemplates:
         application/json: '{"message":$context.error.messageString,"code":"$context.error.responseType"}'

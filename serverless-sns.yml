@@ -15,7 +15,7 @@ custom:
   service: espectra-backend
 
 resources:
-  - ${file(../infrastructure/sns/sns.yml)}
+  - ${file(infrastructure/sns/sns.yml)}
 
 outputs:
   HighPriorityTopicArn:

@@ -135,11 +135,11 @@ Resources:
     Type: AWS::WAFv2::WebACLAssociation
     DependsOn:
       - SpectraWebACL
-      - RestApi
+      - RestApiId
       - ApiGatewayStage
       - ApiDeployment
     Properties:
-      ResourceArn: !Sub arn:aws:apigateway:us-east-1::/restapis/klb9wtyz8c/stages/dev
+      ResourceArn: !Sub arn:aws:apigateway:us-east-1::/restapis/${RestApiId}/stages/api-dev
       WebACLArn: !GetAtt SpectraWebACL.Arn
 
   # CloudWatch Alarms

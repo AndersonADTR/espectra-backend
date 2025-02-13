@@ -1,57 +1,54 @@
-import { 
-  CognitoIdentityProviderClient,
-  GlobalSignOutCommand
-} from "@aws-sdk/client-cognito-identity-provider";
+// services/auth/handlers/logout.ts
+
 import { APIGatewayProxyHandler } from 'aws-lambda';
+import { AuthenticationService } from '../services/authentication.service';
+import { withErrorHandling } from '@shared/middleware/error/error-handling.middleware';
+import { Logger } from '@shared/utils/logger';
+import { AuthenticationError } from '@shared/utils/errors';
 
-const cognito = new CognitoIdentityProviderClient({
-  region: process.env.REGION || 'us-east-1'
-});
+const logger = new Logger('LogoutHandler');
 
-export const handler: APIGatewayProxyHandler = async (event) => {
-  console.log('Logout handler started');
+const logoutHandler: APIGatewayProxyHandler = async (event) => {
+  logger.info('Processing logout request');
 
+  const authService = new AuthenticationService();
+  
   try {
-    const accessToken = event.headers.Authorization?.replace('Bearer ', '');
-
-    if (!accessToken) {
-      return {
-        statusCode: 401,
-        headers: {
-          'Content-Type': 'application/json',
-          'Access-Control-Allow-Origin': '*'
-        },
-        body: JSON.stringify({ message: 'Access token is required' })
-      };
+    // Obtener el token de autorización
+    const authHeader = event.headers.Authorization || event.headers.authorization;
+    if (!authHeader) {
+      throw new AuthenticationError('No authorization token provided');
     }
 
-    await cognito.send(new GlobalSignOutCommand({
-      AccessToken: accessToken
-    }));
+    const token = authHeader.replace('Bearer ', '');
+
+    // Ejecutar el logout
+    await authService.logout(token);
+
+    // Si estamos en producción, limpiar la cookie del refresh token
+    const cookies = [];
+    if (process.env.STAGE === 'prod') {
+      cookies.push(
+        'refresh_token=; HttpOnly; Secure; SameSite=Strict; Max-Age=0; Path=/'
+      );
+    }
 
     return {
       statusCode: 200,
       headers: {
         'Content-Type': 'application/json',
-        'Access-Control-Allow-Origin': '*'
+        'Access-Control-Allow-Origin': '*',
+        ...(cookies.length > 0 && { 'Set-Cookie': cookies.join(', ') })
       },
       body: JSON.stringify({
-        message: 'Logged out successfully'
+        message: 'Logout successful'
       })
     };
 
-  } catch (error) {
-    console.error('Logout error:', error);
-    return {
-      statusCode: 500,
-      headers: {
-        'Content-Type': 'application/json',
-        'Access-Control-Allow-Origin': '*'
-      },
-      body: JSON.stringify({
-        message: 'Error during logout',
-        error: process.env.STAGE === 'dev' ? error : 'Internal server error'
-      })
-    };
+  } finally {
+    await authService.cleanup();
   }
 };
+
+// Exportar el handler con el middleware de error
+export const handler = withErrorHandling(logoutHandler);

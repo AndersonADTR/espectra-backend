@@ -33,7 +33,7 @@ Resources:
         #From: "noreply@customDomain" #${self:custom.customDomain.domainName}"
       Policies:
         PasswordPolicy:
-          MinimumLength: 12
+          MinimumLength: 8
           RequireLowercase: true
           RequireNumbers: true
           RequireSymbols: true
@@ -110,6 +110,8 @@ Resources:
         - email
         - name
         - phone_number
+        - custom:userType
+        - custom:language
 
   # Resource Server for API Scopes
   SpectraUserPoolResourceServer:

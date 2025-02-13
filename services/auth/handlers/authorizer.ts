@@ -58,8 +58,8 @@ export const handler = async (
       },
       context: {
         userId: payload.sub,
-        email: payload['email'] as string,
-        userType: payload['custom:userType'] as string,
+        email: payload['email'] as string || 'unknown',
+        userType: payload['custom:userType'] as string || 'guest',
         userPlan: payload['custom:userPlan'] as string || 'basic'
       },
     };
@@ -74,6 +74,7 @@ export const handler = async (
     return generatePolicy('user', 'Deny', event.methodArn);
   }
 };
+
 
 const generatePolicy = (
   principalId: string,

@@ -16,8 +16,8 @@ custom:
   logRetentionInDays: 14
 
 resources:
-  - ${file(../infrastructure/network/vpc.yml)}
-  - ${file(../infrastructure/network/security-groups.yml)}
+  - ${file(infrastructure/network/vpc.yml)}
+  - ${file(infrastructure/network/security-groups.yml)}
 
 outputs:
   VpcId:
@@ -61,6 +61,18 @@ outputs:
     Value: !Ref PublicRouteTable
     Export:
       Name: ${self:custom.service}-${self:provider.stage}-public-route-table-id
+
+  PrivateRouteTableId:
+    Description: Private Route Table ID
+    Value: !Ref PrivateRouteTable
+    Export:
+      Name: ${self:custom.service}-${self:provider.stage}-private-route-table-id
+
+  NatGatewayId:
+    Description: ID of the NAT Gateway
+    Value: !Ref NatGateway
+    Export:
+      Name: ${self:custom.service}-${self:provider.stage}-nat-gateway-id
       
   LambdaSecurityGroupId:
     Description: ID of the Lambda Security Group

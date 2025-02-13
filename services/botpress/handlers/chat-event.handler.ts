@@ -1,5 +1,4 @@
 import { APIGatewayProxyHandler } from 'aws-lambda';
-import { BotpressChatService } from '../services/chat/botpress-chat.service';
 import { ChatSessionService } from '../services/chat/chat-session.service';
 import { WebSocketService } from '../../websocket/services/websocket.service';
 import { MessageQueueService } from '../services/queue/message-queue.service';
@@ -7,14 +6,12 @@ import { BaseService } from '../services/base/base.service';
 import { ChatMessage } from '../types/chat.types';
 
 class ChatEventHandler extends BaseService {
-  private readonly chatService: BotpressChatService;
   private readonly sessionService: ChatSessionService;
   private readonly wsService: WebSocketService;
   private readonly queueService: MessageQueueService;
 
   constructor() {
     super('ChatEventHandler');
-    this.chatService = new BotpressChatService();
     this.sessionService = new ChatSessionService();
     this.wsService = new WebSocketService();
     this.queueService = new MessageQueueService();

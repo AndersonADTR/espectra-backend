@@ -1,4 +1,5 @@
 // shared/utils/errors/http-errors.ts
+
 import { BaseError } from './base-error';
 import { ErrorMetadata } from './types';
 

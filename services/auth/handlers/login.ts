@@ -1,135 +1,91 @@
 // services/auth/handlers/login.ts
-import { 
-  CognitoIdentityProviderClient,
-  InitiateAuthCommand,
-  NotAuthorizedException,
-  UserNotFoundException
-} from "@aws-sdk/client-cognito-identity-provider";
-import { APIGatewayProxyHandler } from 'aws-lambda';
 
-// Configuración básica del cliente Cognito
-const cognito = new CognitoIdentityProviderClient({
-  region: process.env.REGION || 'us-east-1'
+import { APIGatewayProxyHandler } from 'aws-lambda';
+import { AuthenticationService } from '../services/authentication.service';
+import { LoginCredentials } from '../types/auth.types';
+import { validateRequest } from '@shared/middleware/validation/validation.middleware';
+import { withErrorHandling } from '@shared/middleware/error/error-handling.middleware';
+import { Logger } from '@shared/utils/logger';
+import * as Joi from 'joi';
+import { rateLimit, rateLimitPresets } from '@shared/middleware/rate-limit/rate-limit.middleware';
+
+const logger = new Logger('LoginHandler');
+
+// Schema de validación
+const loginSchema = Joi.object({
+  email: Joi.string()
+    .email()
+    .required()
+    .messages({
+      'string.email': 'Invalid email format',
+      'any.required': 'Email is required'
+    }),
+  password: Joi.string()
+    .required()
+    .messages({
+      'any.required': 'Password is required'
+    })
 });
 
-// Interfaz para los datos de login
-interface LoginRequest {
-  email: string;
-  password: string;
-}
+const loginHandler: APIGatewayProxyHandler = async (event) => {
+  logger.info('Processing login request');
 
-export const handler: APIGatewayProxyHandler = async (event) => {
-  console.log('Login handler started');
-
+  const authService = new AuthenticationService();
+  
   try {
-    // Validar que existe el body
-    if (!event.body) {
-      return {
-        statusCode: 400,
-        headers: {
-          'Content-Type': 'application/json',
-          'Access-Control-Allow-Origin': '*'
-        },
-        body: JSON.stringify({ message: 'Missing request body' })
-      };
+    // El body ya está validado por el middleware
+    const loginData: LoginCredentials = JSON.parse(event.body!);
+
+    // Intentar login
+    const result = await authService.login(loginData);
+
+    logger.info('Login successful', { 
+      userId: result.user.userId,
+      userType: result.user.userType
+    });
+
+    // Configurar cookie segura para el refresh token si estamos en producción
+    const cookies = [];
+    if (process.env.STAGE === 'prod') {
+      cookies.push(
+        `refresh_token=${result.tokens.refreshToken}; HttpOnly; Secure; SameSite=Strict; Max-Age=604800` // 7 días
+      );
     }
 
-    // Parsear los datos de login
-    const loginData: LoginRequest = JSON.parse(event.body);
-    console.log('Processing login request');
-
-    // Validar campos requeridos
-    if (!loginData.email || !loginData.password) {
-      return {
-        statusCode: 400,
-        headers: {
-          'Content-Type': 'application/json',
-          'Access-Control-Allow-Origin': '*'
-        },
-        body: JSON.stringify({ message: 'Email and password are required' })
-      };
-    }
-
-    // Verificar que tenemos el Client ID de Cognito
-    if (!process.env.COGNITO_CLIENT_ID) {
-      console.error('Missing COGNITO_CLIENT_ID environment variable');
-      throw new Error('Configuration error');
-    }
-
-    // Intentar la autenticación
-    const response = await cognito.send(new InitiateAuthCommand({
-      AuthFlow: 'USER_PASSWORD_AUTH',
-      ClientId: process.env.COGNITO_CLIENT_ID,
-      AuthParameters: {
-        USERNAME: loginData.email,
-        PASSWORD: loginData.password
-      }
-    }));
-
-    console.log('Authentication successful');
-
-    // Respuesta exitosa
     return {
       statusCode: 200,
       headers: {
         'Content-Type': 'application/json',
-        'Access-Control-Allow-Origin': '*'
+        'Access-Control-Allow-Origin': '*',
+        ...(cookies.length > 0 && { 'Set-Cookie': cookies.join(', ') })
       },
       body: JSON.stringify({
         message: 'Login successful',
+        user: {
+          userId: result.user.userId,
+          email: result.user.email,
+          name: result.user.name,
+          userType: result.user.userType
+        },
         tokens: {
-          accessToken: response.AuthenticationResult?.AccessToken,
-          refreshToken: response.AuthenticationResult?.RefreshToken,
-          idToken: response.AuthenticationResult?.IdToken,
-          expiresIn: response.AuthenticationResult?.ExpiresIn
+          accessToken: result.tokens.accessToken,
+          idToken: result.tokens.idToken,
+          expiresIn: result.tokens.expiresIn,
+          ...(process.env.STAGE !== 'prod' && { refreshToken: result.tokens.refreshToken })
         }
       })
     };
 
-  } catch (error) {
-    console.error('Login error:', error);
-
-    // Manejar error de credenciales inválidas
-    if (error instanceof NotAuthorizedException) {
-      return {
-        statusCode: 401,
-        headers: {
-          'Content-Type': 'application/json',
-          'Access-Control-Allow-Origin': '*'
-        },
-        body: JSON.stringify({
-          message: 'Invalid credentials'
-        })
-      };
-    }
-
-    // Manejar error de usuario no encontrado
-    if (error instanceof UserNotFoundException) {
-      return {
-        statusCode: 404,
-        headers: {
-          'Content-Type': 'application/json',
-          'Access-Control-Allow-Origin': '*'
-        },
-        body: JSON.stringify({
-          message: 'User not found'
-        })
-      };
-    }
-
-    // Error general
-    return {
-      statusCode: 500,
-      headers: {
-        'Content-Type': 'application/json',
-        'Access-Control-Allow-Origin': '*'
-      },
-      body: JSON.stringify({
-        message: 'Login failed',
-        error: process.env.STAGE === 'dev' ? 
-          error instanceof Error ? error.message : 'Unknown error' 
-          : 'Internal server error'
-      })
-    };
+  } finally {
+    await authService.cleanup();
   }
 };
+
+// Exportar el handler con los middlewares aplicados
+export const handler = withErrorHandling(
+  rateLimit(rateLimitPresets.strict)(
+    validateRequest(loginSchema)(
+      loginHandler
+    )
+  )
+);

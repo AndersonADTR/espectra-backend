@@ -24,7 +24,6 @@ custom:
     connections: ${self:custom.service}-${self:provider.stage}-connection-table
     context: ${self:custom.service}-${self:provider.stage}-conversation-context-table
     tokens: ${self:custom.service}-${self:provider.stage}-token-usage-table
-    history: ${self:custom.service}-${self:provider.stage}-chat-history-table
     handoff: ${self:custom.service}-${self:provider.stage}-handoff-table
     metrics: ${self:custom.service}-${self:provider.stage}-botpress-metrics-table
 
@@ -43,10 +42,10 @@ custom:
   snsLowPriorityTopic: ${ssm:/espectra/${self:provider.stage}/sns/low-priority-topic}
 
 resources:
-  - ${file(../infrastructure/dynamodb/user-tables.yml)}
-  - ${file(../infrastructure/dynamodb/chat-history-tables.yml)}
-  - ${file(../infrastructure/dynamodb/chat-session-tables.yml)}
-  - ${file(../infrastructure/dynamodb/connection-concierge-tables.yml)}
+  - ${file(infrastructure/dynamodb/user-tables.yml)}
+  - ${file(infrastructure/dynamodb/chat-history-tables.yml)}
+  - ${file(infrastructure/dynamodb/chat-session-tables.yml)}
+  - ${file(infrastructure/dynamodb/connection-concierge-tables.yml)}
 
 outputs:
   

@@ -4,7 +4,7 @@ import { APIGatewayProxyHandler } from 'aws-lambda';
 import { Logger } from '@shared/utils/logger';
 import { HandoffController } from '../services/controllers/handoff.controller';
 import { ValidationError, ResourceNotFoundError } from '@shared/utils/errors';
-import { CreateHandoffRequest, UpdateHandoffRequest } from '../types/handoff.types';
+import { CreateHandoffRequest } from '../types/handoff.types';
 
 const logger = new Logger('HandoffHandler');
 const handoffController = new HandoffController();

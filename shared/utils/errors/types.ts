@@ -1,4 +1,5 @@
 // shared/utils/errors/types.ts
+
 export interface ErrorResponse {
     code: string;
     message: string;

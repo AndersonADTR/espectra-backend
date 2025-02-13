@@ -34,7 +34,7 @@ Resources:
       - WebSocketDeployment
     Properties:
       ApiId: !Ref WebSocketApi
-      StageName: ${self:provider.stage}
+      StageName: ws-${self:provider.stage}
       DeploymentId: !Ref WebSocketDeployment
       DefaultRouteSettings:
         DetailedMetricsEnabled: true

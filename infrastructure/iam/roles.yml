@@ -21,6 +21,24 @@ Resources:
             Statement:
               - Effect: Allow
                 Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: 
+                  - !Sub arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/*
+              - Effect: Allow
+                Action:
+                  - cloudwatch:PutMetricData
+                  - cloudwatch:GetMetricData
+                  - cloudwatch:GetMetricStatistics
+                Resource: "*"
+                Condition:
+                  StringEquals:
+                    cloudwatch:namespace: 
+                      - ${self:custom.service}/${self:provider.stage}
+              - Effect: Allow
+                Action:
+                  - cognito-idp:SignUp
                   - cognito-idp:AdminInitiateAuth
                   - cognito-idp:AdminConfirmSignUp
                   - cognito-idp:AdminCreateUser
@@ -30,7 +48,7 @@ Resources:
                   - cognito-idp:AdminGetUser
                   - cognito-idp:ListUsers
                 Resource: 
-                  - Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-user-pool-arn
+                  - Fn::Sub: arn:aws:cognito-idp:${AWS::Region}:${AWS::AccountId}:userpool/*
               - Effect: Allow
                 Action:
                   - dynamodb:PutItem
@@ -75,6 +93,16 @@ Resources:
                   - !GetAtt MessageDLQ.Arn
                   - !GetAtt HandoffQueue.Arn
                   - !GetAtt HandoffDLQ.Arn
+              # kms:Decrypt, kms:GenerateDataKey, kms:DescribeKey
+              - Effect: Allow
+                Action:
+                  - kms:Decrypt
+                  - kms:GenerateDataKey
+                  - kms:DescribeKey
+                Resource:
+                  - Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-system-kms-key-arn
+                  - Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-secrets-kms-key-arn
+                  - Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-websocket-kms-key-arn
 
   WafAssociationLambdaRole:
     Type: AWS::IAM::Role
@@ -96,6 +124,23 @@ Resources:
           PolicyDocument:
             Version: '2012-10-17'
             Statement:
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: 
+                  - !Sub arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/*
+              - Effect: Allow
+                Action:
+                  - cloudwatch:PutMetricData
+                  - cloudwatch:GetMetricData
+                  - cloudwatch:GetMetricStatistics
+                Resource: "*"
+                Condition:
+                  StringEquals:
+                    cloudwatch:namespace: 
+                      - ${self:custom.service}/${self:provider.stage}
               - Effect: Allow
                 Action:
                   - wafv2:AssociateWebACL
@@ -158,6 +203,7 @@ Resources:
                 Action:
                   - kms:Decrypt
                   - kms:GenerateDataKey
+                  - kms:DescribeKey
                 Resource:
                   - Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-system-kms-key-arn
                   - Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-secrets-kms-key-arn
@@ -200,10 +246,21 @@ Resources:
             Statement:
               - Effect: Allow
                 Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: 
+                  - !Sub arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/*
+              - Effect: Allow
+                Action:
                   - cloudwatch:PutMetricData
                   - cloudwatch:GetMetricData
                   - cloudwatch:GetMetricStatistics
                 Resource: "*"
+                Condition:
+                  StringEquals:
+                    cloudwatch:namespace: 
+                      - ${self:custom.service}/${self:provider.stage}
               - Effect: Allow
                 Action:
                   - ec2:CreateNetworkInterface

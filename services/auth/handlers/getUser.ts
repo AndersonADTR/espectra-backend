@@ -22,7 +22,7 @@ export const handler: APIGatewayProxyHandler = async (event) => {
           'Content-Type': 'application/json',
           'Access-Control-Allow-Origin': '*'
         },
-        body: JSON.stringify({ 
+        body: JSON.stringify({
           message: 'Missing userId parameter' 
         })
       };

@@ -34,9 +34,12 @@
     "declaration": true,                      // Generar archivos de declaración .d.ts
     "declarationMap": true,                   // Generar source maps para archivos .d.ts
     "incremental": true,                      // Habilitar compilación incremental
-    "tsBuildInfoFile": "./.tsbuildinfo"       // Archivo para compilación incremental
+    "tsBuildInfoFile": "./.tsbuildinfo",      // Archivo para compilación incremental
+    "experimentalDecorators": true,
+    "emitDecoratorMetadata": true,
   },
   "include": [
+    "src/**/*.ts",                            // Incluir todos los archivos en src
     "services/**/*",                          // Incluir todos los archivos en services
     "shared/**/*",                            // Incluir todos los archivos compartidos
     "infrastructure/**/*"                     // Incluir todos los archivos de infraestructura
@@ -47,7 +50,14 @@
     ".build",                                 // Excluir directorio de build
     "dist",                                   // Excluir directorio de distribución
     "**/*.test.ts",                           // Excluir archivos de test
-    "**/*.spec.ts"                            // Excluir archivos de especificación
+    "**/*.spec.ts",                           // Excluir archivos de especificación
+    "**/*.md",
+    "**/*.yml",
+    "**/*.yaml",
+    "**/*.json",
+    "**/*.log",
+    "**/*.lock",
+    "**/.git/**",
   ],
   "ts-node": {
     "require": ["tsconfig-paths/register"]    // Soporte para paths en ts-node
