@@ -4,6 +4,7 @@ import { AuthenticatedUser } from '../types/auth.types';
 
 export class UserModel implements AuthenticatedUser {
   userId: string;
+  userSub: string;
   email: string;
   name: string;
   phoneNumber: string;
@@ -18,6 +19,7 @@ export class UserModel implements AuthenticatedUser {
 
   constructor(data: Partial<UserModel>) {
     this.userId = data.userId || '';
+    this.userSub = data.userSub || '';
     this.email = data.email || '';
     this.name = data.name || '';
     this.phoneNumber = data.phoneNumber || '';
@@ -34,6 +36,7 @@ export class UserModel implements AuthenticatedUser {
   toJSON(): Record<string, any> {
     return {
       userId: this.userId,
+      userSub: this.userSub,
       email: this.email,
       name: this.name,
       phoneNumber: this.phoneNumber,
@@ -51,6 +54,7 @@ export class UserModel implements AuthenticatedUser {
   static fromDynamoDB(item: Record<string, any>): UserModel {
     return new UserModel({
       userId: item.userId,
+      userSub: item.userSub,
       email: item.email,
       name: item.name,
       phoneNumber: item.phoneNumber,

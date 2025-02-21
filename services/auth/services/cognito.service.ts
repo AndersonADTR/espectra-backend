@@ -15,7 +15,7 @@ import * as crypto from 'crypto';
 import { NodeHttpHandler } from "@aws-sdk/node-http-handler";
 import { Logger } from '@shared/utils/logger';
 import { config } from '@shared/config/config.service';
-import { AuthenticationError, ValidationError } from '@shared/utils/errors';
+import { AuthenticationError } from '@shared/utils/errors';
 import { LoginCredentials, RegisterCredentials, AuthTokens } from '../types/auth.types';
 
 export class CognitoService {
@@ -47,21 +47,62 @@ export class CognitoService {
         region: config.getRequired<string>('AWS_REGION')
     });
   }
+  
+  private calculateSecretHash(username: string, clientId: string): string {
+    const clientSecret = process.env.COGNITO_CLIENT_SECRET;
+    if (!clientSecret) {
+      throw new Error('Client secret not found in environment variables');
+    }
+    const message = username + clientId;
+    const hmac = crypto.createHmac('SHA256', clientSecret);
+    return hmac.update(message).digest('base64');
+  }
 
-  async refreshUserTokens(refreshToken: string): Promise<any> {
+  async refreshUserTokens(cognitoSub: string, refreshToken: string): Promise<any> {
     try {
+
+      console.log('Starting token refresh cognito service', { 
+        cognitoSub: cognitoSub,
+        refreshToken: refreshToken 
+      });
+
+      // Calcular SECRET_HASH
+      const secretHash = this.calculateSecretHash(
+        cognitoSub,
+        this.clientId
+      );
+
+      console.log('Calculated secret hash', { secret: secretHash });
+
       const command = new InitiateAuthCommand({
         AuthFlow: AuthFlowType.REFRESH_TOKEN_AUTH,
         ClientId: this.clientId,
         AuthParameters: {
-          REFRESH_TOKEN: refreshToken
+          REFRESH_TOKEN: refreshToken,
+          SECRET_HASH: secretHash,
+          USERNAME: cognitoSub
         }
       });
 
-      return await this.client.send(command);
+      console.log('Sending refresh token command', { command });
+
+      const response = await this.client.send(command);
+
+      if (!response.AuthenticationResult) {
+          throw new AuthenticationError('Failed to refresh tokens: No authentication result');
+      }
+
+      console.log('Token refresh successful');
+
+      return {
+        accessToken: response.AuthenticationResult.AccessToken,
+        idToken: response.AuthenticationResult.IdToken,
+        refreshToken: response.AuthenticationResult.RefreshToken || refreshToken,
+        expiresIn: response.AuthenticationResult.ExpiresIn || 3600
+      };
       
     } catch (error) {
-      this.logger.error('Error refreshing user tokens', { error });
+      console.log('Error refreshing user tokens', { error });
       
       if ((error as Error).name === 'NotAuthorizedException') {
         throw new AuthenticationError('Invalid refresh token');
@@ -73,14 +114,7 @@ export class CognitoService {
     }
   }
 
-  private calculateSecretHash(username: string, clientId: string, clientSecret: string): string {
-    const message = username + clientId;
-    const hmac = crypto.createHmac('SHA256', clientSecret);
-    const secretHash = hmac.update(message).digest('base64');
-    return secretHash;
-  }
-
-  async registerUser(credentials: RegisterCredentials): Promise<void> {
+  async registerUser(credentials: RegisterCredentials): Promise<string | undefined> {
     try {
       console.log('Starting Cognito user registration', { 
           email: credentials.email,
@@ -102,9 +136,10 @@ export class CognitoService {
       // Generar SECRET_HASH
       const secretHash = this.calculateSecretHash(
         credentials.email,
-        this.clientId,
-        process.env.COGNITO_CLIENT_SECRET || ''
+        this.clientId
       );
+
+      console.log('Calculated secret hash', { secret: secretHash });
 
       const command = new SignUpCommand({
           ClientId: this.clientId,
@@ -119,13 +154,15 @@ export class CognitoService {
       });
 
       const startTime = Date.now();
-      await this.client.send(command);
+      const user = await this.client.send(command);
       const duration = Date.now() - startTime;
 
       console.log('Cognito registration complete', { 
           email: credentials.email,
           duration
       });
+
+      return user.UserSub;
 
     } catch (error) {
       console.log('Error in Cognito registration', {
@@ -143,12 +180,22 @@ export class CognitoService {
 
   async authenticateUser(credentials: LoginCredentials): Promise<AuthTokens> {
     try {
+
+      // Generar SECRET_HASH
+      const secretHash = this.calculateSecretHash(
+        credentials.email,
+        this.clientId
+      );
+
+      console.log('Calculated secret hash', { secret: secretHash });
+
       const command = new InitiateAuthCommand({
         AuthFlow: AuthFlowType.USER_PASSWORD_AUTH,
         ClientId: this.clientId,
         AuthParameters: {
           USERNAME: credentials.email,
-          PASSWORD: credentials.password
+          PASSWORD: credentials.password,
+          SECRET_HASH: secretHash
         }
       });
 
@@ -165,14 +212,14 @@ export class CognitoService {
         expiresIn: response.AuthenticationResult.ExpiresIn || 3600
       };
 
-      this.logger.info('User authenticated successfully', {
+      console.log('User authenticated successfully', {
         email: credentials.email
       });
 
       return tokens;
 
     } catch (error) {
-      this.logger.error('Error authenticating user', {
+      console.log('Error authenticating user', {
         error,
         email: credentials.email
       });
@@ -259,7 +306,7 @@ export class CognitoService {
       return attributes;
 
     } catch (error) {
-      this.logger.error('Error getting user from Cognito', { error, email });
+      console.log('Error getting user from Cognito', { error, email });
       
       if ((error as Error).name === 'UserNotFoundException') {
         throw new AuthenticationError('User not found');

@@ -41,18 +41,39 @@ Resources:
         - Key: ManagedBy
           Value: CloudFormation
 
+  # Regla de ingreso explícita para Redis
+  RedisSecurityGroupIngress:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      GroupId: !Ref RedisCacheSecurityGroup
+      Description: Allow inbound Redis traffic from Lambda
+      FromPort: 6379
+      ToPort: 6379
+      IpProtocol: tcp
+      SourceSecurityGroupId:
+        Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-lambda-sg-id
+
+  # Regla de egreso explícita para Lambda
+  LambdaSecurityGroupEgress:
+    Type: AWS::EC2::SecurityGroupEgress
+    Properties:
+      GroupId: 
+        Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-lambda-sg-id
+      Description: Allow outbound Redis traffic
+      FromPort: 6379
+      ToPort: 6379
+      IpProtocol: tcp
+      DestinationSecurityGroupId: !Ref RedisCacheSecurityGroup
+
   RedisParameterGroup:
     Type: AWS::ElastiCache::ParameterGroup
     Properties:
       CacheParameterGroupFamily: redis6.x
       Description: !Sub "${self:custom.service}-${self:provider.stage} parameter group for Redis cluster"
       Properties:
-        #maxmemory-policy: volatile-lru
         timeout: 300
         notify-keyspace-events: "Ex"
-        #maxmemory-samples: 10
         activedefrag: "yes"
-        #maxmemory: "75%"
         tcp-keepalive: 300
       Tags:
         - Key: Environment
@@ -91,7 +112,7 @@ Resources:
       ReplicationGroupDescription: !Sub "${self:custom.service}-${self:provider.stage} Redis cluster for session management"
       Engine: redis
       EngineVersion: "6.x"
-      CacheNodeType: cache.t2.micro 
+      CacheNodeType: ${self:custom.redis.instanceType}
       NumCacheClusters: 2
       AutomaticFailoverEnabled: true
       MultiAZEnabled: true
@@ -105,7 +126,6 @@ Resources:
         Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-system-kms-key-arn
       SnapshotRetentionLimit: 7
       SnapshotWindow: "00:00-01:00"
-      #MaintenanceWindow: "sun:01:00-sun:02:00"
       Port: 6379
       PreferredCacheClusterAZs:
         - !Select [0, !GetAZs ""]

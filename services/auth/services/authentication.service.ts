@@ -70,11 +70,26 @@ export class AuthenticationService {
         email: credentials.email
       });
 
+      let userSub: string;
+
+      // Registrar en Cognito
+      try {
+        userSub = await this.cognitoService.registerUser(credentials) || '';
+        console.log('Cognito registration completed', { email: credentials.email });
+      } catch (error) {
+        userSub = '';
+        console.log('Cognito registration failed', { error, email: credentials.email });
+        this.logger.error('Cognito registration failed', { error, email: credentials.email });
+        await this.metrics.incrementCounter('RegistrationFailureCognito');
+        throw error;
+      }
+
       const userId = uuidv4();
 
       // Preparar el usuario
       const user = new UserModel({
         userId: userId,
+        userSub: userSub,
         email: credentials.email,
         name: credentials.name,
         phoneNumber: credentials.phoneNumber,
@@ -94,17 +109,6 @@ export class AuthenticationService {
       }];
       
       console.log('User record prepared', { user });
-
-      // Registrar en Cognito
-      try {
-        await this.cognitoService.registerUser(credentials);
-        console.log('Cognito registration completed', { email: credentials.email });
-      } catch (error) {
-        console.log('Cognito registration failed', { error, email: credentials.email });
-        this.logger.error('Cognito registration failed', { error, email: credentials.email });
-        await this.metrics.incrementCounter('RegistrationFailureCognito');
-        throw error;
-      }
 
       // Confirmar transacción DynamoDB
       try {
@@ -206,7 +210,7 @@ export class AuthenticationService {
       };
 
     } catch (error) {
-      this.logger.error('Error in login', { error });
+      console.log('Error in login', { error });
       await this.observability.trackAuthEvent('LoginFailure');
       await this.anomalyDetection.trackMetric(
         credentials.email,
@@ -313,7 +317,7 @@ export class AuthenticationService {
       return newUser;
 
     } catch (error) {
-      this.logger.error('Error in getOrCreateUserRecord', { error });
+      console.log('Error in getOrCreateUserRecord', { error });
       throw new AuthenticationError(
         'Failed to process user record: ' + ((error as Error).message || 'Unknown error')
       );
@@ -364,19 +368,23 @@ export class AuthenticationService {
     }
   }
 
-  async refreshTokens(refreshToken: string): Promise<AuthenticationResult> {
+  async refreshTokens(cognitoSub: string, refreshToken: string): Promise<AuthenticationResult> {
     try {
       // Utilizar el CognitoService para refrescar los tokens
-      const response = await this.cognitoService.refreshUserTokens(refreshToken);
+      const response = await this.cognitoService.refreshUserTokens(cognitoSub, refreshToken);
 
-      if (!response.AuthenticationResult) {
+      console.log('Tokens refreshed', { response });
+
+      if (!response) {
         throw new AuthenticationError('Failed to refresh tokens');
       }
 
       // Obtener información del usuario del token ID
       const decodedToken = await this.tokenService.verifyToken(
-        response.AuthenticationResult.IdToken!
+        response.IdToken!
       );
+
+      console.log('Decoded token', { decodedToken });
 
       // Obtener o actualizar el usuario en DynamoDB
       const user = await this.getOrCreateUserRecord({
@@ -385,18 +393,22 @@ export class AuthenticationService {
         'custom:userType': decodedToken.userType || 'basic'
       });
 
-      return {
+      console.log('User record updated', { user });
+
+      const result = {
         user,
         tokens: {
-          accessToken: response.AuthenticationResult.AccessToken!,
-          refreshToken: response.AuthenticationResult.RefreshToken || refreshToken,
-          idToken: response.AuthenticationResult.IdToken!,
-          expiresIn: response.AuthenticationResult.ExpiresIn || 3600
+          accessToken: response.AccessToken!,
+          refreshToken: response.RefreshToken!,
+          idToken: response.idToken!,
+          expiresIn: response.ExpiresIn || 3600
         }
       };
+      console.log('Token refresh successful', { result });
 
+      return result;
     } catch (error) {
-      this.logger.error('Error refreshing tokens', { error });
+      console.log('Error refreshing tokens', { error });
       
       if ((error as Error).name === 'NotAuthorizedException') {
         throw new AuthenticationError('Invalid refresh token');

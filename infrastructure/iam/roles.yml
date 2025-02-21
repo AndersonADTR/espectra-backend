@@ -36,6 +36,17 @@ Resources:
                   StringEquals:
                     cloudwatch:namespace: 
                       - ${self:custom.service}/${self:provider.stage}
+              # Agregar permisos para Redis/ElastiCache
+              - Effect: Allow
+                Action:
+                  - elasticache:DescribeCacheClusters
+                  - elasticache:DescribeReplicationGroups
+                  - elasticache:ListTagsForResource
+                  - elasticache:DescribeCacheParameterGroups
+                  - elasticache:DescribeCacheSecurityGroups
+                  - elasticache:DescribeCacheSubnetGroups
+                Resource: 
+                  - !Sub arn:aws:elasticache:${AWS::Region}:${AWS::AccountId}:*
               - Effect: Allow
                 Action:
                   - cognito-idp:SignUp
@@ -67,13 +78,6 @@ Resources:
                   - xray:PutTraceSegments
                   - xray:PutTelemetryRecords
                 Resource: "*"
-              # Agregar permisos de ElastiCache
-              - Effect: Allow
-                Action:
-                  - elasticache:DescribeCacheClusters
-                  - elasticache:ListTagsForResource
-                Resource: 
-                  - !Sub arn:aws:elasticache:${AWS::Region}:${AWS::AccountId}:*
               # Agregar permisos de Secrets Manager
               - Effect: Allow
                 Action:
@@ -141,6 +145,17 @@ Resources:
                   StringEquals:
                     cloudwatch:namespace: 
                       - ${self:custom.service}/${self:provider.stage}
+              # Agregar permisos para Redis/ElastiCache
+              - Effect: Allow
+                Action:
+                  - elasticache:DescribeCacheClusters
+                  - elasticache:DescribeReplicationGroups
+                  - elasticache:ListTagsForResource
+                  - elasticache:DescribeCacheParameterGroups
+                  - elasticache:DescribeCacheSecurityGroups
+                  - elasticache:DescribeCacheSubnetGroups
+                Resource: 
+                  - !Sub arn:aws:elasticache:${AWS::Region}:${AWS::AccountId}:*
               - Effect: Allow
                 Action:
                   - wafv2:AssociateWebACL
@@ -210,12 +225,6 @@ Resources:
                   - Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-websocket-kms-key-arn
               - Effect: Allow
                 Action:
-                  - elasticache:DescribeCacheClusters
-                  - elasticache:ListTagsForResource
-                Resource: 
-                  - !Sub arn:aws:elasticache:${AWS::Region}:${AWS::AccountId}:*
-              - Effect: Allow
-                Action:
                   - secretsmanager:GetSecretValue
                 Resource: 
                   - !Sub arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:${self:custom.service}/*
@@ -261,6 +270,17 @@ Resources:
                   StringEquals:
                     cloudwatch:namespace: 
                       - ${self:custom.service}/${self:provider.stage}
+              # Agregar permisos para Redis/ElastiCache
+              - Effect: Allow
+                Action:
+                  - elasticache:DescribeCacheClusters
+                  - elasticache:DescribeReplicationGroups
+                  - elasticache:ListTagsForResource
+                  - elasticache:DescribeCacheParameterGroups
+                  - elasticache:DescribeCacheSecurityGroups
+                  - elasticache:DescribeCacheSubnetGroups
+                Resource: 
+                  - !Sub arn:aws:elasticache:${AWS::Region}:${AWS::AccountId}:*
               - Effect: Allow
                 Action:
                   - ec2:CreateNetworkInterface

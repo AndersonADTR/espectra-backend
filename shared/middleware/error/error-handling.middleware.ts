@@ -56,7 +56,7 @@ export class ErrorHandlingMiddleware {
     };
 
     if (error instanceof BaseError) {
-      this.logger.warn('Known error occurred', {
+      console.log('Known error occurred', {
         ...requestInfo,
         errorType: error.name,
         errorCode: error.code,
@@ -89,7 +89,7 @@ export class ErrorHandlingMiddleware {
     }
 
     // Error no controlado
-    this.logger.error('Unhandled error occurred', {
+    console.log('Unhandled error occurred', {
       ...requestInfo,
       error: error instanceof Error ? {
         name: error.name,

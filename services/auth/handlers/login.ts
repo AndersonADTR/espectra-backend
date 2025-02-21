@@ -5,11 +5,7 @@ import { AuthenticationService } from '../services/authentication.service';
 import { LoginCredentials } from '../types/auth.types';
 import { validateRequest } from '@shared/middleware/validation/validation.middleware';
 import { withErrorHandling } from '@shared/middleware/error/error-handling.middleware';
-import { Logger } from '@shared/utils/logger';
 import * as Joi from 'joi';
-import { rateLimit, rateLimitPresets } from '@shared/middleware/rate-limit/rate-limit.middleware';
-
-const logger = new Logger('LoginHandler');
 
 // Schema de validación
 const loginSchema = Joi.object({
@@ -28,7 +24,7 @@ const loginSchema = Joi.object({
 });
 
 const loginHandler: APIGatewayProxyHandler = async (event) => {
-  logger.info('Processing login request');
+  console.log('Processing login request');
 
   const authService = new AuthenticationService();
   
@@ -39,7 +35,7 @@ const loginHandler: APIGatewayProxyHandler = async (event) => {
     // Intentar login
     const result = await authService.login(loginData);
 
-    logger.info('Login successful', { 
+    console.log('Login successful', { 
       userId: result.user.userId,
       userType: result.user.userType
     });
@@ -63,6 +59,7 @@ const loginHandler: APIGatewayProxyHandler = async (event) => {
         message: 'Login successful',
         user: {
           userId: result.user.userId,
+          userSub: result.user.userSub,
           email: result.user.email,
           name: result.user.name,
           userType: result.user.userType
@@ -82,10 +79,16 @@ const loginHandler: APIGatewayProxyHandler = async (event) => {
 };
 
 // Exportar el handler con los middlewares aplicados
+// export const handler = withErrorHandling(
+//   rateLimit(rateLimitPresets.strict)(
+//     validateRequest(loginSchema)(
+//       loginHandler
+//     )
+//   )
+// );
+
 export const handler = withErrorHandling(
-  rateLimit(rateLimitPresets.strict)(
-    validateRequest(loginSchema)(
-      loginHandler
-    )
+  validateRequest(loginSchema)(
+    loginHandler
   )
 );

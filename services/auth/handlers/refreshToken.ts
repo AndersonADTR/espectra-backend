@@ -5,13 +5,19 @@ import { AuthenticationService } from '../services/authentication.service';
 import { validateRequest } from '@shared/middleware/validation/validation.middleware';
 import { withErrorHandling } from '@shared/middleware/error/error-handling.middleware';
 import { Logger } from '@shared/utils/logger';
-import { AuthenticationError } from '@shared/utils/errors';
+import { AuthenticationError, ValidationError } from '@shared/utils/errors';
 import * as Joi from 'joi';
 
 const logger = new Logger('RefreshTokenHandler');
 
 // Schema de validación
 const refreshTokenSchema = Joi.object({
+  cognitoSub: Joi.string()
+    .required()
+    .messages({
+      'any.required': 'cognitoSub is required',
+      'string.empty': 'cognitoSub cannot be empty'
+    }),
   refreshToken: Joi.string()
     .required()
     .messages({
@@ -26,32 +32,48 @@ const refreshTokenHandler: APIGatewayProxyHandler = async (event) => {
   const authService = new AuthenticationService();
   
   try {
-    let refreshToken: string;
 
-    // En producción, obtener el refresh token de la cookie
-    if (process.env.STAGE === 'prod') {
-      const cookies = event.headers.Cookie || event.headers.cookie;
-      if (!cookies) {
-        throw new AuthenticationError('No refresh token cookie found');
-      }
+    const body = JSON.parse(event.body || '{}');
+    const { refreshToken, cognitoSub } = body;
 
-      const refreshTokenCookie = cookies
-        .split(';')
-        .find(cookie => cookie.trim().startsWith('refresh_token='));
-
-      if (!refreshTokenCookie) {
-        throw new AuthenticationError('No refresh token cookie found');
-      }
-
-      refreshToken = refreshTokenCookie.split('=')[1].trim();
-    } else {
-      // En desarrollo, obtener el refresh token del body
-      const body = JSON.parse(event.body || '{}');
-      refreshToken = body.refreshToken;
+    if (!cognitoSub) {
+      throw new ValidationError('cognitoSub is required');
     }
 
+    if (!refreshToken) {
+      throw new ValidationError('Refresh token is required');
+    }
+
+    // En producción, obtener el refresh token de la cookie
+    // if (process.env.STAGE === 'prod') {
+    //   const cookies = event.headers.Cookie || event.headers.cookie;
+    //   if (!cookies) {
+    //     throw new AuthenticationError('No refresh token cookie found');
+    //   }
+
+    //   const refreshTokenCookie = cookies
+    //     .split(';')
+    //     .find(cookie => cookie.trim().startsWith('refresh_token='));
+
+    //   if (!refreshTokenCookie) {
+    //     throw new AuthenticationError('No refresh token cookie found');
+    //   }
+
+    //   refreshToken = refreshTokenCookie.split('=')[1].trim();
+    // } else {
+    //   // En desarrollo, obtener el refresh token del body
+    //   refreshToken = body.refreshToken;
+    // }
+
+    console.log('Refresh token', {
+      cognitoSub: cognitoSub,
+      refreshToken: refreshToken
+    });
+
     // Validar y refrescar los tokens
-    const result = await authService.refreshTokens(refreshToken);
+    const result = await authService.refreshTokens(cognitoSub, refreshToken);
+
+    console.log('Token refresh successful', { result });
 
     // Configurar la cookie del nuevo refresh token en producción
     const cookies = [];
@@ -60,6 +82,8 @@ const refreshTokenHandler: APIGatewayProxyHandler = async (event) => {
         `refresh_token=${result.tokens.refreshToken}; HttpOnly; Secure; SameSite=Strict; Max-Age=604800` // 7 días
       );
     }
+
+    console.log('Returning response', { tokens: result.tokens });
 
     return {
       statusCode: 200,

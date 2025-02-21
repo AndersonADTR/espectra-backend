@@ -1,5 +1,6 @@
+// services/auth/services/token.service.ts
+
 import { CognitoJwtVerifier } from "aws-jwt-verify";
-import { Logger } from '@shared/utils/logger';
 import { config } from '@shared/config/config.service';
 import { AuthenticationError } from '@shared/utils/errors';
 import { TokenPayload } from '../types/auth.types';
@@ -7,13 +8,12 @@ import { RedisService } from '@shared/services/cache/redis.service';
 import { ObservabilityService } from "@shared/services/observability/observability.service";
 
 export class TokenService {
-  private readonly logger: Logger;
+  
   private readonly verifier: any;
   private readonly redis: RedisService;
   private readonly observability: ObservabilityService;
 
   constructor() {
-    this.logger = new Logger('TokenService');
     
     // Solo configuramos el verificador de Cognito
     this.verifier = CognitoJwtVerifier.create({
@@ -28,16 +28,23 @@ export class TokenService {
 
   async verifyToken(token: string): Promise<TokenPayload> {
     try {
+      console.log('TokenService: Verifying token');
       // Verificar si el token está en la blacklist
       const isBlacklisted = await this.isTokenBlacklisted(token);
       if (isBlacklisted) {
         throw new AuthenticationError('Token has been revoked');
       }
 
+      console.log('TokenService: Token not blacklisted');
+
       // Verificar el token con Cognito
       const payload = await this.verifier.verify(token);
 
+      console.log('TokenService: Token verified');
+
       await this.observability.trackAuthEvent('TokenValidationSuccess');
+
+      console.log('TokenService: Tracking auth event');
       
       return {
         sub: payload.sub,
@@ -49,7 +56,7 @@ export class TokenService {
       };
 
     } catch (error) {
-      this.logger.error('Token verification failed', { error });
+      console.log('Token verification failed', { error });
       await this.observability.trackAuthEvent('TokenValidationFailure');
       
       throw new AuthenticationError(
@@ -78,7 +85,7 @@ export class TokenService {
       await this.observability.trackAuthEvent('TokenInvalidated');
 
     } catch (error) {
-      this.logger.error('Error invalidating token', { error });
+      console.log('Error invalidating token', { error });
       throw new AuthenticationError(
         'Failed to invalidate token: ' + ((error as Error).message || 'Unknown error')
       );
@@ -87,12 +94,27 @@ export class TokenService {
 
   private async isTokenBlacklisted(token: string): Promise<boolean> {
     try {
-      const exists = await this.redis.getClient().exists(`blacklist:${token}`);
-      return exists === 1;
+        const isConnected = await this.redis.checkConnection();
+        if (!isConnected) {
+            console.warn('Redis not connected, skipping blacklist check');
+            return false;
+        }
+
+        const exists = await Promise.race([
+            this.redis.getClient().exists(`blacklist:${token}`),
+            new Promise((_, reject) => 
+                setTimeout(() => reject(new Error('Redis operation timed out')), 5000)
+            )
+        ]);
+
+        return exists === 1;
     } catch (error) {
-      this.logger.error('Error checking token blacklist', { error });
-      // En caso de error con Redis, asumimos que el token es válido
-      return false;
+        console.warn('Error checking token blacklist', { 
+            error: error instanceof Error ? error.message : 'Unknown error',
+            stack: error instanceof Error ? error.stack : undefined
+        });
+        // En caso de error con Redis, asumimos que el token es válido
+        return false;
     }
   }
 
@@ -100,7 +122,7 @@ export class TokenService {
     try {
       await this.redis.cleanup();
     } catch (error) {
-      this.logger.error('Error cleaning up TokenService', { error });
+      console.log('Error cleaning up TokenService', { error });
     }
   }
 }

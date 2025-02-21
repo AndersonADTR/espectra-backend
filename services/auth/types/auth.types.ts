@@ -35,6 +35,7 @@ export interface LoginCredentials {
   
   export interface AuthenticatedUser {
     userId: string;
+    userSub: string;
     email: string;
     name: string;
     userType: string;

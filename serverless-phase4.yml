@@ -225,7 +225,6 @@ functions:
           restApi:
             id: !Ref RestApiId
     vpc: null
-    memorySize: 1024
     environment:
       ALLOWED_ORIGINS: '*'
       PASSWORD_MIN_LENGTH: '8'
@@ -241,6 +240,7 @@ functions:
     name: ${self:custom.service}-${self:provider.stage}-login
     role: 
       Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-lambda-role-arn
+    vpc: null
     events:
       - http:
           path: auth/login
@@ -254,6 +254,7 @@ functions:
     name: ${self:custom.service}-${self:provider.stage}-refreshToken
     role: 
       Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-lambda-role-arn
+    vpc: null
     events:
       - http:
           path: auth/refresh-token
@@ -261,12 +262,19 @@ functions:
           cors: true
           restApi:
             id: !Ref RestApiId
+    environment:
+      COGNITO_USER_POOL_ID: 
+        Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-user-pool-id
+      COGNITO_CLIENT_ID: 
+        Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-user-pool-client-id
+      COGNITO_CLIENT_SECRET: ${ssm:/espectra/${self:provider.stage}/cognito/client-secret}
 
   logout:
     handler: services/auth/handlers/logout.handler
     name: ${self:custom.service}-${self:provider.stage}-logout
     role: 
       Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-lambda-role-arn
+    vpc: null
     events:
       - http:
           path: auth/logout
@@ -283,6 +291,7 @@ functions:
     name: ${self:custom.service}-${self:provider.stage}-websocket-authorizer
     role: 
       Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-lambda-role-arn
+    vpc: null
     memorySize: 256
     timeout: 29
     environment:
@@ -296,6 +305,7 @@ functions:
     name: ${self:custom.service}-${self:provider.stage}-webSocketConnect
     role: 
       Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-lambda-role-arn
+    vpc: null
     events:
       - websocket:
           route: $connect
@@ -311,6 +321,7 @@ functions:
     name: ${self:custom.service}-${self:provider.stage}-webSocketDisconnect
     role: 
       Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-lambda-role-arn
+    vpc: null
     events:
       - websocket:
           route: $disconnect
@@ -322,6 +333,7 @@ functions:
     name: ${self:custom.service}-${self:provider.stage}-webSocketMessage
     role: 
       Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-lambda-role-arn
+    vpc: null
     events:
       - websocket:
           route: $default
@@ -334,6 +346,7 @@ functions:
     name: ${self:custom.service}-${self:provider.stage}-botpress-webhook
     role: 
       Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-lambda-role-arn
+    vpc: null
     events:
       - http:
           path: /botpress/webhook
@@ -352,6 +365,7 @@ functions:
     name: ${self:custom.service}-${self:provider.stage}-process-message
     role: 
       Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-lambda-role-arn
+    vpc: null
     events:
       - sqs:
           arn:
@@ -365,6 +379,7 @@ functions:
     name: ${self:custom.service}-${self:provider.stage}-handoff-request
     role: 
       Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-lambda-role-arn
+    vpc: null
     events:
       - http:
           path: /handoff/request
@@ -383,6 +398,7 @@ functions:
     name: ${self:custom.service}-${self:provider.stage}-handoff-accept
     role: 
       Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-lambda-role-arn
+    vpc: null
     events:
       - http:
           path: /handoff/accept
@@ -402,6 +418,7 @@ functions:
     name: ${self:custom.service}-${self:provider.stage}-start-session
     role: 
       Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-lambda-role-arn
+    vpc: null
     events:
       - http:
           path: /session/start
@@ -417,6 +434,7 @@ functions:
     name: ${self:custom.service}-${self:provider.stage}-create-session
     role: 
       Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-lambda-role-arn
+    vpc: null
     events:
       - http:
           path: /sessions/create
@@ -442,6 +460,7 @@ functions:
     name: ${self:custom.service}-${self:provider.stage}-extend-session
     role: 
       Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-lambda-role-arn
+    vpc: null
     events:
       - http:
           path: /sessions/update/{sessionId}
@@ -460,6 +479,7 @@ functions:
     name: ${self:custom.service}-${self:provider.stage}-end-session
     role: 
       Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-lambda-role-arn
+    vpc: null
     events:
       - http:
           path: /session/end
@@ -476,6 +496,7 @@ functions:
     name: ${self:custom.service}-${self:provider.stage}-metrics-collector
     role: 
       Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-lambda-role-arn
+    vpc: null
     events:
       - schedule: rate(1 minute)
     environment:
