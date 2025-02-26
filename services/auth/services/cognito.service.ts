@@ -58,7 +58,7 @@ export class CognitoService {
     return hmac.update(message).digest('base64');
   }
 
-  async refreshUserTokens(cognitoSub: string, refreshToken: string): Promise<any> {
+  async refreshUserTokens(email: string, cognitoSub: string, refreshToken: string): Promise<any> {
     try {
 
       console.log('Starting token refresh cognito service', { 
@@ -68,7 +68,7 @@ export class CognitoService {
 
       // Calcular SECRET_HASH
       const secretHash = this.calculateSecretHash(
-        cognitoSub,
+        email ,
         this.clientId
       );
 
@@ -80,7 +80,7 @@ export class CognitoService {
         AuthParameters: {
           REFRESH_TOKEN: refreshToken,
           SECRET_HASH: secretHash,
-          USERNAME: cognitoSub
+          USERNAME: email
         }
       });
 

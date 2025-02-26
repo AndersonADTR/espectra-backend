@@ -28,8 +28,8 @@ provider:
     securityGroupIds:
       - Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-lambda-sg-id
     subnetIds:
-      - Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-public-subnet-1-id
-      - Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-public-subnet-2-id
+      - Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-private-subnet-1-id
+      - Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-private-subnet-2-id
       
   environment:
     # System Variables
@@ -224,7 +224,6 @@ functions:
           cors: true
           restApi:
             id: !Ref RestApiId
-    vpc: null
     environment:
       ALLOWED_ORIGINS: '*'
       PASSWORD_MIN_LENGTH: '8'
@@ -240,7 +239,6 @@ functions:
     name: ${self:custom.service}-${self:provider.stage}-login
     role: 
       Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-lambda-role-arn
-    vpc: null
     events:
       - http:
           path: auth/login
@@ -254,7 +252,6 @@ functions:
     name: ${self:custom.service}-${self:provider.stage}-refreshToken
     role: 
       Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-lambda-role-arn
-    vpc: null
     events:
       - http:
           path: auth/refresh-token
@@ -274,7 +271,6 @@ functions:
     name: ${self:custom.service}-${self:provider.stage}-logout
     role: 
       Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-lambda-role-arn
-    vpc: null
     events:
       - http:
           path: auth/logout

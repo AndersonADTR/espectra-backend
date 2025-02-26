@@ -5,11 +5,29 @@ Resources:
       GroupDescription: Security group for Lambda functions
       VpcId: !Ref SpectraVPC
       SecurityGroupEgress:
-        - IpProtocol: -1
-          FromPort: -1
-          ToPort: -1
+        # Redis
+        - IpProtocol: tcp
+          FromPort: 6379
+          ToPort: 6379
+          CidrIp: 0.0.0.0/0  # Cambiado a CidrIp para evitar dependencia circular
+          Description: Redis connection
+        # HTTPS para APIs y servicios AWS
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
           CidrIp: 0.0.0.0/0
-          Description: All outbound traffic
+          Description: HTTPS to AWS services and APIs
+        # DNS
+        - IpProtocol: tcp
+          FromPort: 53
+          ToPort: 53
+          CidrIp: 0.0.0.0/0
+          Description: DNS (TCP)
+        - IpProtocol: udp
+          FromPort: 53
+          ToPort: 53
+          CidrIp: 0.0.0.0/0
+          Description: DNS (UDP)
       Tags:
         - Key: Name
           Value: ${self:custom.service}-${self:provider.stage}-lambda-sg
@@ -27,12 +45,18 @@ Resources:
     Properties:
       GroupDescription: Security group for Redis cluster
       VpcId: !Ref SpectraVPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 6379
+          ToPort: 6379
+          CidrIp: 0.0.0.0/0  # Cambiado a CidrIp para evitar la dependencia circular
+          Description: Redis access from Lambda functions
       SecurityGroupEgress:
-        - IpProtocol: -1
-          FromPort: -1
-          ToPort: -1
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
           CidrIp: 0.0.0.0/0
-          Description: All outbound traffic
+          Description: Allow HTTPS outbound for Redis updates
       Tags:
         - Key: Name
           Value: ${self:custom.service}-${self:provider.stage}-redis-sg
@@ -50,12 +74,18 @@ Resources:
     Properties:
       GroupDescription: Security group for internal API endpoints
       VpcId: !Ref SpectraVPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 0.0.0.0/0  # Cambiado a CidrIp para evitar la dependencia circular
+          Description: HTTPS from Lambda functions
       SecurityGroupEgress:
-        - IpProtocol: -1
-          FromPort: -1
-          ToPort: -1
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
           CidrIp: 0.0.0.0/0
-          Description: All outbound traffic
+          Description: HTTPS outbound
       Tags:
         - Key: Name
           Value: ${self:custom.service}-${self:provider.stage}-internal-api-sg
@@ -73,6 +103,12 @@ Resources:
     Properties:
       GroupDescription: Security group for VPC Endpoints
       VpcId: !Ref SpectraVPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 0.0.0.0/0  # Cambiado a CidrIp para evitar la dependencia circular
+          Description: HTTPS from Lambda functions
       SecurityGroupEgress:
         - IpProtocol: -1
           FromPort: -1
@@ -91,123 +127,7 @@ Resources:
         - Key: ManagedBy
           Value: CloudFormation
 
-  LambdaSecurityGroupIngress:
-    Type: AWS::EC2::SecurityGroupIngress
-    Properties:
-      GroupId: !Ref LambdaSecurityGroup
-      IpProtocol: tcp
-      FromPort: 443
-      ToPort: 443
-      CidrIp: 0.0.0.0/0
-      Description: HTTPS outbound to internet
-
-  RedisSecurityGroupIngress:
-    Type: AWS::EC2::SecurityGroupIngress
-    Properties:
-      GroupId: !Ref RedisSecurityGroup
-      IpProtocol: tcp
-      FromPort: 6379
-      ToPort: 6379
-      SourceSecurityGroupId: !Ref LambdaSecurityGroup
-      Description: Redis access
-
-  InternalApiSecurityGroupIngress:
-    Type: AWS::EC2::SecurityGroupIngress
-    Properties:
-      GroupId: !Ref InternalApiSecurityGroup
-      IpProtocol: tcp
-      FromPort: 443
-      ToPort: 443
-      SourceSecurityGroupId: !Ref LambdaSecurityGroup
-      Description: HTTPS from Lambda functions
-
-  VPCEndpointSecurityGroupIngress:
-    Type: AWS::EC2::SecurityGroupIngress
-    Properties:
-      GroupId: !Ref VPCEndpointSecurityGroup
-      IpProtocol: tcp
-      FromPort: 443
-      ToPort: 443
-      SourceSecurityGroupId: !Ref LambdaSecurityGroup
-      Description: HTTPS from Lambda functions
-
-  # VPC Endpoints
-  DynamoDBEndpoint:
-    Type: AWS::EC2::VPCEndpoint
-    Properties:
-      ServiceName: !Sub com.amazonaws.${AWS::Region}.dynamodb
-      VpcEndpointType: Gateway
-      PolicyDocument:
-        Version: '2012-10-17'
-        Statement:
-          - Effect: Allow
-            Principal: '*'
-            Action:
-              - dynamodb:*
-            Resource: '*'
-      VpcId: !Ref SpectraVPC
-      RouteTableIds: 
-        - !Ref PublicRouteTable
-      Tags:
-        - Key: Name
-          Value: ${self:custom.service}-${self:provider.stage}-dynamodb-endpoint
-        - Key: Service
-          Value: ${self:custom.service}
-        - Key: Environment
-          Value: ${self:provider.stage}
-
-  ApiGatewayEndpoint:
-    Type: AWS::EC2::VPCEndpoint
-    Properties:
-      ServiceName: !Sub com.amazonaws.${AWS::Region}.execute-api
-      VpcId: !Ref SpectraVPC
-      VpcEndpointType: Interface
-      PrivateDnsEnabled: true
-      SubnetIds:
-        - !Ref PublicSubnet1
-        - !Ref PublicSubnet2
-      SecurityGroupIds:
-        - !Ref VPCEndpointSecurityGroup
-      Tags:
-        - Key: Name
-          Value: ${self:custom.service}-${self:provider.stage}-api-endpoint
-        - Key: Service
-          Value: ${self:custom.service}
-        - Key: Environment
-          Value: ${self:provider.stage}
-
-  SecretsManagerEndpoint:
-    Type: AWS::EC2::VPCEndpoint
-    Properties:
-      ServiceName: !Sub com.amazonaws.${AWS::Region}.secretsmanager
-      VpcId: !Ref SpectraVPC
-      VpcEndpointType: Interface
-      PrivateDnsEnabled: true
-      SubnetIds:
-        - !Ref PublicSubnet1
-        - !Ref PublicSubnet2
-      SecurityGroupIds:
-        - !Ref VPCEndpointSecurityGroup
-      Tags:
-        - Key: Name
-          Value: ${self:custom.service}-${self:provider.stage}-secrets-endpoint
-        - Key: Service
-          Value: ${self:custom.service}
-        - Key: Environment
-          Value: ${self:provider.stage}
-
-  CloudWatchLogsEndpoint:
-    Type: AWS::EC2::VPCEndpoint
-    Properties:
-      ServiceName: !Sub com.amazonaws.${AWS::Region}.logs
-      VpcId: !Ref SpectraVPC
-      VpcEndpointType: Interface
-      PrivateDnsEnabled: true
-      SubnetIds:
-        - !Ref PublicSubnet1
-        - !Ref PublicSubnet2
-      SecurityGroupIds:
-        - !Ref VPCEndpointSecurityGroup
+  # Eliminar RedisSecurityGroupIngress y LambdaSecurityGroupEgress
 
   SGMetricsAlarm:
     Type: AWS::CloudWatch::Alarm
@@ -247,27 +167,3 @@ Outputs:
     Value: !Ref VPCEndpointSecurityGroup
     Export:
       Name: ${self:custom.service}-${self:provider.stage}-vpce-sg-id
-
-  DynamoDBEndpointId:
-    Description: ID of the DynamoDB VPC Endpoint
-    Value: !Ref DynamoDBEndpoint
-    Export:
-      Name: ${self:custom.service}-${self:provider.stage}-dynamodb-endpoint-id
-
-  ApiGatewayEndpointId:
-    Description: ID of the API Gateway VPC Endpoint
-    Value: !Ref ApiGatewayEndpoint
-    Export:
-      Name: ${self:custom.service}-${self:provider.stage}-api-endpoint-id
-
-  SecretsManagerEndpointId:
-    Description: ID of the Secrets Manager VPC Endpoint
-    Value: !Ref SecretsManagerEndpoint
-    Export:
-      Name: ${self:custom.service}-${self:provider.stage}-secrets-endpoint-id
-
-  CloudWatchLogsEndpointId:
-    Description: ID of the CloudWatch Logs VPC Endpoint
-    Value: !Ref CloudWatchLogsEndpoint
-    Export:
-      Name: ${self:custom.service}-${self:provider.stage}-cwlogs-endpoint-id

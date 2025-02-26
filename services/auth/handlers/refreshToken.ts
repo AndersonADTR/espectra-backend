@@ -12,12 +12,18 @@ const logger = new Logger('RefreshTokenHandler');
 
 // Schema de validación
 const refreshTokenSchema = Joi.object({
-  cognitoSub: Joi.string()
+  email: Joi.string()
     .required()
     .messages({
       'any.required': 'cognitoSub is required',
       'string.empty': 'cognitoSub cannot be empty'
     }),
+  cognitoSub: Joi.string()
+    .required()
+    .messages({
+      'any.required': 'cognitoSub is required',
+      'string.empty': 'cognitoSub cannot be empty'
+    }),  
   refreshToken: Joi.string()
     .required()
     .messages({
@@ -34,7 +40,7 @@ const refreshTokenHandler: APIGatewayProxyHandler = async (event) => {
   try {
 
     const body = JSON.parse(event.body || '{}');
-    const { refreshToken, cognitoSub } = body;
+    const { refreshToken, cognitoSub, email } = body;
 
     if (!cognitoSub) {
       throw new ValidationError('cognitoSub is required');
@@ -66,12 +72,13 @@ const refreshTokenHandler: APIGatewayProxyHandler = async (event) => {
     // }
 
     console.log('Refresh token', {
+      email: email,
       cognitoSub: cognitoSub,
       refreshToken: refreshToken
     });
 
     // Validar y refrescar los tokens
-    const result = await authService.refreshTokens(cognitoSub, refreshToken);
+    const result = await authService.refreshTokens(email, cognitoSub, refreshToken);
 
     console.log('Token refresh successful', { result });
 

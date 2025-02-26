@@ -2,10 +2,11 @@ Resources:
   RedisSubnetGroup:
     Type: AWS::ElastiCache::SubnetGroup
     Properties:
+      CacheSubnetGroupName: !Sub "${self:custom.service}-${self:provider.stage}-redis-subnet-group"
       Description: !Sub "${self:custom.service}-${self:provider.stage} subnet group for Redis cluster"
       SubnetIds:
-        - ${cf:${self:custom.service}-phase1-${self:provider.stage}.PublicSubnet1Id}
-        - ${cf:${self:custom.service}-phase1-${self:provider.stage}.PublicSubnet2Id}
+        - Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-private-subnet-1-id
+        - Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-private-subnet-2-id
       Tags:
         - Key: Environment
           Value: ${self:provider.stage}
@@ -13,57 +14,6 @@ Resources:
           Value: ${self:custom.service}
         - Key: ManagedBy
           Value: CloudFormation
-
-  RedisCacheSecurityGroup:
-    Type: AWS::EC2::SecurityGroup
-    Properties:
-      GroupDescription: !Sub "${self:custom.service}-${self:provider.stage} security group for Redis cluster"
-      VpcId: 
-        Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-vpc-id
-      SecurityGroupIngress:
-        - IpProtocol: tcp
-          FromPort: 6379
-          ToPort: 6379
-          SourceSecurityGroupId:
-            Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-lambda-sg-id
-          Description: Redis access from Lambda functions
-      SecurityGroupEgress:
-        - IpProtocol: tcp
-          FromPort: 443
-          ToPort: 443
-          CidrIp: 0.0.0.0/0
-          Description: Allow HTTPS outbound for Redis backups
-      Tags:
-        - Key: Environment
-          Value: ${self:provider.stage}
-        - Key: Service
-          Value: ${self:custom.service}
-        - Key: ManagedBy
-          Value: CloudFormation
-
-  # Regla de ingreso explícita para Redis
-  RedisSecurityGroupIngress:
-    Type: AWS::EC2::SecurityGroupIngress
-    Properties:
-      GroupId: !Ref RedisCacheSecurityGroup
-      Description: Allow inbound Redis traffic from Lambda
-      FromPort: 6379
-      ToPort: 6379
-      IpProtocol: tcp
-      SourceSecurityGroupId:
-        Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-lambda-sg-id
-
-  # Regla de egreso explícita para Lambda
-  LambdaSecurityGroupEgress:
-    Type: AWS::EC2::SecurityGroupEgress
-    Properties:
-      GroupId: 
-        Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-lambda-sg-id
-      Description: Allow outbound Redis traffic
-      FromPort: 6379
-      ToPort: 6379
-      IpProtocol: tcp
-      DestinationSecurityGroupId: !Ref RedisCacheSecurityGroup
 
   RedisParameterGroup:
     Type: AWS::ElastiCache::ParameterGroup
@@ -71,10 +21,12 @@ Resources:
       CacheParameterGroupFamily: redis6.x
       Description: !Sub "${self:custom.service}-${self:provider.stage} parameter group for Redis cluster"
       Properties:
-        timeout: 300
+        timeout: 5000
         notify-keyspace-events: "Ex"
         activedefrag: "yes"
         tcp-keepalive: 300
+        # maxmemory-policy: "volatile-lru"
+        # maxmemory-samples: 10
       Tags:
         - Key: Environment
           Value: ${self:provider.stage}
@@ -107,6 +59,9 @@ Resources:
 
   RedisCluster:
     Type: AWS::ElastiCache::ReplicationGroup
+    DependsOn: 
+      - RedisSubnetGroup
+      - RedisParameterGroup
     Properties:
       ReplicationGroupId: !Sub "${self:custom.service}-${self:provider.stage}-redis"
       ReplicationGroupDescription: !Sub "${self:custom.service}-${self:provider.stage} Redis cluster for session management"
@@ -119,7 +74,7 @@ Resources:
       CacheParameterGroupName: !Ref RedisParameterGroup
       CacheSubnetGroupName: !Ref RedisSubnetGroup
       SecurityGroupIds:
-        - !Ref RedisCacheSecurityGroup
+        - Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-redis-sg-id
       AtRestEncryptionEnabled: true
       TransitEncryptionEnabled: true
       KmsKeyId: 
@@ -214,6 +169,26 @@ Resources:
           Value: !Ref RedisCluster
       AlarmActions:
         - Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-high-priority-topic-arn
+        
+  # Nueva alarma para conexiones fallidas
+  RedisConnectionFailuresAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub "${self:custom.service}-${self:provider.stage}-redis-connection-failures"
+      AlarmDescription: Redis connection failures detected
+      MetricName: ConnectionFailures
+      Namespace: AWS/ElastiCache
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching
+      Dimensions:
+        - Name: CacheClusterId
+          Value: !Ref RedisCluster
+      AlarmActions:
+        - Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-high-priority-topic-arn
 
 Outputs:
   RedisEndpoint:
@@ -228,14 +203,20 @@ Outputs:
     Export:
       Name: ${self:custom.service}-${self:provider.stage}-redis-port
 
-  RedisSecurityGroupId:
-    Description: Redis security group ID
-    Value: !Ref RedisCacheSecurityGroup
-    Export:
-      Name: ${self:custom.service}-${self:provider.stage}-redis-cache-sg-id
-
   RedisConnectionString:
     Description: Redis connection string with protocol
     Value: !Sub "redis://${RedisCluster.PrimaryEndPoint.Address}:${RedisCluster.PrimaryEndPoint.Port}"
     Export:
       Name: ${self:custom.service}-${self:provider.stage}-redis-connection-string
+      
+  RedisClusterId:
+    Description: ID of the Redis cluster
+    Value: !Ref RedisCluster
+    Export:
+      Name: ${self:custom.service}-${self:provider.stage}-redis-cluster-id
+      
+  RedisParameterGroupName:
+    Description: Name of the Redis parameter group
+    Value: !Ref RedisParameterGroup
+    Export:
+      Name: ${self:custom.service}-${self:provider.stage}-redis-parameter-group

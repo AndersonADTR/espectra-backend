@@ -10,20 +10,20 @@ export class RedisService {
 
     private constructor() {
         this.client = new Redis({
-            host: config.getRequired<string>('REDIS_HOST'),
+            host: "master.espectra-backend-dev-redis.xvy4ni.use1.cache.amazonaws.com",//config.getRequired<string>('REDIS_HOST'),
             port: config.get<number>('REDIS_PORT', 6379),
-            //password: config.get<string>('REDIS_PASSWORD'),
-            connectTimeout: 10000, // 10 segundos
-            commandTimeout: 5000,  // 5 segundos
+            //password: config.get<string>('REDIS_PASSWORD'), // Descomenta si usas contraseña
+            connectTimeout: 20000, // Aumentamos a 20 segundos
+            commandTimeout: 10000,  // Aumentamos a 10 segundos
             retryStrategy: (times) => {
                 if (times > 3) {
                     console.log('Redis connection failed multiple times');
-                    return null;
+                    return null; // Detener los reintentos después de 3 intentos
                 }
-                return Math.min(times * 100, 3000);
+                return Math.min(times * 100, 3000); // Reintentar con un retraso creciente
             },
-            maxRetriesPerRequest: 3,
-            enableReadyCheck: true
+            maxRetriesPerRequest: 3, // Máximo de reintentos por operación
+            enableReadyCheck: true // Verificar si Redis está listo
         });
 
         // Manejadores de eventos
@@ -34,7 +34,7 @@ export class RedisService {
 
         this.client.on('error', (error) => {
             this.isConnected = false;
-            console.log('Redis client error', { error });
+            console.error('Redis client error', { error });
         });
 
         this.client.on('close', () => {
@@ -56,7 +56,7 @@ export class RedisService {
 
     getClient(): Redis {
         if (!this.isConnected) {
-            console.log('Redis client not connected, attempting operation anyway');
+            console.warn('Redis client not connected, attempting operation anyway');
         }
         return this.client;
     }
@@ -86,7 +86,7 @@ export class RedisService {
             await this.client.ping();
             return true;
         } catch (error) {
-            console.log('Redis connection check failed', { error });
+            console.error('Redis connection check failed', { error });
             return false;
         }
     }

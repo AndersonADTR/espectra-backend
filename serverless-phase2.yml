@@ -191,17 +191,24 @@ outputs:
     Export:
       Name: ${self:custom.service}-${self:provider.stage}-redis-port
 
-  RedisSecurityGroupId:
-    Description: Redis security group ID
-    Value: !Ref RedisSecurityGroup
-    Export:
-      Name: ${self:custom.service}-${self:provider.stage}-redis-cache-sg-id
-
+  
   RedisConnectionString:
     Description: Redis connection string with protocol
     Value: !Sub "redis://${RedisCluster.PrimaryEndPoint.Address}:${RedisCluster.PrimaryEndPoint.Port}"
     Export:
       Name: ${self:custom.service}-${self:provider.stage}-redis-connection-string
+      
+  RedisClusterId:
+    Description: ID of the Redis cluster
+    Value: !Ref RedisCluster
+    Export:
+      Name: ${self:custom.service}-${self:provider.stage}-redis-cluster-id
+      
+  RedisParameterGroupName:
+    Description: Name of the Redis parameter group
+    Value: !Ref RedisParameterGroup
+    Export:
+      Name: ${self:custom.service}-${self:provider.stage}-redis-parameter-group
       
   ConversationContextTableName:
     Description: Name of the Conversation Context table

@@ -368,10 +368,10 @@ export class AuthenticationService {
     }
   }
 
-  async refreshTokens(cognitoSub: string, refreshToken: string): Promise<AuthenticationResult> {
+  async refreshTokens(email: string, cognitoSub: string, refreshToken: string): Promise<AuthenticationResult> {
     try {
       // Utilizar el CognitoService para refrescar los tokens
-      const response = await this.cognitoService.refreshUserTokens(cognitoSub, refreshToken);
+      const response = await this.cognitoService.refreshUserTokens(email, cognitoSub, refreshToken);
 
       console.log('Tokens refreshed', { response });
 
