@@ -252,6 +252,12 @@ functions:
     name: ${self:custom.service}-${self:provider.stage}-refreshToken
     role: 
       Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-lambda-role-arn
+    vpc: 
+      securityGroupIds:
+        - Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-lambda-sg-id
+      subnetIds:
+        - Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-private-subnet-1-id
+        - Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-private-subnet-2-id
     events:
       - http:
           path: auth/refresh-token

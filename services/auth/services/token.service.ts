@@ -28,7 +28,12 @@ export class TokenService {
 
   async verifyToken(token: string): Promise<TokenPayload> {
     try {
-      console.log('TokenService: Verifying token');
+      console.log('TokenService: Verifying token', { token });
+
+      if (!token || token.trim() === '') {
+        throw new AuthenticationError('Empty JWT provided');
+      }
+
       // Verificar si el token está en la blacklist
       const isBlacklisted = await this.isTokenBlacklisted(token);
       if (isBlacklisted) {
@@ -56,7 +61,9 @@ export class TokenService {
       };
 
     } catch (error) {
-      console.log('Token verification failed', { error });
+      console.warn('Redis blacklist check failed, proceeding with token refresh', { 
+        error: error instanceof Error ? error.message : 'Unknown error' 
+      });
       await this.observability.trackAuthEvent('TokenValidationFailure');
       
       throw new AuthenticationError(
@@ -94,29 +101,21 @@ export class TokenService {
 
   private async isTokenBlacklisted(token: string): Promise<boolean> {
     try {
-        const isConnected = await this.redis.checkConnection();
-        if (!isConnected) {
-            console.warn('Redis not connected, skipping blacklist check');
-            return false;
-        }
-
         const exists = await Promise.race([
             this.redis.getClient().exists(`blacklist:${token}`),
             new Promise((_, reject) => 
-                setTimeout(() => reject(new Error('Redis operation timed out')), 5000)
+                setTimeout(() => reject(new Error('Redis operation timed out')), 3000)
             )
         ]);
 
         return exists === 1;
     } catch (error) {
-        console.warn('Error checking token blacklist', { 
-            error: error instanceof Error ? error.message : 'Unknown error',
-            stack: error instanceof Error ? error.stack : undefined
+        console.warn('Error checking token blacklist, assuming token valid', { 
+            error: error instanceof Error ? error.message : 'Unknown error'
         });
-        // En caso de error con Redis, asumimos que el token es válido
         return false;
     }
-  }
+}
 
   async cleanup(): Promise<void> {
     try {

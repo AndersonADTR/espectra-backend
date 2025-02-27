@@ -368,10 +368,10 @@ export class AuthenticationService {
     }
   }
 
-  async refreshTokens(email: string, cognitoSub: string, refreshToken: string): Promise<AuthenticationResult> {
+  async refreshTokens(userSub: string, refreshToken: string): Promise<AuthenticationResult> {
     try {
       // Utilizar el CognitoService para refrescar los tokens
-      const response = await this.cognitoService.refreshUserTokens(email, cognitoSub, refreshToken);
+      const response = await this.cognitoService.refreshUserTokens(userSub, refreshToken);
 
       console.log('Tokens refreshed', { response });
 
@@ -380,28 +380,25 @@ export class AuthenticationService {
       }
 
       // Obtener información del usuario del token ID
-      const decodedToken = await this.tokenService.verifyToken(
-        response.IdToken!
-      );
+      const decodedToken = await this.tokenService.verifyToken(response.accessToken);
 
       console.log('Decoded token', { decodedToken });
 
-      // Obtener o actualizar el usuario en DynamoDB
-      const user = await this.getOrCreateUserRecord({
-        email: decodedToken.email,
-        name: decodedToken.name || '',
-        'custom:userType': decodedToken.userType || 'basic'
-      });
+      // Obtener información del usuario
+      const userAttributes = await this.cognitoService.getUserBySub(userSub);
+      
+      // Actualizar último login en DynamoDB
+      const user = await this.getOrCreateUserRecord(userAttributes);
 
       console.log('User record updated', { user });
 
       const result = {
         user,
         tokens: {
-          accessToken: response.AccessToken!,
-          refreshToken: response.RefreshToken!,
+          accessToken: response.accessToken!,
+          refreshToken: response.refreshToken!,
           idToken: response.idToken!,
-          expiresIn: response.ExpiresIn || 3600
+          expiresIn: response.expiresIn || 3600
         }
       };
       console.log('Token refresh successful', { result });

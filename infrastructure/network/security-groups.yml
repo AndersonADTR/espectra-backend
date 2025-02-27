@@ -9,8 +9,8 @@ Resources:
         - IpProtocol: tcp
           FromPort: 6379
           ToPort: 6379
-          CidrIp: 0.0.0.0/0  # Cambiado a CidrIp para evitar dependencia circular
-          Description: Redis connection
+          CidrIp: 0.0.0.0/0
+          Description: Outbound traffic to Redis
         # HTTPS para APIs y servicios AWS
         - IpProtocol: tcp
           FromPort: 443
@@ -49,14 +49,8 @@ Resources:
         - IpProtocol: tcp
           FromPort: 6379
           ToPort: 6379
-          CidrIp: 0.0.0.0/0  # Cambiado a CidrIp para evitar la dependencia circular
+          SourceSecurityGroupId: !Ref LambdaSecurityGroup
           Description: Redis access from Lambda functions
-      SecurityGroupEgress:
-        - IpProtocol: tcp
-          FromPort: 443
-          ToPort: 443
-          CidrIp: 0.0.0.0/0
-          Description: Allow HTTPS outbound for Redis updates
       Tags:
         - Key: Name
           Value: ${self:custom.service}-${self:provider.stage}-redis-sg

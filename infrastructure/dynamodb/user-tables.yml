@@ -7,6 +7,8 @@ Resources:
       AttributeDefinitions:
         - AttributeName: userId
           AttributeType: S
+        - AttributeName: userSub
+          AttributeType: S
         - AttributeName: email
           AttributeType: S
         - AttributeName: status
@@ -20,6 +22,12 @@ Resources:
         - IndexName: EmailIndex
           KeySchema:
             - AttributeName: email
+              KeyType: HASH
+          Projection:
+            ProjectionType: ALL
+        - IndexName: SubIndex
+          KeySchema:
+            - AttributeName: userSub
               KeyType: HASH
           Projection:
             ProjectionType: ALL

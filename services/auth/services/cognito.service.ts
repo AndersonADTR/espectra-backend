@@ -9,7 +9,8 @@ import {
   GlobalSignOutCommand,
   AuthFlowType,
   AttributeType,
-  AdminDeleteUserCommand
+  AdminDeleteUserCommand,
+  ListUsersCommand
 } from "@aws-sdk/client-cognito-identity-provider";
 import * as crypto from 'crypto';
 import { NodeHttpHandler } from "@aws-sdk/node-http-handler";
@@ -58,17 +59,17 @@ export class CognitoService {
     return hmac.update(message).digest('base64');
   }
 
-  async refreshUserTokens(email: string, cognitoSub: string, refreshToken: string): Promise<any> {
+  async refreshUserTokens(userSub: string, refreshToken: string): Promise<any> {
     try {
 
       console.log('Starting token refresh cognito service', { 
-        cognitoSub: cognitoSub,
+        cognitoSub: userSub,
         refreshToken: refreshToken 
       });
 
       // Calcular SECRET_HASH
       const secretHash = this.calculateSecretHash(
-        email ,
+        userSub,
         this.clientId
       );
 
@@ -80,7 +81,7 @@ export class CognitoService {
         AuthParameters: {
           REFRESH_TOKEN: refreshToken,
           SECRET_HASH: secretHash,
-          USERNAME: email
+          USERNAME: userSub
         }
       });
 
@@ -281,6 +282,63 @@ export class CognitoService {
       );
     }
   }
+
+  async getUserBySub(userSub: string): Promise<Record<string, string>> {
+    try {
+      
+      const listUsersCommand = new ListUsersCommand({
+        UserPoolId: this.userPoolId,
+        Filter: `sub = "${userSub}"`,
+        Limit: 1
+      });
+  
+      const listResponse = await this.client.send(listUsersCommand);
+      
+      if (!listResponse.Users || listResponse.Users.length === 0) {
+        throw new Error('User not found');
+      }
+      
+      const username = listResponse.Users[0].Username;
+      
+      if (!username) {
+        throw new Error('Username not found for the provided Sub');
+      }
+      
+      const command = new AdminGetUserCommand({
+        UserPoolId: this.userPoolId,
+        Username: username
+      });
+  
+      const response = await this.client.send(command);
+  
+      if (!response.UserAttributes) {
+        throw new Error('No user attributes found');
+      }
+  
+      // Convertir los atributos a un objeto
+      const attributes: Record<string, string> = {};
+      response.UserAttributes.forEach(attr => {
+        if (attr.Name && attr.Value) {
+          attributes[attr.Name] = attr.Value;
+        }
+      });
+  
+      this.logger.info('User retrieved by Sub successfully', { userSub });
+      return attributes;
+  
+    } catch (error) {
+      this.logger.error('Error getting user from Cognito by Sub', { error, userSub });
+      
+      if ((error as Error).name === 'UserNotFoundException') {
+        throw new AuthenticationError('User not found');
+      }
+  
+      throw new AuthenticationError(
+        'Failed to get user: ' + ((error as Error).message || 'Unknown error')
+      );
+    }
+  }
+  
 
   async getUserByEmail(email: string): Promise<Record<string, string>> {
     try {

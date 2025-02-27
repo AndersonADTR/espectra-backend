@@ -21,7 +21,7 @@ Resources:
       CacheParameterGroupFamily: redis6.x
       Description: !Sub "${self:custom.service}-${self:provider.stage} parameter group for Redis cluster"
       Properties:
-        timeout: 5000
+        timeout: 30000
         notify-keyspace-events: "Ex"
         activedefrag: "yes"
         tcp-keepalive: 300
