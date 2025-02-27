@@ -9,43 +9,31 @@ export class RedisService {
     private isConnected: boolean = false;
     private reconnectAttempts: number = 0;
     private readonly maxReconnectAttempts: number = 5;
-    private connectionCheckPromise: Promise<boolean> | null = null;
     private circuitOpen: boolean = false;
     private circuitResetTimeout: NodeJS.Timeout | null = null;
 
     private constructor() {
-        
+
         this.client = new Redis({
             host: config.getRequired<string>('REDIS_HOST'),
             port: config.get<number>('REDIS_PORT', 6379),
-            connectTimeout: 15000,        // 15 segundos
-            commandTimeout: 10000,         // 10 segundos
-            maxRetriesPerRequest: 2,
-            enableOfflineQueue: true,
-            retryStrategy: (times) => {
+            connectTimeout: 5000,        // Reduced from 15000
+            commandTimeout: 3000,        // Reduced from 10000
+            maxRetriesPerRequest: 1,     // Reduced from 2
+            enableOfflineQueue: false,   // Changed from true
+            retryStrategy: (times: number) => {
                 this.reconnectAttempts = times;
-                console.info(`Redis reconnect attempt ${times}`);
+                console.info('Redis reconnect attempt ${times}');
                 
-                if (times > this.maxReconnectAttempts) {
-                    console.error(`Max reconnect attempts (${this.maxReconnectAttempts}) reached`);
+                if (times > 2) { // Reduced from 5
+                    console.error('Max reconnect attempts (${times}) reached');
                     this.circuitOpen = true;
-                    
-                    // Programar un reinicio del circuit breaker después de 60 segundos
-                    if (this.circuitResetTimeout) {
-                        clearTimeout(this.circuitResetTimeout);
-                    }
-                    
-                    this.circuitResetTimeout = setTimeout(() => {
-                        console.info('Resetting circuit breaker');
-                        this.circuitOpen = false;
-                        this.reconnectAttempts = 0;
-                    }, 60000);
-                    
-                    return null; // Detener los reintentos
+                    return null;
                 }
                 
-                return Math.min(times * 200, 3000); // Backoff exponencial limitado
-            }
+                return Math.min(times * 100, 1000); // Faster retry strategy
+            },
+            tls: {}, // Enable TLS
         });
 
         // Manejadores de eventos
@@ -80,6 +68,8 @@ export class RedisService {
         this.client.on('reconnecting', (delay: number) => {
             console.info('Redis client reconnecting', { delay });
         });
+
+        this.diagnoseConnection();
         
         // Verificar conexión al inicio
         this.checkConnection().catch(err => {
@@ -105,47 +95,92 @@ export class RedisService {
         return this.client;
     }
 
+    private async diagnoseConnection(): Promise<void> {
+        try {
+            const networkInfo = {
+                host: this.client.options.host,
+                port: this.client.options.port,
+                connected: this.client.status === 'ready'
+            };
+            
+            console.info('Redis connection diagnostic:', networkInfo);
+            
+            // Test basic operation
+            await this.client.set('diagnostic_test', 'test', 'EX', 10);
+            const result = await this.client.get('diagnostic_test');
+            console.info('Redis test operation result:', result === 'test');
+        } catch (error) {
+            console.error('Redis diagnostic failed:', error);
+        }
+    }
+
     async checkConnection(): Promise<boolean> {
-        // Si el circuit breaker está abierto, fallar rápido
         if (this.circuitOpen) {
             console.warn('Circuit breaker is open, skipping connection check');
             return false;
         }
         
-        // Si ya hay una verificación en curso, reutilizarla
-        if (this.connectionCheckPromise) {
-            return this.connectionCheckPromise;
+        try {
+            const result = await Promise.race([
+                this.client.ping(),
+                new Promise((_, reject) => 
+                    setTimeout(() => reject(new Error('Redis ping timed out')), 2000) // Reduced timeout
+                )
+            ]);
+            
+            this.isConnected = result === 'PONG';
+            return this.isConnected;
+        } catch (error) {
+            console.warn('Redis connection check failed', { 
+                error: error instanceof Error ? error.message : String(error) 
+            });
+            
+            this.isConnected = false;
+            return false;
         }
-        
-        // Crear una nueva promesa de verificación
-        this.connectionCheckPromise = new Promise<boolean>(async (resolve) => {
-            try {
-                const result = await Promise.race([
-                    this.client.ping(),
-                    new Promise((_, reject) => 
-                        setTimeout(() => reject(new Error('Redis ping timed out')), 5000)
-                    )
-                ]);
-                
-                this.isConnected = result === 'PONG';
-                resolve(this.isConnected);
-            } catch (error) {
-                console.warn('Redis connection check failed', { 
-                    error: error instanceof Error ? error.message : String(error) 
-                });
-                
-                this.isConnected = false;
-                resolve(false);
-            } finally {
-                // Limpiar la promesa después de 10 segundos para permitir una nueva verificación
-                setTimeout(() => {
-                    this.connectionCheckPromise = null;
-                }, 10000);
-            }
-        });
-        
-        return this.connectionCheckPromise;
     }
+
+    // async checkConnection(): Promise<boolean> {
+    //     // Si el circuit breaker está abierto, fallar rápido
+    //     if (this.circuitOpen) {
+    //         console.warn('Circuit breaker is open, skipping connection check');
+    //         return false;
+    //     }
+        
+    //     // Si ya hay una verificación en curso, reutilizarla
+    //     if (this.connectionCheckPromise) {
+    //         return this.connectionCheckPromise;
+    //     }
+        
+    //     // Crear una nueva promesa de verificación
+    //     this.connectionCheckPromise = new Promise<boolean>(async (resolve) => {
+    //         try {
+    //             const result = await Promise.race([
+    //                 this.client.ping(),
+    //                 new Promise((_, reject) => 
+    //                     setTimeout(() => reject(new Error('Redis ping timed out')), 5000)
+    //                 )
+    //             ]);
+                
+    //             this.isConnected = result === 'PONG';
+    //             resolve(this.isConnected);
+    //         } catch (error) {
+    //             console.warn('Redis connection check failed', { 
+    //                 error: error instanceof Error ? error.message : String(error) 
+    //             });
+                
+    //             this.isConnected = false;
+    //             resolve(false);
+    //         } finally {
+    //             // Limpiar la promesa después de 10 segundos para permitir una nueva verificación
+    //             setTimeout(() => {
+    //                 this.connectionCheckPromise = null;
+    //             }, 10000);
+    //         }
+    //     });
+        
+    //     return this.connectionCheckPromise;
+    // }
 
     async set(key: string, value: string, ...args: any[]): Promise<string | null> {
         if (this.circuitOpen) return null;
