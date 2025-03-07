@@ -1,0 +1,150 @@
+Resources:
+  RegistrationRequestsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: ${self:custom.service}-${self:provider.stage}-registration-requests
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: email
+          AttributeType: S
+        - AttributeName: name
+          AttributeType: S
+        - AttributeName: phoneNumber
+          AttributeType: S
+        - AttributeName: createdAt
+          AttributeType: S
+      KeySchema:
+        - AttributeName: email
+          KeyType: HASH
+      GlobalSecondaryIndexes:
+        - IndexName: EmailIndex
+          KeySchema:
+            - AttributeName: email
+              KeyType: HASH
+          Projection:
+            ProjectionType: ALL
+        - IndexName: NameIndex
+          KeySchema:
+            - AttributeName: name
+              KeyType: HASH
+          Projection:
+            ProjectionType: ALL
+        - IndexName: PhoneNumberIndex
+          KeySchema:
+            - AttributeName: phoneNumber
+              KeyType: HASH
+          Projection:
+            ProjectionType: ALL
+        - IndexName: CreatedAtIndex
+          KeySchema:
+            - AttributeName: createdAt
+              KeyType: HASH
+          Projection:
+            ProjectionType: ALL
+      StreamSpecification:
+        StreamViewType: NEW_AND_OLD_IMAGES
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
+      SSESpecification:
+        SSEEnabled: true
+        SSEType: KMS
+        KMSMasterKeyId: 
+          Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-system-kms-key-arn
+      TimeToLiveSpecification:
+        AttributeName: ttl
+        Enabled: true
+      Tags:
+        - Key: Service
+          Value: ${self:custom.service}
+        - Key: Environment
+          Value: ${self:provider.stage}
+        - Key: ManagedBy
+          Value: CloudFormation
+        - Key: Purpose
+          Value: RegistrationRequests
+
+  # CloudWatch Alarms
+  RegistrationRequestsTableReadThrottleAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: ${self:custom.service}-${self:provider.stage}-registration-requests-read-throttle
+      AlarmDescription: Registration requests table read capacity throttling
+      MetricName: ReadThrottleEvents
+      Namespace: AWS/DynamoDB
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 2
+      Threshold: 1
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching
+      Dimensions:
+        - Name: TableName
+          Value: !Ref RegistrationRequestsTable
+      AlarmActions:
+        - ${self:custom.snsMediumPriorityTopic}
+      Tags:
+        - Key: Service
+          Value: ${self:custom.service}
+        - Key: Environment
+          Value: ${self:provider.stage}
+
+  RegistrationRequestsTableWriteThrottleAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: ${self:custom.service}-${self:provider.stage}-registration-requests-write-throttle
+      AlarmDescription: Registration requests table write capacity throttling
+      MetricName: WriteThrottleEvents
+      Namespace: AWS/DynamoDB
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 2
+      Threshold: 1
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching
+      Dimensions:
+        - Name: TableName
+          Value: !Ref RegistrationRequestsTable
+      AlarmActions:
+        - ${self:custom.snsMediumPriorityTopic}
+      Tags:
+        - Key: Service
+          Value: ${self:custom.service}
+        - Key: Environment
+          Value: ${self:provider.stage}
+
+  RegistrationRequestsTableSystemErrorsAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: ${self:custom.service}-${self:provider.stage}-registration-requests-system-errors
+      AlarmDescription: Registration requests table system errors
+      MetricName: SystemErrors
+      Namespace: AWS/DynamoDB
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching
+      Dimensions:
+        - Name: TableName
+          Value: !Ref RegistrationRequestsTable
+      AlarmActions:
+        - ${self:custom.snsMediumPriorityTopic}
+      Tags:
+        - Key: Service
+          Value: ${self:custom.service}
+        - Key: Environment
+          Value: ${self:provider.stage}
+
+Outputs:
+  RegistrationRequestsTableName:
+    Description: Name of the Registration Requests table
+    Value: !Ref RegistrationRequestsTable
+    Export:
+      Name: ${self:custom.service}-${self:provider.stage}-registration-requests-table-name
+
+  RegistrationRequestsTableArn:
+    Description: ARN of the Registration Requests table
+    Value: !GetAtt RegistrationRequestsTable.Arn
+    Export:
+      Name: ${self:custom.service}-${self:provider.stage}-registration-requests-table-arn

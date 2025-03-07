@@ -21,6 +21,10 @@ Resources:
             Statement:
               - Effect: Allow
                 Action:
+                  - ssm:GetParameter
+                Resource: "*"
+              - Effect: Allow
+                Action:
                   - logs:CreateLogGroup
                   - logs:CreateLogStream
                   - logs:PutLogEvents

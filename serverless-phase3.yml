@@ -19,6 +19,9 @@ provider:
 custom:
   service: espectra-backend
   
+  redis:
+    instanceType: 'cache.t3.micro'
+
   # Configuración de Table Names
   tableNames:
     connections: ${self:custom.service}-${self:provider.stage}-connection-table
@@ -46,6 +49,7 @@ resources:
   - ${file(infrastructure/dynamodb/chat-history-tables.yml)}
   - ${file(infrastructure/dynamodb/chat-session-tables.yml)}
   - ${file(infrastructure/dynamodb/connection-concierge-tables.yml)}
+  - ${file(infrastructure/dynamodb/registration-request-tables.yml)}
 
 outputs:
   
@@ -132,3 +136,15 @@ outputs:
     Value: StatusActivityIndex
     Export:
       Name: ${self:custom.service}-${self:provider.stage}-connections-status-activity-index-name
+
+  RegistrationRequestsTableName:
+    Description: Name of the Registration Requests table
+    Value: !Ref RegistrationRequestsTable
+    Export:
+      Name: ${self:custom.service}-${self:provider.stage}-registration-requests-table-name
+
+  RegistrationRequestsTableArn:
+    Description: ARN of the Registration Requests table
+    Value: !GetAtt RegistrationRequestsTable.Arn
+    Export:
+      Name: ${self:custom.service}-${self:provider.stage}-registration-requests-table-arn

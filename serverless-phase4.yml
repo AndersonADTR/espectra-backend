@@ -63,6 +63,8 @@ provider:
       Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-context-table-name
     TOKEN_TABLE:
       Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-tokens-table-name
+    REGISTRATION_REQUESTS_TABLE:
+      Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-registration-requests-table-name
     # HANDOFF_TABLE:
     #   Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-handoff-table-name
 
@@ -108,6 +110,7 @@ custom:
     tokens: ${self:custom.service}-${self:provider.stage}-token-usage-table
     handoff: ${self:custom.service}-${self:provider.stage}-handoff-table
     metrics: ${self:custom.service}-${self:provider.stage}-botpress-metrics-table
+    requestRegistration: ${self:custom.service}-${self:provider.stage}-registration-requests-table-name
 
   session:
     ttl: ${ssm:/espectra/${self:provider.stage}/session/ttl}
@@ -234,6 +237,19 @@ functions:
         Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-user-pool-client-id
       COGNITO_CLIENT_SECRET: ${ssm:/espectra/${self:provider.stage}/cognito/client-secret}
 
+  registerRequest:
+    handler: services/auth/handlers/registerRequest.handler
+    name: ${self:custom.service}-${self:provider.stage}-register-request
+    role: 
+      Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-lambda-role-arn
+    events:
+      - http:
+          path: auth/register-request
+          method: post
+          cors: true
+          restApi:
+            id: !Ref RestApiId
+
   login:
     handler: services/auth/handlers/login.handler
     name: ${self:custom.service}-${self:provider.stage}-login
@@ -340,7 +356,7 @@ functions:
       - websocket:
           route: $default
           websocketApi:
-            id: !Ref WebSocketApiñ
+            id: !Ref WebSocketApi
 
   # Botpress Integration Functions
   botpressWebhook:
