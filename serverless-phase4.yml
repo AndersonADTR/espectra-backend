@@ -237,18 +237,24 @@ functions:
         Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-user-pool-client-id
       COGNITO_CLIENT_SECRET: ${ssm:/espectra/${self:provider.stage}/cognito/client-secret}
 
-  registerRequest:
-    handler: services/auth/handlers/registerRequest.handler
-    name: ${self:custom.service}-${self:provider.stage}-register-request
-    role: 
+  contactRequest:
+    handler: services/auth/handlers/contactRequest.handler
+    name: ${self:custom.service}-${self:provider.stage}-contact-request
+    role:
       Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-lambda-role-arn
     events:
       - http:
-          path: auth/register-request
+          path: auth/contact-request
           method: post
           cors: true
           restApi:
             id: !Ref RestApiId
+    environment:
+      GOOGLE_SHEETS_SPREADSHEET_ID: ${ssm:/espectra/${self:provider.stage}/google-sheets-spreadsheet-id}
+      GOOGLE_SHEETS_PRIVATE_KEY: ${ssm:/espectra/${self:provider.stage}/google-sheets-private-key}
+      GOOGLE_SHEETS_CLIENT_EMAIL: ${ssm:/espectra/${self:provider.stage}/google-sheets-client-email}
+      GOOGLE_SHEETS_CONTACT_REQUESTS_SHEET: SpectraContactRequests
+    #tracing: Active
 
   login:
     handler: services/auth/handlers/login.handler
