@@ -44,6 +44,9 @@ const loginHandler: APIGatewayProxyHandler = async (event) => {
     const cookies = [];
     if (process.env.STAGE === 'prod') {
       cookies.push(
+        `user_sub=${result.user.userSub}; HttpOnly; Secure; SameSite=Strict; Max-Age=604800` // 7 días
+      );
+      cookies.push(
         `refresh_token=${result.tokens.refreshToken}; HttpOnly; Secure; SameSite=Strict; Max-Age=604800` // 7 días
       );
     }

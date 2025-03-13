@@ -21,6 +21,10 @@ Resources:
             Statement:
               - Effect: Allow
                 Action:
+                  - ssm:GetParameter
+                Resource: "*"
+              - Effect: Allow
+                Action:
                   - logs:CreateLogGroup
                   - logs:CreateLogStream
                   - logs:PutLogEvents
@@ -47,6 +51,14 @@ Resources:
                   - elasticache:DescribeCacheSubnetGroups
                 Resource: 
                   - !Sub arn:aws:elasticache:${AWS::Region}:${AWS::AccountId}:*
+              - Effect: Allow
+                Action:
+                  - ec2:CreateNetworkInterface
+                  - ec2:DescribeNetworkInterfaces
+                  - ec2:DeleteNetworkInterface
+                  - ec2:AssignPrivateIpAddresses
+                  - ec2:UnassignPrivateIpAddresses
+                Resource: "*"
               - Effect: Allow
                 Action:
                   - cognito-idp:SignUp
@@ -156,6 +168,14 @@ Resources:
                   - elasticache:DescribeCacheSubnetGroups
                 Resource: 
                   - !Sub arn:aws:elasticache:${AWS::Region}:${AWS::AccountId}:*
+              - Effect: Allow
+                Action:
+                  - ec2:CreateNetworkInterface
+                  - ec2:DescribeNetworkInterfaces
+                  - ec2:DeleteNetworkInterface
+                  - ec2:AssignPrivateIpAddresses
+                  - ec2:UnassignPrivateIpAddresses
+                Resource: "*"
               - Effect: Allow
                 Action:
                   - wafv2:AssociateWebACL

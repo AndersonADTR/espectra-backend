@@ -45,6 +45,10 @@ custom:
   service: espectra-backend
   logRetentionInDays: 14
   
+  redis:
+    instanceType: 'cache.t3.micro'
+
+
   logLevel:
     dev: 'DEBUG'
     staging: 'INFO'

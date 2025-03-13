@@ -1,22 +1,20 @@
 Resources:
-  UsersTable:
+  RegistrationRequestsTable:
     Type: AWS::DynamoDB::Table
     Properties:
-      TableName: ${self:custom.service}-${self:provider.stage}-users
+      TableName: ${self:custom.service}-${self:provider.stage}-registration-requests
       BillingMode: PAY_PER_REQUEST
       AttributeDefinitions:
-        - AttributeName: userId
-          AttributeType: S
-        - AttributeName: userSub
-          AttributeType: S
         - AttributeName: email
           AttributeType: S
-        - AttributeName: status
+        - AttributeName: name
+          AttributeType: S
+        - AttributeName: phoneNumber
           AttributeType: S
         - AttributeName: createdAt
           AttributeType: S
       KeySchema:
-        - AttributeName: userId
+        - AttributeName: email
           KeyType: HASH
       GlobalSecondaryIndexes:
         - IndexName: EmailIndex
@@ -25,18 +23,22 @@ Resources:
               KeyType: HASH
           Projection:
             ProjectionType: ALL
-        - IndexName: SubIndex
+        - IndexName: NameIndex
           KeySchema:
-            - AttributeName: userSub
+            - AttributeName: name
               KeyType: HASH
           Projection:
             ProjectionType: ALL
-        - IndexName: StatusCreatedAtIndex
+        - IndexName: PhoneNumberIndex
           KeySchema:
-            - AttributeName: status
+            - AttributeName: phoneNumber
               KeyType: HASH
+          Projection:
+            ProjectionType: ALL
+        - IndexName: CreatedAtIndex
+          KeySchema:
             - AttributeName: createdAt
-              KeyType: RANGE
+              KeyType: HASH
           Projection:
             ProjectionType: ALL
       StreamSpecification:
@@ -59,14 +61,14 @@ Resources:
         - Key: ManagedBy
           Value: CloudFormation
         - Key: Purpose
-          Value: UserManagement
+          Value: RegistrationRequests
 
   # CloudWatch Alarms
-  UsersTableReadThrottleAlarm:
+  RegistrationRequestsTableReadThrottleAlarm:
     Type: AWS::CloudWatch::Alarm
     Properties:
-      AlarmName: ${self:custom.service}-${self:provider.stage}-users-read-throttle
-      AlarmDescription: Users table read capacity throttling
+      AlarmName: ${self:custom.service}-${self:provider.stage}-registration-requests-read-throttle
+      AlarmDescription: Registration requests table read capacity throttling
       MetricName: ReadThrottleEvents
       Namespace: AWS/DynamoDB
       Statistic: Sum
@@ -77,7 +79,7 @@ Resources:
       TreatMissingData: notBreaching
       Dimensions:
         - Name: TableName
-          Value: !Ref UsersTable
+          Value: !Ref RegistrationRequestsTable
       AlarmActions:
         - ${self:custom.snsMediumPriorityTopic}
       Tags:
@@ -86,11 +88,11 @@ Resources:
         - Key: Environment
           Value: ${self:provider.stage}
 
-  UsersTableWriteThrottleAlarm:
+  RegistrationRequestsTableWriteThrottleAlarm:
     Type: AWS::CloudWatch::Alarm
     Properties:
-      AlarmName: ${self:custom.service}-${self:provider.stage}-users-write-throttle
-      AlarmDescription: Users table write capacity throttling
+      AlarmName: ${self:custom.service}-${self:provider.stage}-registration-requests-write-throttle
+      AlarmDescription: Registration requests table write capacity throttling
       MetricName: WriteThrottleEvents
       Namespace: AWS/DynamoDB
       Statistic: Sum
@@ -101,7 +103,7 @@ Resources:
       TreatMissingData: notBreaching
       Dimensions:
         - Name: TableName
-          Value: !Ref UsersTable
+          Value: !Ref RegistrationRequestsTable
       AlarmActions:
         - ${self:custom.snsMediumPriorityTopic}
       Tags:
@@ -110,11 +112,11 @@ Resources:
         - Key: Environment
           Value: ${self:provider.stage}
 
-  UsersTableSystemErrorsAlarm:
+  RegistrationRequestsTableSystemErrorsAlarm:
     Type: AWS::CloudWatch::Alarm
     Properties:
-      AlarmName: ${self:custom.service}-${self:provider.stage}-users-system-errors
-      AlarmDescription: Users table system errors
+      AlarmName: ${self:custom.service}-${self:provider.stage}-registration-requests-system-errors
+      AlarmDescription: Registration requests table system errors
       MetricName: SystemErrors
       Namespace: AWS/DynamoDB
       Statistic: Sum
@@ -125,7 +127,7 @@ Resources:
       TreatMissingData: notBreaching
       Dimensions:
         - Name: TableName
-          Value: !Ref UsersTable
+          Value: !Ref RegistrationRequestsTable
       AlarmActions:
         - ${self:custom.snsMediumPriorityTopic}
       Tags:
@@ -135,14 +137,14 @@ Resources:
           Value: ${self:provider.stage}
 
 Outputs:
-  UsersTableName:
-    Description: Name of the Users table
-    Value: !Ref UsersTable
+  RegistrationRequestsTableName:
+    Description: Name of the Registration Requests table
+    Value: !Ref RegistrationRequestsTable
     Export:
-      Name: ${self:custom.service}-${self:provider.stage}-users-table-name
+      Name: ${self:custom.service}-${self:provider.stage}-registration-requests-table-name
 
-  UsersTableArn:
-    Description: ARN of the Users table
-    Value: !GetAtt UsersTable.Arn
+  RegistrationRequestsTableArn:
+    Description: ARN of the Registration Requests table
+    Value: !GetAtt RegistrationRequestsTable.Arn
     Export:
-      Name: ${self:custom.service}-${self:provider.stage}-users-table-arn
+      Name: ${self:custom.service}-${self:provider.stage}-registration-requests-table-arn

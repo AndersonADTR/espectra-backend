@@ -26,6 +26,8 @@ export class ConfigService {
       AWS_REGION: process.env.REGION || 'us-east-1',
       STAGE: process.env.STAGE || 'dev',
       SERVICE_NAME: process.env.SERVICE_NAME || 'espectra-backend',
+
+      GOOGLE_SHEETS_CONTACT_REQUESTS_SHEET: process.env.GOOGLE_SHEETS_CONTACT_REQUESTS_SHEET,
       
       // Configuraciones de Auth
       COGNITO_USER_POOL_ID: process.env.COGNITO_USER_POOL_ID,

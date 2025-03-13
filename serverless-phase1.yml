@@ -56,6 +56,18 @@ outputs:
     Export:
       Name: ${self:custom.service}-${self:provider.stage}-public-subnet-2-cidr
 
+  PrivateSubnet1Id:
+    Description: Private Subnet 1 ID
+    Value: !Ref PrivateSubnet1
+    Export:
+      Name: ${self:custom.service}-${self:provider.stage}-private-subnet-1-id
+
+  PrivateSubnet2Id:
+    Description: Private Subnet 2 ID
+    Value: !Ref PrivateSubnet2
+    Export:
+      Name: ${self:custom.service}-${self:provider.stage}-private-subnet-2-id
+
   PublicRouteTableId:
     Description: Public Route Table ID
     Value: !Ref PublicRouteTable
@@ -68,12 +80,6 @@ outputs:
     Export:
       Name: ${self:custom.service}-${self:provider.stage}-private-route-table-id
 
-  NatGatewayId:
-    Description: ID of the NAT Gateway
-    Value: !Ref NatGateway
-    Export:
-      Name: ${self:custom.service}-${self:provider.stage}-nat-gateway-id
-      
   LambdaSecurityGroupId:
     Description: ID of the Lambda Security Group
     Value: !Ref LambdaSecurityGroup
@@ -97,27 +103,3 @@ outputs:
     Value: !Ref VPCEndpointSecurityGroup
     Export:
       Name: ${self:custom.service}-${self:provider.stage}-vpce-sg-id
-
-  DynamoDBEndpointId:
-    Description: ID of the DynamoDB VPC Endpoint
-    Value: !Ref DynamoDBEndpoint
-    Export:
-      Name: ${self:custom.service}-${self:provider.stage}-dynamodb-endpoint-id
-
-  ApiGatewayEndpointId:
-    Description: ID of the API Gateway VPC Endpoint
-    Value: !Ref ApiGatewayEndpoint
-    Export:
-      Name: ${self:custom.service}-${self:provider.stage}-api-endpoint-id
-
-  SecretsManagerEndpointId:
-    Description: ID of the Secrets Manager VPC Endpoint
-    Value: !Ref SecretsManagerEndpoint
-    Export:
-      Name: ${self:custom.service}-${self:provider.stage}-secrets-endpoint-id
-
-  CloudWatchLogsEndpointId:
-    Description: ID of the CloudWatch Logs VPC Endpoint
-    Value: !Ref CloudWatchLogsEndpoint
-    Export:
-      Name: ${self:custom.service}-${self:provider.stage}-cwlogs-endpoint-id
