@@ -1,0 +1,34 @@
+sequenceDiagram
+    participant Usuario
+    participant App
+    participant API
+    participant Bot as Botpress
+    participant Queue as Cola Asesores
+    participant Asesor
+
+    Note over Usuario,Asesor: Flujo Normal con Bot
+    Usuario->>App: Envía mensaje
+    App->>API: WebSocket mensaje
+    API->>Bot: Procesa mensaje
+    Bot->>API: Genera respuesta
+    API->>App: Envía respuesta
+    App->>Usuario: Muestra respuesta
+
+    Note over Usuario,Asesor: Flujo de Handoff
+    Bot->>API: Detecta necesidad de handoff
+    API->>Queue: Crea solicitud
+    API->>App: Notifica espera
+    App->>Usuario: Muestra estado
+    
+    Asesor->>Queue: Consulta cola
+    Queue->>Asesor: Asigna solicitud
+    API->>App: Notifica conexión
+    App->>Usuario: Muestra conexión
+
+    Note over Usuario,Asesor: Chat con Asesor
+    Usuario->>App: Envía mensaje
+    App->>API: WebSocket mensaje
+    API->>Asesor: Entrega mensaje
+    Asesor->>API: Responde
+    API->>App: Envía respuesta
+    App->>Usuario: Muestra respuesta

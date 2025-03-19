@@ -1,0 +1,84 @@
+# --- Auth Functions ---
+restAuthorizer:
+  handler: services/auth/handlers/authorizer.handler
+  name: ${self:custom.service}-${self:provider.stage}-rest-authorizer
+  role: !ImportValue ${self:custom.service}-${self:provider.stage}-lambda-role-arn
+  memorySize: 256
+  environment:
+    COGNITO_USER_POOL_ID: !ImportValue ${self:custom.service}-${self:provider.stage}-user-pool-id
+    COGNITO_CLIENT_ID: !ImportValue ${self:custom.service}-${self:provider.stage}-user-pool-client-id
+
+register:
+  handler: services/auth/handlers/register.handler
+  name: ${self:custom.service}-${self:provider.stage}-register
+  role: !ImportValue ${self:custom.service}-${self:provider.stage}-lambda-role-arn
+  events:
+    - http:
+        path: auth/register
+        method: post
+        cors: true
+        restApi:
+          id: !Ref RestApiId
+  environment:
+    ALLOWED_ORIGINS: '*'
+    PASSWORD_MIN_LENGTH: '8'
+    USER_POOL_REGION: ${self:provider.region}
+    USER_POOL_ID: !ImportValue ${self:custom.service}-${self:provider.stage}-user-pool-id
+    USER_POOL_CLIENT_ID: !ImportValue ${self:custom.service}-${self:provider.stage}-user-pool-client-id
+    COGNITO_CLIENT_SECRET: ${ssm:/espectra/${self:provider.stage}/cognito/client-secret}
+
+contactRequest:
+  handler: services/auth/handlers/contactRequest.handler
+  name: ${self:custom.service}-${self:provider.stage}-contact-request
+  role: !ImportValue ${self:custom.service}-${self:provider.stage}-lambda-role-arn
+  events:
+    - http:
+        path: auth/contact-request
+        method: post
+        cors: true
+        restApi:
+          id: !Ref RestApiId
+
+login:
+  handler: services/auth/handlers/login.handler
+  name: ${self:custom.service}-${self:provider.stage}-login
+  role: !ImportValue ${self:custom.service}-${self:provider.stage}-lambda-role-arn
+  events:
+    - http:
+        path: auth/login
+        method: post
+        cors: true
+        restApi:
+          id: !Ref RestApiId
+
+refreshToken:
+  handler: services/auth/handlers/refreshToken.handler
+  name: ${self:custom.service}-${self:provider.stage}-refreshToken
+  role: !ImportValue ${self:custom.service}-${self:provider.stage}-lambda-role-arn
+  vpc: 
+    securityGroupIds:
+      - !ImportValue ${self:custom.service}-${self:provider.stage}-lambda-sg-id
+    subnetIds:
+      - !ImportValue ${self:custom.service}-${self:provider.stage}-private-subnet-1-id
+      - !ImportValue ${self:custom.service}-${self:provider.stage}-private-subnet-2-id
+  events:
+    - http:
+        path: auth/refresh-token
+        method: post
+        cors: true
+        restApi:
+          id: !Ref RestApiId
+
+logout:
+  handler: services/auth/handlers/logout.handler
+  name: ${self:custom.service}-${self:provider.stage}-logout
+  role: !ImportValue ${self:custom.service}-${self:provider.stage}-lambda-role-arn
+  events:
+    - http:
+        path: auth/logout
+        method: post
+        cors: true
+        authorizer:
+          name: restAuthorizer
+        restApi:
+          id: !Ref RestApiId

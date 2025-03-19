@@ -1,0 +1,11 @@
+# --- Metrics Functions ---
+metricsCollector:
+  handler: services/metrics/handlers/collector.handler
+  name: ${self:custom.service}-${self:provider.stage}-metrics-collector
+  role: !ImportValue ${self:custom.service}-${self:provider.stage}-lambda-role-arn
+  vpc: null
+  events:
+    - schedule: rate(1 minute)
+  environment:
+    METRICS_NAMESPACE: ${self:custom.service}/${self:provider.stage}
+    BOTPRESS_METRICS_TABLE: !ImportValue ${self:custom.service}-${self:provider.stage}-metrics-table-name

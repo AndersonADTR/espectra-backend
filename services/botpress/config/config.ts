@@ -1,99 +1,152 @@
 // services/botpress/config/config.ts
 
-import { BotpressConfig } from "../types/botpress.types";
-
-// Configuración base de Botpress
-export const BOTPRESS_CONFIG: BotpressConfig = {
-  webhookUrl: process.env.BOTPRESS_WEBHOOK_URL || 'https://chat.botpress.cloud/a3d58c2c-c0bb-4db7-b344-9d87b18316ea',
-  botId: process.env.BOTPRESS_BOT_ID || '187218ca-4f6d-4a78-a409-b374d3b714c1',
-  workspaceId: process.env.BOTPRESS_WORKSPACE_ID || 'wkspace_01JDWDGCRZ2FTMTTBBEWW4YZGN'
-};
-
-// Configuración de timeouts y reintentos
-export const CHAT_CONFIG = {
-  REQUEST_TIMEOUT: 10000, // 10 segundos
-  MAX_RETRIES: 3,
-  RETRY_DELAY: 1000, // 1 segundo
-  MAX_MESSAGE_LENGTH: 1000,
-} as const;
-
-// Configuración de handoff
-export const HANDOFF_CONFIG = {
-  MAX_QUEUE_SIZE: 100,
-  MAX_WAIT_TIME: 300000, // 5 minutos
-  AUTO_REJECT_AFTER: 600000, // 10 minutos
-  DEFAULT_PRIORITY: 'medium',
-} as const;
-
-// Configuración de monitoreo
+/**
+ * Configuración de monitoreo y métricas para el sistema SPECTRUM
+ */
 export const MONITORING_CONFIG = {
-  METRICS: {
-    NAMESPACE: 'Spectra/Botpress',
-    DIMENSIONS: {
-      Environment: process.env.STAGE || 'dev',
-      Service: 'ChatBot',
+    /**
+     * Configuración de métricas en CloudWatch
+     */
+    METRICS: {
+      // Namespace para métricas en CloudWatch
+      NAMESPACE: process.env.METRICS_NAMESPACE || 'Spectrum/Concierge',
+      
+      // Dimensiones predeterminadas para todas las métricas
+      DEFAULT_DIMENSIONS: {
+        Service: process.env.SERVICE_NAME || 'spectrum',
+        Environment: process.env.STAGE || 'dev',
+        Component: 'Concierge'
+      },
+      
+      // Configuración de muestreo para métricas de alto volumen
+      SAMPLING: {
+        // Porcentaje de muestras a recolectar (1.0 = 100%)
+        MESSAGE_RATE: parseFloat(process.env.METRICS_SAMPLING_RATE || '1.0'),
+        TOKEN_USAGE_RATE: parseFloat(process.env.TOKEN_USAGE_SAMPLING_RATE || '1.0')
+      }
     },
-  },
-  ALERTS: {
-    ERROR_RATE_THRESHOLD: 5, // 5% error rate
-    LATENCY_THRESHOLD: 2000, // 2 segundos
-    HANDOFF_QUEUE_THRESHOLD: 10, // 10 solicitudes en cola
-  },
-} as const;
-
-// Validación de configuración al iniciar
-export function validateConfig(): void {
-  const requiredEnvVars = [
-    'BOTPRESS_WEBHOOK_URL',
-    'BOTPRESS_BOT_ID',
-    'BOTPRESS_WORKSPACE_ID',
-  ];
-
-  const missingVars = requiredEnvVars.filter(
-    (envVar) => !process.env[envVar]
-  );
-
-  if (missingVars.length > 0) {
-    throw new Error(
-      `Missing required environment variables: ${missingVars.join(', ')}`
-    );
-  }
-}
-
-// Configuración de errores específicos
-export const ERROR_CODES = {
-  CHAT: {
-    MESSAGE_FAILED: 'CHAT_MESSAGE_FAILED',
-    INVALID_MESSAGE: 'CHAT_INVALID_MESSAGE',
-    BOT_UNAVAILABLE: 'CHAT_BOT_UNAVAILABLE',
-  },
-  HANDOFF: {
-    QUEUE_FULL: 'HANDOFF_QUEUE_FULL',
-    TIMEOUT: 'HANDOFF_TIMEOUT',
-    REJECTED: 'HANDOFF_REJECTED',
-  },
-  SYSTEM: {
-    CONFIG_ERROR: 'SYSTEM_CONFIG_ERROR',
-    NETWORK_ERROR: 'SYSTEM_NETWORK_ERROR',
-  },
-} as const;
-
-// URLs y endpoints
-export const ENDPOINTS = {
-  CHAT: '/message',
-  HANDOFF: '/handoff',
-  STATUS: '/status',
-} as const;
-
-// Headers por defecto
-export const DEFAULT_HEADERS = {
-  'Content-Type': 'application/json',
-  'User-Agent': `SpectraBot/${process.env.npm_package_version || '1.0.0'}`,
-} as const;
-
-// Configuración de logging
-export const LOGGING_CONFIG = {
-  LEVEL: process.env.LOG_LEVEL || 'info',
-  SENSITIVE_FIELDS: ['password', 'token', 'apiKey'],
-  MAX_LOG_SIZE: 10000, // caracteres
-} as const;
+    
+    /**
+     * Configuración para el sistema de alertas
+     */
+    ALERTS: {
+      // Tópicos SNS para notificaciones
+      SNS_TOPICS: {
+        CRITICAL: process.env.SNS_TOPIC_CRITICAL || '',
+        HIGH: process.env.SNS_TOPIC_HIGH || '',
+        MEDIUM: process.env.SNS_TOPIC_MEDIUM || '',
+        LOW: process.env.SNS_TOPIC_LOW || ''
+      },
+      
+      // Umbrales de alertas
+      THRESHOLDS: {
+        // Porcentaje de uso de tokens que desencadena alertas
+        TOKEN_USAGE_ALERT: parseInt(process.env.TOKEN_USAGE_ALERT_THRESHOLD || '80'),
+        // Tasa de error máxima aceptable
+        ERROR_RATE_THRESHOLD: parseFloat(process.env.ERROR_RATE_THRESHOLD || '0.05'),
+        // Latencia máxima aceptable en ms
+        LATENCY_THRESHOLD: parseInt(process.env.LATENCY_THRESHOLD || '1000')
+      }
+    },
+    
+    /**
+     * Configuración para el sistema de handoff
+     */
+    HANDOFF: {
+      // Prioridad predeterminada para solicitudes de handoff
+      DEFAULT_PRIORITY: parseInt(process.env.HANDOFF_DEFAULT_PRIORITY || '5'),
+      
+      // Umbral de confianza para solicitar handoff automático
+      CONFIDENCE_THRESHOLD: parseFloat(process.env.HANDOFF_CONFIDENCE_THRESHOLD || '0.4'),
+      
+      // Tiempo máximo de espera para asignación (segundos)
+      MAX_QUEUE_TIME: parseInt(process.env.HANDOFF_MAX_QUEUE_TIME || '300'),
+      
+      // Tiempo de inactividad antes de finalizar un handoff automáticamente (segundos)
+      INACTIVITY_TIMEOUT: parseInt(process.env.HANDOFF_INACTIVITY_TIMEOUT || '600')
+    },
+    
+    /**
+     * Configuración para el sistema de conexiones websocket
+     */
+    WEBSOCKET: {
+      // Intervalo de ping para mantener conexiones activas (milisegundos)
+      PING_INTERVAL: parseInt(process.env.WEBSOCKET_PING_INTERVAL || '30000'),
+      
+      // Tiempo máximo sin actividad antes de considerar una conexión como obsoleta (segundos)
+      CONNECTION_TTL: parseInt(process.env.WEBSOCKET_CONNECTION_TTL || '86400'),
+      
+      // Número máximo de reintentos para envío de mensajes
+      MAX_RETRIES: parseInt(process.env.WEBSOCKET_MAX_RETRIES || '3')
+    },
+    
+    /**
+     * Configuración para la integración con Botpress
+     */
+    BOTPRESS: {
+      // Tiempo de espera para solicitudes a Botpress (milisegundos)
+      TIMEOUT: parseInt(process.env.BOTPRESS_TIMEOUT || '5000'),
+      
+      // Número máximo de reintentos para solicitudes fallidas
+      MAX_RETRIES: parseInt(process.env.BOTPRESS_MAX_RETRIES || '3'),
+      
+      // Intervalo base para backoff exponencial (milisegundos)
+      RETRY_INTERVAL: parseInt(process.env.BOTPRESS_RETRY_INTERVAL || '500')
+    }
+  };
+  
+  /**
+   * Configuración de planes y límites de tokens
+   */
+  export const PLAN_CONFIG = {
+    TOKEN_LIMITS: {
+      basic: parseInt(process.env.TOKEN_LIMIT_BASIC || '1000'),
+      pro: parseInt(process.env.TOKEN_LIMIT_PRO || '2000'),
+      business: parseInt(process.env.TOKEN_LIMIT_BUSINESS || '4000'),
+      enterprise: parseInt(process.env.TOKEN_LIMIT_ENTERPRISE || '8000')
+    },
+    
+    // Porcentaje a partir del cual se envía alerta de uso
+    ALERT_THRESHOLD: parseInt(process.env.TOKEN_ALERT_THRESHOLD || '80'),
+    
+    // Permitir exceder límite en ciertos planes
+    ALLOW_OVERAGE: {
+      basic: false,
+      pro: true,
+      business: true,
+      enterprise: true
+    },
+    
+    // Costo por token adicional (en centavos)
+    OVERAGE_COST: {
+      basic: 0.002,
+      pro: 0.0015,
+      business: 0.001,
+      enterprise: 0.0008
+    }
+  };
+  
+  /**
+   * Configuración de seguridad
+   */
+  export const SECURITY_CONFIG = {
+    // TTL para tokens en blacklist (segundos)
+    TOKEN_BLACKLIST_TTL: parseInt(process.env.TOKEN_BLACKLIST_TTL || '86400'),
+    
+    // Niveles de rate limiting (solicitudes por minuto)
+    RATE_LIMITS: {
+      DEFAULT: parseInt(process.env.RATE_LIMIT_DEFAULT || '60'),
+      HIGH: parseInt(process.env.RATE_LIMIT_HIGH || '300'),
+      MESSAGE: parseInt(process.env.RATE_LIMIT_MESSAGE || '120')
+    },
+    
+    // Habilitación de validación de webhook
+    VERIFY_WEBHOOK_SIGNATURE: process.env.VERIFY_WEBHOOK_SIGNATURE !== 'false'
+  };
+  
+  // Exportar todos los bloques de configuración juntos
+  export default {
+    MONITORING: MONITORING_CONFIG,
+    PLAN: PLAN_CONFIG,
+    SECURITY: SECURITY_CONFIG
+  };

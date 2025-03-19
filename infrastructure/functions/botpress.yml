@@ -1,0 +1,96 @@
+# --- Botpress Integration Functions ---
+botpressWebhook:
+  handler: services/botpress/handlers/webhook.handler
+  name: ${self:custom.service}-${self:provider.stage}-botpress-webhook
+  role: !ImportValue ${self:custom.service}-${self:provider.stage}-lambda-role-arn
+  vpc: null
+  events:
+    - http:
+        path: /botpress/webhook
+        method: post
+        cors: true
+        restApi:
+          id: !Ref RestApiId
+  environment:
+    BOTPRESS_API_KEY: ${ssm:/espectra/${self:provider.stage}/botpress-api-key}
+  aliases:
+    - name: webhook-concurrency-${self:provider.stage}
+      provisionedConcurrency: 2
+
+processMessage:
+  handler: services/botpress/handlers/message/process-message.handler
+  name: ${self:custom.service}-${self:provider.stage}-process-message
+  role: !ImportValue ${self:custom.service}-${self:provider.stage}-lambda-role-arn
+  vpc: null
+  events:
+    - sqs:
+        arn: !ImportValue ${self:custom.service}-${self:provider.stage}-message-queue-arn
+        batchSize: 1
+        functionResponseType: ReportBatchItemFailures
+
+# --- Botpress Metrics Collector ---
+botpressMetricsCollector:
+  handler: services/metrics/handlers/metrics-collector.handler
+  name: ${self:custom.service}-${self:provider.stage}-botpress-metrics
+  description: Processes Botpress metrics events
+  memorySize: 256
+  timeout: 30
+  environment:
+    METRICS_TABLE: !Ref BotpressMetricsTable
+    KMS_KEY_ARN: !ImportValue ${self:custom.service}-${self:provider.stage}-system-kms-key-arn
+  role: !GetAtt MetricsCollectorRole.Arn
+  events:
+    - eventBridge:
+        pattern:
+          source:
+            - com.espectra.botpress
+          detail-type:
+            - Metric
+  tags:
+    Service: ${self:custom.service}
+    Environment: ${self:provider.stage}
+    Component: Metrics
+  tracing: Active
+  vpc:
+    securityGroupIds:
+      - !ImportValue ${self:custom.service}-${self:provider.stage}-lambda-sg-id
+    subnetIds:
+      - !ImportValue ${self:custom.service}-${self:provider.stage}-public-subnet-1-id
+      - !ImportValue ${self:custom.service}-${self:provider.stage}-public-subnet-2-id
+
+# --- Handoff Functions ---
+handoffRequest:
+  handler: services/botpress/handlers/handoff/request.handler
+  name: ${self:custom.service}-${self:provider.stage}-handoff-request
+  role: !ImportValue ${self:custom.service}-${self:provider.stage}-lambda-role-arn
+  vpc: null
+  events:
+    - http:
+        path: /handoff/request
+        method: post
+        authorizer:
+          name: restAuthorizer
+        cors: true
+        restApi:
+          id: !Ref RestApiId
+  aliases:
+    - name: request-concurrency-${self:provider.stage}
+      provisionedConcurrency: 2
+
+handoffAccept:
+  handler: services/botpress/handlers/handoff/accept.handler
+  name: ${self:custom.service}-${self:provider.stage}-handoff-accept
+  role: !ImportValue ${self:custom.service}-${self:provider.stage}-lambda-role-arn
+  vpc: null
+  events:
+    - http:
+        path: /handoff/accept
+        method: post
+        authorizer:
+          name: restAuthorizer
+        cors: true
+        restApi:
+          id: !Ref RestApiId
+  aliases:
+    - name: accept-concurrency-${self:provider.stage}
+      provisionedConcurrency: 2

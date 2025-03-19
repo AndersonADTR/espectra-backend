@@ -1,0 +1,65 @@
+# --- Session Management Functions ---
+startSession:
+  handler: services/session/handlers/start.handler
+  name: ${self:custom.service}-${self:provider.stage}-start-session
+  role: !ImportValue ${self:custom.service}-${self:provider.stage}-lambda-role-arn
+  vpc: null
+  events:
+    - http:
+        path: /session/start
+        method: post
+        authorizer:
+          name: restAuthorizer
+        cors: true
+        restApi:
+          id: !Ref RestApiId
+
+createSession:
+  handler: services/auth/handlers/session.createSession
+  name: ${self:custom.service}-${self:provider.stage}-create-session
+  role: !ImportValue ${self:custom.service}-${self:provider.stage}-lambda-role-arn
+  vpc: null
+  events:
+    - http:
+        path: /sessions/create
+        method: post
+        authorizer:
+          name: restAuthorizer
+        cors: true
+        restApi:
+          id: !Ref RestApiId
+  environment:
+    SESSION_TABLE: !ImportValue ${self:custom.service}-${self:provider.stage}-chat-sessions-table-name
+    METRICS_NAMESPACE: ${self:custom.service}/${self:provider.stage}
+
+extendSession:
+  handler: services/auth/handlers/session.extendSession
+  name: ${self:custom.service}-${self:provider.stage}-extend-session
+  role: !ImportValue ${self:custom.service}-${self:provider.stage}-lambda-role-arn
+  vpc: null
+  events:
+    - http:
+        path: /sessions/update/{sessionId}
+        method: put
+        authorizer:
+          name: restAuthorizer
+        cors: true
+        restApi:
+          id: !Ref RestApiId
+  environment:
+    SESSION_TABLE: !ImportValue ${self:custom.service}-${self:provider.stage}-chat-sessions-table-name
+
+endSession:
+  handler: services/session/handlers/end.handler
+  name: ${self:custom.service}-${self:provider.stage}-end-session
+  role: !ImportValue ${self:custom.service}-${self:provider.stage}-lambda-role-arn
+  vpc: null
+  events:
+    - http:
+        path: /session/end
+        method: post
+        authorizer:
+          name: restAuthorizer
+        cors: true
+        restApi:
+          id: !Ref RestApiId

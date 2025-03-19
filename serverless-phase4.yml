@@ -315,7 +315,6 @@ functions:
     name: ${self:custom.service}-${self:provider.stage}-websocket-authorizer
     role: 
       Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-lambda-role-arn
-    vpc: null
     memorySize: 256
     timeout: 29
     environment:
@@ -329,7 +328,6 @@ functions:
     name: ${self:custom.service}-${self:provider.stage}-webSocketConnect
     role: 
       Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-lambda-role-arn
-    vpc: null
     events:
       - websocket:
           route: $connect
@@ -345,7 +343,6 @@ functions:
     name: ${self:custom.service}-${self:provider.stage}-webSocketDisconnect
     role: 
       Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-lambda-role-arn
-    vpc: null
     events:
       - websocket:
           route: $disconnect
@@ -357,10 +354,20 @@ functions:
     name: ${self:custom.service}-${self:provider.stage}-webSocketMessage
     role: 
       Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-lambda-role-arn
-    vpc: null
     events:
       - websocket:
           route: $default
+          websocketApi:
+            id: !Ref WebSocketApi
+  
+  webSocketAgent:
+    handler: services/websocket/handlers/agent.handler
+    name: ${self:custom.service}-${self:provider.stage}-webSocketAgent
+    role: 
+      Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-lambda-role-arn
+    events:
+      - websocket:
+          route: agent
           websocketApi:
             id: !Ref WebSocketApi
 

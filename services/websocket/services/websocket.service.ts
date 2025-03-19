@@ -1,249 +1,238 @@
 // services/websocket/services/websocket.service.ts
 
-import { 
-    ApiGatewayManagementApi,
-    PostToConnectionCommand 
-  } from '@aws-sdk/client-apigatewaymanagementapi';
-  import { DynamoDBDocument } from '@aws-sdk/lib-dynamodb';
-  import { DynamoDB } from '@aws-sdk/client-dynamodb';
-  import { Logger } from '@shared/utils/logger';
-  import { MetricsService } from '@shared/utils/metrics';
-  import { WSConnection, WSMessage } from '../types/websocket.types';
-  import { WebSocketError } from '../utils/errors';
-  import { MONITORING_CONFIG } from '../../botpress/config/config';
-  
-  export class WebSocketService {
-    private readonly logger: Logger;
-    private readonly metrics: MetricsService;
-    private readonly apiGateway: ApiGatewayManagementApi;
-    private readonly ddb: DynamoDBDocument;
-    private readonly connectionsTable: string;
-  
-    constructor() {
-      this.logger = new Logger('WebSocketService');
-      this.metrics = new MetricsService(MONITORING_CONFIG.METRICS.NAMESPACE);
-      this.ddb = DynamoDBDocument.from(new DynamoDB({}));
-      
-      if (!process.env.WEBSOCKET_API_ENDPOINT || !process.env.CONNECTIONS_TABLE_NAME) {
-        throw new Error('Missing required environment variables');
-      }
-  
-      this.apiGateway = new ApiGatewayManagementApi({
-        endpoint: process.env.WEBSOCKET_API_ENDPOINT,
-        region: process.env.AWS_REGION
-      });
-  
-      this.connectionsTable = process.env.CONNECTIONS_TABLE_NAME;
-    }
-  
-    async saveConnection(connection: WSConnection): Promise<void> {
-      try {
-        await this.ddb.put({
-          TableName: this.connectionsTable,
-          Item: {
-            ...connection,
-            ttl: Math.floor(Date.now() / 1000) + (24 * 60 * 60) // 24 horas TTL
-          }
-        });
-  
-        this.metrics.incrementCounter('WebSocketConnections');
-        
-        this.logger.info('Connection saved successfully', {
-          connectionId: connection.connectionId,
-          userId: connection.userId
-        });
-      } catch (error) {
-        this.logger.error('Failed to save connection', {
-          error,
-          connectionId: connection.connectionId
-        });
-        throw new WebSocketError('Failed to save connection');
-      }
-    }
-  
-    async removeConnection(connectionId: string): Promise<void> {
-      try {
-        await this.ddb.delete({
-          TableName: this.connectionsTable,
-          Key: { connectionId }
-        });
-  
-        this.metrics.incrementCounter('WebSocketDisconnections');
-        
-        this.logger.info('Connection removed successfully', { connectionId });
-      } catch (error) {
-        this.logger.error('Failed to remove connection', {
-          error,
-          connectionId
-        });
-        throw new WebSocketError('Failed to remove connection');
-      }
-    }
-  
-    async sendMessage(connectionId: string, message: WSMessage): Promise<void> {
-      try {
-        await this.apiGateway.send(
-          new PostToConnectionCommand({
-            ConnectionId: connectionId,
-            Data: Buffer.from(JSON.stringify(message))
-          })
-        );
-  
-        this.metrics.incrementCounter('WebSocketMessagesSent');
-        
-        this.logger.info('Message sent successfully', {
-          connectionId,
-          messageType: message.type
-        });
-      } catch (error: any) {
-        // GoneException - conexión ya no está disponible
-        if (error.statusCode === 410) {
-          this.logger.warn('Connection stale, removing...', { connectionId });
-          await this.removeConnection(connectionId);
-          throw new WebSocketError('Connection no longer available', 410);
-        }
-  
-        this.metrics.incrementCounter('WebSocketSendErrors');
-        
-        this.logger.error('Failed to send message', {
-          error,
-          connectionId,
-          messageType: message.type
-        });
-        throw new WebSocketError('Failed to send message');
-      }
-    }
+import { ApiGatewayManagementApiClient, PostToConnectionCommand } from '@aws-sdk/client-apigatewaymanagementapi';
+import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
+import { DynamoDBDocumentClient, QueryCommand, GetCommand, PutCommand, DeleteCommand } from '@aws-sdk/lib-dynamodb';
+import { Logger } from '@shared/utils/logger';
+import { MetricsService } from '@shared/utils/metrics';
+import { ConnectionService } from './connection.service';
+import { WSMessage } from '../types/websocket.types';
 
-    async sendToUser(userId: string, message: WSMessage): Promise<void> {
-      try {
-        // Obtener todas las conexiones activas del usuario
-        const connections = await this.getConnectionsByUserId(userId);
-        
-        if (connections.length === 0) {
-          this.logger.warn('No active connections found for user', { userId });
-          return;
-        }
+export class WebSocketService {
+  private readonly apiGatewayClient: ApiGatewayManagementApiClient;
+  private readonly dynamoDbClient: DynamoDBDocumentClient;
+  private readonly connectionService: ConnectionService;
+  private readonly logger: Logger;
+  private readonly metrics: MetricsService;
+  private readonly connectionsTableName: string;
+  private readonly apiGatewayEndpoint: string;
+
+  constructor() {
+    this.logger = new Logger('WebSocketService');
+    this.metrics = new MetricsService('WebSocket');
+    this.connectionService = new ConnectionService();
     
-        // Enviar el mensaje a todas las conexiones activas del usuario
-        const sendPromises = connections.map(connection =>
-          this.sendMessage(connection.connectionId, message)
-            .catch(error => {
-              this.logger.error('Failed to send message to user connection', {
-                error,
-                userId,
-                connectionId: connection.connectionId
-              });
-              return null;
-            })
-        );
+    // Initialize DynamoDB client
+    const ddbClient = new DynamoDBClient({});
+    this.dynamoDbClient = DynamoDBDocumentClient.from(ddbClient);
     
-        await Promise.all(sendPromises);
-    
-        this.metrics.incrementCounter('WebSocketMessagesToUser');
-        
-        this.logger.info('Message sent to user', {
-          userId,
-          connectionCount: connections.length,
-          messageType: message.type
-        });
-      } catch (error) {
-        this.logger.error('Failed to send message to user', {
-          error,
-          userId,
-          messageType: message.type
-        });
-        throw new WebSocketError('Failed to send message to user');
-      }
+    // Get API Gateway endpoint from environment variables
+    this.apiGatewayEndpoint = process.env.WEBSOCKET_API_ENDPOINT || '';
+    if (!this.apiGatewayEndpoint) {
+      this.logger.error('WebSocket API endpoint not configured');
+      throw new Error('WebSocket API endpoint not configured in environment variables');
     }
-  
-    async broadcastMessage(message: WSMessage, userIds?: string[]): Promise<void> {
-      try {
-        // Obtener conexiones activas
-        const connections = await this.getActiveConnections(userIds);
+    
+    // Initialize API Gateway Management API client
+    this.apiGatewayClient = new ApiGatewayManagementApiClient({
+      endpoint: this.apiGatewayEndpoint
+    });
+    
+    // Get connections table name from environment variables
+    this.connectionsTableName = process.env.CONNECTIONS_TABLE || 
+      `${process.env.SERVICE_NAME}-${process.env.STAGE}-websocket-connections`;
+  }
+
+  /**
+   * Envía un mensaje a una conexión WebSocket específica
+   * @param connectionId ID de la conexión WebSocket
+   * @param message Mensaje a enviar
+   * @returns Promise<boolean> True si se envió correctamente
+   */
+  public async sendMessage(connectionId: string, message: WSMessage | any): Promise<boolean> {
+    const startTime = Date.now();
+    
+    try {
+      const data = typeof message === 'string' ? message : JSON.stringify(message);
+      
+      await this.apiGatewayClient.send(new PostToConnectionCommand({
+        ConnectionId: connectionId,
+        Data: Buffer.from(data)
+      }));
+      
+      this.metrics.incrementCounter('WebSocketMessagesSent');
+      this.metrics.recordLatency('WebSocketSendLatency', Date.now() - startTime);
+      
+      return true;
+    } catch (error: any) {
+      // Check if connection is gone (410 Gone)
+      if (error.$metadata?.httpStatusCode === 410 || error.name === 'GoneException') {
+        this.logger.info('WebSocket connection no longer available, cleaning up', { connectionId });
         
-        if (connections.length === 0) {
-          this.logger.info('No active connections for broadcast');
-          return;
-        }
-  
-        // Enviar mensaje a todas las conexiones activas
-        const sendPromises = connections.map(conn =>
-          this.sendMessage(conn.connectionId, message)
-            .catch(error => {
-              this.logger.error('Failed to broadcast to connection', {
-                error,
-                connectionId: conn.connectionId
-              });
-              return null;
-            })
-        );
-  
-        await Promise.all(sendPromises);
-  
-        this.metrics.recordMetric('WebSocketBroadcastSize', connections.length);
-        
-        this.logger.info('Broadcast completed', {
-          recipientCount: connections.length,
-          messageType: message.type
-        });
-      } catch (error) {
-        this.logger.error('Failed to broadcast message', {
-          error,
-          userIds,
-          messageType: message.type
-        });
-        throw new WebSocketError('Failed to broadcast message');
-      }
-    }
-  
-    private async getActiveConnections(userIds?: string[]): Promise<WSConnection[]> {
-      try {
-        if (userIds && userIds.length > 0) {
-          // Consultar conexiones para usuarios específicos
-          const queryPromises = userIds.map(userId =>
-            this.ddb.query({
-              TableName: this.connectionsTable,
-              IndexName: 'UserIdIndex',
-              KeyConditionExpression: 'userId = :userId',
-              ExpressionAttributeValues: { ':userId': userId }
-            })
-          );
-  
-          const results = await Promise.all(queryPromises);
-          return results.flatMap(result => result.Items as WSConnection[]);
-        } else {
-          // Obtener todas las conexiones activas
-          const result = await this.ddb.scan({
-            TableName: this.connectionsTable
+        // Eliminar la conexión de la base de datos
+        try {
+          await this.connectionService.deleteConnection(connectionId);
+        } catch (cleanupError) {
+          this.logger.error('Error cleaning up stale connection', { 
+            error: cleanupError, 
+            connectionId 
           });
-  
-          return (result.Items || []) as WSConnection[];
         }
-      } catch (error) {
-        this.logger.error('Failed to get active connections', {
-          error,
-          userIds
-        });
-        throw new WebSocketError('Failed to get active connections');
+        
+        this.metrics.incrementCounter('WebSocketStaleConnections');
+        return false;
       }
-    }
-  
-    async getConnectionsByUserId(userId: string): Promise<WSConnection[]> {
-      try {
-        const result = await this.ddb.query({
-          TableName: this.connectionsTable,
-          IndexName: 'UserIdIndex',
-          KeyConditionExpression: 'userId = :userId',
-          ExpressionAttributeValues: { ':userId': userId }
-        });
-  
-        return (result.Items || []) as WSConnection[];
-      } catch (error) {
-        this.logger.error('Failed to get connections by userId', {
-          error,
-          userId
-        });
-        throw new WebSocketError('Failed to get user connections');
-      }
+      
+      this.logger.error('Error sending message to WebSocket connection', { 
+        error: error instanceof Error ? error.message : 'Unknown error',
+        connectionId,
+        errorName: error.name,
+        errorCode: error.$metadata?.httpStatusCode
+      });
+      
+      this.metrics.incrementCounter('WebSocketSendErrors');
+      this.metrics.recordLatency('WebSocketSendLatency', Date.now() - startTime);
+      
+      throw error;
     }
   }
+
+  /**
+   * Envía un mensaje a todas las conexiones activas de un usuario
+   * @param userId ID del usuario
+   * @param message Mensaje a enviar
+   * @returns Number of connections that received the message
+   */
+  public async sendMessageToUser(userId: string, message: WSMessage | any): Promise<number> {
+    const startTime = Date.now();
+    
+    try {
+      // Obtener todas las conexiones activas para este usuario
+      const connections = await this.connectionService.getConnectionsByUserId(userId);
+      
+      this.logger.info(`Found ${connections.length} active connections for user`, { userId });
+      
+      if (connections.length === 0) {
+        return 0;
+      }
+      
+      // Enviar mensaje a cada conexión activa
+      const sendPromises = connections
+        .filter(conn => conn.isActive())
+        .map(conn => 
+          this.sendMessage(conn.connectionId, message)
+            .catch(() => false) // Catch errors but continue with other connections
+        );
+      
+      const results = await Promise.all(sendPromises);
+      const successCount = results.filter(Boolean).length;
+      
+      this.logger.info(`Successfully sent message to ${successCount}/${connections.length} connections`, { userId });
+      
+      this.metrics.recordLatency('WebSocketBroadcastLatency', Date.now() - startTime);
+      
+      return successCount;
+    } catch (error) {
+      this.logger.error('Error sending message to user connections', { 
+        error: error instanceof Error ? error.message : 'Unknown error', 
+        userId 
+      });
+      
+      this.metrics.incrementCounter('WebSocketBroadcastErrors');
+      this.metrics.recordLatency('WebSocketBroadcastLatency', Date.now() - startTime);
+      
+      throw error;
+    }
+  }
+
+  /**
+   * Envía un mensaje a todos los usuarios o a un grupo específico
+   * @param message Mensaje a enviar
+   * @param userIds IDs de usuarios a los que enviar (opcional, si no se especifica se envía a todos)
+   * @returns Número de conexiones a las que se envió el mensaje
+   */
+  public async broadcastMessage(message: WSMessage | any, userIds?: string[]): Promise<number> {
+    const startTime = Date.now();
+    
+    try {
+      let connections = [];
+      
+      if (userIds && userIds.length > 0) {
+        // Obtener conexiones para los usuarios especificados
+        const connectionsPromises = userIds.map(userId => 
+          this.connectionService.getConnectionsByUserId(userId)
+        );
+        
+        const connectionsArrays = await Promise.all(connectionsPromises);
+        connections = connectionsArrays.flat();
+      } else {
+        // Obtener todas las conexiones activas
+        const result = await this.dynamoDbClient.send(new QueryCommand({
+          TableName: this.connectionsTableName,
+          IndexName: 'StatusIndex',
+          KeyConditionExpression: '#status = :status',
+          ExpressionAttributeNames: {
+            '#status': 'status'
+          },
+          ExpressionAttributeValues: {
+            ':status': 'CONNECTED'
+          }
+        }));
+        
+        connections = result.Items || [];
+      }
+      
+      if (connections.length === 0) {
+        this.logger.info('No active connections found for broadcast');
+        return 0;
+      }
+      
+      this.logger.info(`Broadcasting message to ${connections.length} connections`);
+      
+      // Enviar mensaje a cada conexión
+      const sendPromises = connections.map(conn => 
+        this.sendMessage(conn.connectionId, message)
+          .catch(() => false) // Catch errors but continue with other connections
+      );
+      
+      const results = await Promise.all(sendPromises);
+      const successCount = results.filter(Boolean).length;
+      
+      this.logger.info(`Successfully broadcast message to ${successCount}/${connections.length} connections`);
+      
+      this.metrics.incrementCounter('WebSocketBroadcasts');
+      this.metrics.recordLatency('WebSocketBroadcastLatency', Date.now() - startTime);
+      
+      return successCount;
+    } catch (error) {
+      this.logger.error('Error broadcasting message', { 
+        error: error instanceof Error ? error.message : 'Unknown error'
+      });
+      
+      this.metrics.incrementCounter('WebSocketBroadcastErrors');
+      this.metrics.recordLatency('WebSocketBroadcastLatency', Date.now() - startTime);
+      
+      throw error;
+    }
+  }
+
+  /**
+   * Obtiene el ID de usuario asociado a una conexión
+   * @param connectionId ID de la conexión WebSocket
+   * @returns ID del usuario o null si no se encuentra
+   */
+  public async getUserIdFromConnection(connectionId: string): Promise<string | null> {
+    try {
+      const connection = await this.connectionService.getConnection(connectionId);
+      return connection?.userId || null;
+    } catch (error) {
+      this.logger.error('Error getting user ID from connection', { 
+        error: error instanceof Error ? error.message : 'Unknown error', 
+        connectionId 
+      });
+      
+      this.metrics.incrementCounter('WebSocketConnectionLookupErrors');
+      throw error;
+    }
+  }
+}
