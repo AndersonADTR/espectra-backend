@@ -150,3 +150,29 @@ export const MONITORING_CONFIG = {
     PLAN: PLAN_CONFIG,
     SECURITY: SECURITY_CONFIG
   };
+
+  /**
+   * Configuración de handoff
+   */
+  export const HANDOFF_CONFIG = {
+    // Prioridad predeterminada para solicitudes de handoff
+    DEFAULT_PRIORITY: parseInt(process.env.HANDOFF_DEFAULT_PRIORITY || '5'),
+
+    // Umbral de confianza para solicitar handoff automático
+    CONFIDENCE_THRESHOLD: parseFloat(process.env.HANDOFF_CONFIDENCE_THRESHOLD || '0.4'),
+
+    // Tiempo máximo de espera para asignación (segundos)
+    MAX_QUEUE_TIME: parseInt(process.env.HANDOFF_MAX_QUEUE_TIME || '300'),
+
+    // Tiempo de inactividad antes de finalizar un handoff automáticamente (segundos)
+    INACTIVITY_TIMEOUT: parseInt(process.env.HANDOFF_INACTIVITY_TIMEOUT || '600'),
+
+    // Número máximo de intentos para asignar un agente
+    MAX_ASSIGNMENT_ATTEMPTS: parseInt(process.env.HANDOFF_MAX_ASSIGNMENT_ATTEMPTS || '3'),
+
+    // Tiempo de espera entre intentos de asignación (segundos)
+    ASSIGNMENT_ATTEMPT_TIMEOUT: parseInt(process.env.HANDOFF_ASSIGNMENT_ATTEMPT_TIMEOUT || '30'),
+
+    // Tiempo de espera para finalizar un handoff (segundos)
+    HANDOFF_TIMEOUT: parseInt(process.env.HANDOFF_TIMEOUT || '600')
+  };

@@ -19,6 +19,7 @@ export interface WSConnection {
 }
 
 export interface WSMessage {
+  messageId: string;
   type: WSMessageType;
   content: string;
   conversationId: string;

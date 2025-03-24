@@ -1,86 +1,142 @@
-// services/websocket/handlers/connect.handler.ts
+// services/websocket/handlers/connect.ts
 
-import { Handler, APIGatewayProxyEvent } from 'aws-lambda';
-import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
-import { DynamoDBDocumentClient, PutCommand, DeleteCommand } from '@aws-sdk/lib-dynamodb';
+import { APIGatewayProxyHandler, APIGatewayProxyEvent } from 'aws-lambda';
 import { Logger } from '@shared/utils/logger';
+import { MetricsService } from '@shared/utils/metrics';
+import { ConnectionService } from '../services/connection.service';
+import { MONITORING_CONFIG } from '../../botpress/config/config';
+import { WebSocketError } from '../utils/errors';
+import { WSMessage } from '../types/websocket.types';
+import { WebSocketService } from '../services/websocket.service';
+import { v4 as uuidv4 } from 'uuid';
 
-/**
- * Handler Lambda para gestionar conexiones WebSocket
- * Este Lambda maneja los eventos de conexión y desconexión de WebSocket
- */
-export const handler: Handler = async (event: APIGatewayProxyEvent) => {
-  const logger = new Logger('WebSocketConnectionHandler');
-  logger.info('Processing WebSocket connection event', { 
-    routeKey: event.requestContext.routeKey 
-  });
-  
+const logger = new Logger('WebSocketConnectHandler');
+const metrics = new MetricsService(MONITORING_CONFIG.METRICS.NAMESPACE);
+const connectionService = new ConnectionService();
+const websocketService = new WebSocketService();
+
+export const handler: APIGatewayProxyHandler = async (event: APIGatewayProxyEvent) => {
   const connectionId = event.requestContext.connectionId;
-  const routeKey = event.requestContext.routeKey;
-  
-  // Inicializar cliente DynamoDB
-  const client = new DynamoDBClient({});
-  const ddbDocClient = DynamoDBDocumentClient.from(client);
-  const tableName = process.env.CONNECTIONS_TABLE || 
-    `${process.env.SERVICE_NAME}-${process.env.STAGE}-websocket-connections`;
-  
+  const requestId = event.requestContext.requestId;
+
   try {
-    switch (routeKey) {
-      case '$connect':
-        // Extraer el ID de usuario del token de autorización
-        // Asumimos que el authorizer ya validó el token y añadió el userId al context
-        const userId = event.requestContext.authorizer?.userId;
-        
-        if (!userId) {
-          logger.error('No user ID found in connection request');
-          return {
-            statusCode: 401,
-            body: 'Unauthorized'
-          };
-        }
-        
-        // Guardar la conexión en DynamoDB
-        await ddbDocClient.send(new PutCommand({
-          TableName: tableName,
-          Item: {
-            connectionId,
-            userId,
-            connectedAt: Date.now(),
-            ttl: Math.floor(Date.now() / 1000) + (24 * 60 * 60) // 24 horas TTL
-          }
-        }));
-        
-        logger.info('WebSocket connection established', { connectionId, userId });
-        break;
-        
-      case '$disconnect':
-        // Eliminar la conexión de DynamoDB
-        await ddbDocClient.send(new DeleteCommand({
-          TableName: tableName,
-          Key: { connectionId }
-        }));
-        
-        logger.info('WebSocket connection closed', { connectionId });
-        break;
-        
-      default:
-        logger.warn('Unknown route key', { routeKey });
-        return {
-          statusCode: 400,
-          body: 'Unknown route'
-        };
+    logger.info('WebSocket connection attempt', {
+      connectionId,
+      requestId,
+      routeKey: event.requestContext.routeKey
+    });
+
+    if (!connectionId) {
+      const error = new WebSocketError(
+        'Missing required connectionId',
+        400,
+        { connectionId }
+      );
+      logger.error(error.message, error.metadata);
+      throw error;
     }
+
+    // Extraer el ID de usuario del token de autorización
+    const userId = event.requestContext.authorizer?.userId;
+    if (!userId) {
+      logger.error('No user ID found in connection request', {
+        connectionId,
+        headers: event.headers,
+        authorizer: event.requestContext.authorizer
+      });
+      
+      metrics.incrementCounter('WebSocketConnectionAuthFailures');
+      
+      return {
+        statusCode: 401,
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          message: 'Unauthorized: Missing userId in authorization context',
+          connectionId
+        })
+      };
+    }
+
+    // Obtener metadatos de la conexión
+    const connectionMetadata = {
+      userAgent: event.headers['User-Agent'] || event.headers['user-agent'],
+      platform: event.queryStringParameters?.platform || 'unknown',
+      clientType: event.queryStringParameters?.clientType || 'unknown',
+      clientVersion: event.queryStringParameters?.clientVersion || 'unknown'
+    };
+
+    // Guardar la conexión usando el ConnectionService
+    await connectionService.createConnection(
+      connectionId,
+      userId,
+      connectionMetadata
+    );
+
+    // Enviar mensaje de bienvenida/confirmación al cliente
+    try {
+      const welcomeMessage: WSMessage = {
+        messageId: uuidv4(),
+        type: 'SESSION_STARTED',
+        conversationId: 'system',
+        content: 'Connected successfully to SPECTRUM',
+        timestamp: new Date().toISOString(),
+        metadata: {
+          connectionId,
+          serverTime: new Date().toISOString(),
+          serverEnvironment: process.env.STAGE || 'dev'
+        }
+      };
+      
+      await websocketService.sendMessage(connectionId, welcomeMessage);
+    } catch (welcomeError) {
+      // No interrumpimos la conexión si falla el mensaje de bienvenida
+      logger.warn('Failed to send welcome message', {
+        error: welcomeError instanceof Error ? welcomeError.message : 'Unknown error',
+        connectionId
+      });
+    }
+
+    metrics.incrementCounter('WebSocketConnections');
+    metrics.incrementCounter('ActiveConnections', 1, { userId });
     
+    logger.info('WebSocket connection successful', { 
+      connectionId,
+      userId,
+      metadata: connectionMetadata
+    });
+
     return {
       statusCode: 200,
-      body: 'Success'
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        message: 'Connected successfully',
+        connectionId
+      })
     };
   } catch (error) {
-    logger.error('Error handling WebSocket connection', { error, routeKey, connectionId });
-    
+    logger.error('WebSocket connection failed', {
+      error: error instanceof Error ? error.message : 'Unknown error',
+      stack: error instanceof Error ? error.stack : undefined,
+      connectionId,
+      requestId
+    });
+
+    metrics.incrementCounter('WebSocketConnectionFailures');
+
     return {
-      statusCode: 500,
-      body: 'Internal server error'
+      statusCode: error instanceof WebSocketError ? error.statusCode : 500,
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        message: error instanceof Error ? error.message : 'Internal server error',
+        connectionId,
+        error: process.env.STAGE === 'dev' ? (error instanceof Error ? error.message : 'Unknown error') : undefined
+      })
     };
   }
 };

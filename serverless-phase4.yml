@@ -188,7 +188,7 @@ plugins:
   # - serverless-offline-sqs
 
 package:
-  individually: true
+  individually: false
   patterns:
     - "src/**"
     # - "!node_modules/**"

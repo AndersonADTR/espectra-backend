@@ -28,18 +28,22 @@ export class Logger {
   }
 
   info(message: string, meta?: Record<string, any>) {
+    console.info(message, meta);
     this.logger.info(message, meta);
   }
 
   error(message: string, meta?: Record<string, any>) {
+    console.error(message, meta);
     this.logger.error(message, meta);
   }
 
   warn(message: string, meta?: Record<string, any>) {
+    console.warn(message, meta);
     this.logger.warn(message, meta);
   }
 
   debug(message: string, meta?: Record<string, any>) {
+    console.debug(message, meta);
     this.logger.debug(message, meta);
   }
 }

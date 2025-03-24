@@ -33,6 +33,47 @@ export class HandoffService {
     }
     return HandoffService.instance;
   }
+
+  /**
+   * Initiates handoff to an agent
+   * @param userId User ID
+   * @param conversationId Conversation ID
+   */
+  /*public async initiateHandoff(userId: string, conversationId: string) {
+    try {
+      // Actualizar el estado de la conversación
+      await this.contextService.updateContext(conversationId, {
+        status: ConversationStatus.WITH_ADVISOR,
+        updatedAt: Date.now()
+      });
+
+      // Crear solicitud de handoff
+      const handoffRequest = await this.queueService.createHandoffRequest(
+        conversationId,
+        userId,
+        HandoffReason.EXPLICIT_REQUEST.toString(), 
+      ) 
+      // Notificar al usuario a través de WebSocket
+      await this.websocketService.sendMessageToUser(userId, {
+        type: 'HANDOFF_STATUS',
+        content: 'Tu consulta está siendo transferida a un asesor. Por favor espera un momento.',
+        conversationId,  
+      })
+      this.metrics.incrementCounter('HandoffsInitiated');
+      this.logger.info('Handoff initiated', {
+        conversationId,
+        userId,
+        reason: handoffRequest.reason,
+        handoffId: handoffRequest.handoffId
+      });
+    } catch (error) {
+      this.logger.error('Error initiating handoff', {
+        error,
+        conversationId,
+        userId
+      }); 
+    }
+  }*/
   
   /**
    * Procesa un mensaje para verificar si se necesita intervención humana

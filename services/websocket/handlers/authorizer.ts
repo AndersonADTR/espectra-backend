@@ -19,10 +19,13 @@ const jwtVerifier = CognitoJwtVerifier.create({
 });
 
 export const handler = async (event: APIGatewayTokenAuthorizerEvent): Promise<APIGatewayAuthorizerResult> => {
+  
+  logger.info('Open Event', event);
+
   const startTime = Date.now();
   
   try {
-    const token = event.authorizationToken;
+    const token = event.queryStringParameters?.Auth;
     
     logger.debug('WebSocket authorization request received', {
       methodArn: event.methodArn

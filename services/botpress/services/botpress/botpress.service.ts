@@ -5,6 +5,7 @@ import { ConversationContextService } from '../context/conversation-context.serv
 import { BotpressMessageTransformer } from './transformers/message-transformer.service';
 import { ConversationStatus, ConversationType } from '@services/botpress/types/conversation-context.types';
 import { HandoffService } from '../handoff/handoff.service';
+import { HandoffReason } from '../handoff/handoff-detection.service';
 
 export interface BotpressMessage {
   type: string;
@@ -61,15 +62,15 @@ export class BotpressApiClient {
         // Add retry count to config if it doesn't exist
         if (!config) return Promise.reject(error);
         
-        // @ts-ignore - Adding custom property to config
-        config.params?.retryCount = config.params?.retryCount || 0;
+        //@ts-ignore - Adding custom property to config
+        let retryCount = retryCount || 0;
         
-        this.logger.error('Botpress API error', { 
+        this.logger.error('Botpress API error', {
           status: error.response?.status,
           url: config.url,
           method: config.method,
           // @ts-ignore
-          retryCount: config.params?.retryCount
+          retryCount: retryCount
         });
         
         // Retry on network errors or 5xx responses, up to maxRetries
@@ -79,16 +80,16 @@ export class BotpressApiClient {
         );
         
         // @ts-ignore
-        if (shouldRetry && config.params?.retryCount < this.maxRetries) {
+        if (shouldRetry && retryCount < this.maxRetries) {
           // @ts-ignore
-          config.params?.retryCount += 1;
+          retryCount += 1;
           
           // Exponential backoff: 2^retry * 100ms * random factor
-          const delay = Math.pow(2, config.params?.retryCount) * 100 * (0.5 + Math.random());
+          const delay = Math.pow(2, retryCount) * 100 * (0.5 + Math.random());
           this.logger.info(`Retrying request after ${delay}ms`, { 
             url: config.url, 
             // @ts-ignore
-            retryCount: config.params?.retryCount 
+            retryCount: retryCount 
           });
           
           await new Promise(resolve => setTimeout(resolve, delay));
@@ -292,6 +293,39 @@ export class BotpressService {
       return context;
     } catch (error) {
       this.logger.error('Error retrieving conversation history', { error, userId, conversationId });
+      throw error;
+    }
+  }
+
+  /**
+   * Initiates handoff to an agent
+   * @param userId User ID
+   * @param conversationId Conversation ID
+   */
+  public async initiateHandoff(userId: string, conversationId: string): Promise<void> {
+    try {
+      // Check if the conversation exists and belongs to the user
+      const context = await this.contextService.getContext(conversationId);
+
+      if (!context || context.userId !== userId) {
+        this.logger.warn('User attempted to initiate handoff for a conversation they do not own', {
+          userId,
+          conversationId,
+          ownerUserId: context?.userId
+        });
+        return;
+      } 
+      // Mark the conversation as in handoff
+      await this.contextService.updateContext(conversationId, {
+        status: ConversationStatus.WITH_ADVISOR,
+        updatedAt: Date.now()
+      });
+
+      // Initiate handoff process
+      const handoffService = HandoffService.getInstance();
+      await handoffService.initiateHandoff(userId, conversationId, HandoffReason.COMPLEX_QUERY, 1);
+    } catch (error) {
+      this.logger.error('Error initiating handoff', { error, userId, conversationId });
       throw error;
     }
   }

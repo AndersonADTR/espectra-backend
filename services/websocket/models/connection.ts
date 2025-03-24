@@ -33,8 +33,8 @@ export class Connection implements WSConnection {
       timestamp: now,
       status: 'CONNECTED',
       metadata: {
-        userAgent: metadata?.['User-Agent'],
-        platform: metadata?.platform,
+        userAgent: metadata?.['User-Agent'] || 'Unknown',
+        platform: metadata?.platform || 'Unknown',
         createdAt: now,
         lastActivity: now
       }

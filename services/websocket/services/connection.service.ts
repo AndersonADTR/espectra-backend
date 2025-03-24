@@ -18,9 +18,9 @@ export class ConnectionService {
     this.metrics = new MetricsService(MONITORING_CONFIG.METRICS.NAMESPACE);
     this.ddb = DynamoDBDocument.from(new DynamoDB({}));
     
-    const tableName = process.env.CONNECTIONS_TABLE_NAME;
+    const tableName = process.env.CONNECTION_TABLE;
     if (!tableName) {
-      throw new Error('CONNECTIONS_TABLE_NAME environment variable is not defined');
+      throw new Error('CONNECTION_TABLE environment variable is not defined');
     }
     this.tableName = tableName;
   }
@@ -66,6 +66,7 @@ export class ConnectionService {
 
   async saveConnection(connection: Connection): Promise<void> {
     try {
+      this.logger.info('Saving connection', { connection });
       await this.ddb.put({
         TableName: this.tableName,
         Item: {
