@@ -161,6 +161,7 @@ custom:
     websocketPort: 3001
     lambdaPort: 3002
     noPrependStageInUrl: true
+    noTimeout: true
 
   dynamodb:
     stages:
@@ -181,7 +182,7 @@ plugins:
   - serverless-iam-roles-per-function
   - serverless-prune-plugin
   - serverless-plugin-tracing
-  # - serverless-offline
+  - serverless-offline
   # - serverless-dynamodb-local
   # - serverless-webpack
   # - serverless-offline-sns
