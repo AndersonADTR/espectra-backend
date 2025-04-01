@@ -36,6 +36,7 @@ export interface LoginCredentials {
   export interface AuthenticatedUser {
     userId: string;
     userSub: string;
+    botpressUserKeyId: string;
     email: string;
     name: string;
     userType: string;

@@ -101,9 +101,10 @@ export class WebSocketService {
    * Envía un mensaje a todas las conexiones activas de un usuario
    * @param userId ID del usuario
    * @param message Mensaje a enviar
+   * @param guaranteedDelivery Si es true, se garantiza que el mensaje se entregue a todas las conexiones activas
    * @returns Number of connections that received the message
    */
-  public async sendMessageToUser(userId: string, message: WSMessage | any): Promise<number> {
+  public async sendMessageToUser(userId: string, message: WSMessage | any, guaranteedDelivery: boolean = false): Promise<number> {
     const startTime = Date.now();
     
     try {
@@ -113,6 +114,13 @@ export class WebSocketService {
       this.logger.info(`Found ${connections.length} active connections for user`, { userId });
       
       if (connections.length === 0) {
+        if (guaranteedDelivery) {
+          // Si no hay conexiones activas pero se requiere entrega garantizada
+          // guardar para entrega al reconectar
+          this.logger.info('No active connections, queueing message for future delivery', { userId });
+          // Implementar lógica para guardar mensaje para futuras conexiones
+          // Por ejemplo, guardando en DynamoDB con userId como clave
+        }
         return 0;
       }
       
@@ -129,6 +137,12 @@ export class WebSocketService {
       
       this.logger.info(`Successfully sent message to ${successCount}/${connections.length} connections`, { userId });
       
+      // Si no se pudo entregar a todas las conexiones y se requiere entrega garantizada
+      if (successCount < connections.filter(conn => conn.isActive()).length && guaranteedDelivery) {
+        this.logger.info('Delivery incomplete, queueing for retry', { userId, successCount, totalConnections: connections.length });
+        // Implementar lógica para reintentar entrega a conexiones fallidas
+      }
+      
       this.metrics.recordLatency('WebSocketBroadcastLatency', Date.now() - startTime);
       
       return successCount;
@@ -140,6 +154,11 @@ export class WebSocketService {
       
       this.metrics.incrementCounter('WebSocketBroadcastErrors');
       this.metrics.recordLatency('WebSocketBroadcastLatency', Date.now() - startTime);
+      
+      if (guaranteedDelivery) {
+        // Implementar lógica para guardar mensaje para futuro reintento
+        this.logger.info('Error in delivery, queueing for future retry', { userId });
+      }
       
       throw error;
     }

@@ -20,7 +20,7 @@ export class RedisService {
             connectTimeout: 5000,        // Reduced from 15000
             commandTimeout: 3000,        // Reduced from 10000
             maxRetriesPerRequest: 1,     // Reduced from 2
-            enableOfflineQueue: false,   // Changed from true
+            enableOfflineQueue: true,   // Changed from true
             retryStrategy: (times: number) => {
                 this.reconnectAttempts = times;
                 console.info('Redis reconnect attempt ${times}');
@@ -139,48 +139,6 @@ export class RedisService {
             return false;
         }
     }
-
-    // async checkConnection(): Promise<boolean> {
-    //     // Si el circuit breaker está abierto, fallar rápido
-    //     if (this.circuitOpen) {
-    //         console.warn('Circuit breaker is open, skipping connection check');
-    //         return false;
-    //     }
-        
-    //     // Si ya hay una verificación en curso, reutilizarla
-    //     if (this.connectionCheckPromise) {
-    //         return this.connectionCheckPromise;
-    //     }
-        
-    //     // Crear una nueva promesa de verificación
-    //     this.connectionCheckPromise = new Promise<boolean>(async (resolve) => {
-    //         try {
-    //             const result = await Promise.race([
-    //                 this.client.ping(),
-    //                 new Promise((_, reject) => 
-    //                     setTimeout(() => reject(new Error('Redis ping timed out')), 5000)
-    //                 )
-    //             ]);
-                
-    //             this.isConnected = result === 'PONG';
-    //             resolve(this.isConnected);
-    //         } catch (error) {
-    //             console.warn('Redis connection check failed', { 
-    //                 error: error instanceof Error ? error.message : String(error) 
-    //             });
-                
-    //             this.isConnected = false;
-    //             resolve(false);
-    //         } finally {
-    //             // Limpiar la promesa después de 10 segundos para permitir una nueva verificación
-    //             setTimeout(() => {
-    //                 this.connectionCheckPromise = null;
-    //             }, 10000);
-    //         }
-    //     });
-        
-    //     return this.connectionCheckPromise;
-    // }
 
     async set(key: string, value: string, ...args: any[]): Promise<string | null> {
         if (this.circuitOpen) return null;

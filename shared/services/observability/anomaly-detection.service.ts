@@ -90,6 +90,9 @@ export class AnomalyDetectionService {
     multi.expire(key, expireSeconds);
     
     const results = await multi.exec();
+    if (!results) {
+      throw new Error('Redis transaction failed');
+    }
     return results[0][1] as number;
   }
 

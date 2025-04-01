@@ -1,6 +1,6 @@
 // shared/services/cache/cache.service.ts
-import Redis from 'ioredis';
-import { config } from '@shared/config/config.service';
+
+import { RedisService } from './redis.service';
 
 export interface CacheOptions {
   ttl?: number;          // Tiempo de vida en segundos
@@ -10,44 +10,15 @@ export interface CacheOptions {
 
 export class CacheService {
   private static instance: CacheService;
-  private readonly redis: Redis;
+  private readonly redisService: RedisService;
   private readonly defaultOptions: Required<CacheOptions> = {
     ttl: 3600,           // 1 hora por defecto
     prefix: 'cache:',
     serialize: true
   };
-  private isConnected: boolean = false;
 
   private constructor() {
-    this.redis = new Redis({
-      host: config.getRequired<string>('REDIS_HOST'),
-      port: config.get<number>('REDIS_PORT', 6379),
-      connectTimeout: 5000,        // Reduced from 15000
-      commandTimeout: 3000,        // Reduced from 10000
-      maxRetriesPerRequest: 1,     // Reduced from 2
-      enableOfflineQueue: false,   // Changed from true
-      retryStrategy: (times) => {
-        if (times > 3) {
-          console.error('Redis connection failed multiple times');
-          return null;
-        }
-        return Math.min(times * 100, 3000);
-      },
-      tls: {}, // Enable TLS
-    });
-
-    this.redis.on('error', (err) => {
-      console.error('Redis client error', err);
-      this.isConnected = false;
-    });
-    
-    this.redis.on('connect', () => {
-      console.info('Connected to Redis');
-      this.isConnected = true;
-    });
-
-    // Conectar al inicializar
-    this.connect();
+    this.redisService = RedisService.getInstance();
   }
 
   public static getInstance(): CacheService {
@@ -55,17 +26,6 @@ export class CacheService {
       CacheService.instance = new CacheService();
     }
     return CacheService.instance;
-  }
-
-  private async connect(): Promise<void> {
-    if (!this.isConnected) {
-      try {
-        await this.redis.connect();
-      } catch (error) {
-        console.error('Failed to connect to Redis', error);
-        // Implementar fallback a caché en memoria si es necesario
-      }
-    }
   }
 
   private getFullKey(key: string, prefix?: string): string {
@@ -80,12 +40,8 @@ export class CacheService {
    */
   async get<T>(key: string, options: CacheOptions = {}): Promise<T | null> {
     try {
-      if (!this.isConnected) {
-        await this.connect();
-      }
-
       const fullKey = this.getFullKey(key, options.prefix);
-      const value = await this.redis.get(fullKey);
+      const value = await this.redisService.get(fullKey);
 
       if (!value) {
         return null;
@@ -110,10 +66,6 @@ export class CacheService {
    */
   async set<T>(key: string, value: T, options: CacheOptions = {}): Promise<boolean> {
     try {
-      
-      if (!this.isConnected) {
-        await this.connect();
-      }
 
       const fullKey = this.getFullKey(key, options.prefix);
       const ttl = options.ttl ?? this.defaultOptions.ttl;
@@ -121,7 +73,7 @@ export class CacheService {
 
       const finalValue = shouldSerialize ? JSON.stringify(value) : String(value);
 
-      await this.redis.set(fullKey, finalValue, 'EX', ttl);
+      await this.redisService.set(fullKey, finalValue, 'EX', ttl);
       return true;
 
     } catch (error) {
@@ -137,12 +89,8 @@ export class CacheService {
    */
   async delete(key: string, prefix?: string): Promise<boolean> {
     try {
-      if (!this.isConnected) {
-        await this.connect();
-      }
-
       const fullKey = this.getFullKey(key, prefix);
-      await this.redis.del(fullKey);
+      await this.redisService.del(fullKey);
       return true;
     } catch (error) {
       console.error('Error deleting cache value', { error, key });
@@ -158,7 +106,7 @@ export class CacheService {
   async exists(key: string, prefix?: string): Promise<boolean> {
     try {
       const fullKey = this.getFullKey(key, prefix);
-      const exists = await this.redis.exists(fullKey);
+      const exists = await this.redisService.exists(fullKey);
       return exists === 1;
     } catch (error) {
       console.error('Error checking cache key existence', { error, key });
@@ -174,11 +122,7 @@ export class CacheService {
    */
   public async expire(key: string, ttlSeconds: number): Promise<boolean> {
     try {
-      if (!this.isConnected) {
-        await this.connect();
-      }
-      
-      const result = await this.redis.expire(key, ttlSeconds);
+      const result = await this.redisService.getClient().expire(key, ttlSeconds);
       return result === 1;
     } catch (error) {
       console.error('Error setting expiration for key', { error, key });
@@ -188,9 +132,9 @@ export class CacheService {
 
   async invalidateByPattern(pattern: string): Promise<boolean> {
     try {
-      const keys = await this.redis.keys(pattern);
+      const keys = await this.redisService.getClient().keys(pattern);
       if (keys.length > 0) {
-        await this.redis.del(...keys);
+        await this.redisService.del(...keys);
       }
       return true;
 
@@ -202,7 +146,7 @@ export class CacheService {
 
   async cleanup(): Promise<void> {
     try {
-      await this.redis.quit();
+      await this.redisService.cleanup();
     } catch (error) {
       console.error('Error cleaning up cache service', { error });
     }

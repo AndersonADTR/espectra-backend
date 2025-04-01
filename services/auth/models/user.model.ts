@@ -7,6 +7,7 @@ export class UserModel implements AuthenticatedUser {
   userSub: string;
   email: string;
   name: string;
+  botpressUserKeyId: string;
   phoneNumber: string;
   userType: string;
   language: string;
@@ -22,6 +23,7 @@ export class UserModel implements AuthenticatedUser {
     this.userSub = data.userSub || '';
     this.email = data.email || '';
     this.name = data.name || '';
+    this.botpressUserKeyId = data.botpressUserKeyId || '';
     this.phoneNumber = data.phoneNumber || '';
     this.userType = data.userType || 'basic';
     this.language = data.language || 'es';
@@ -39,6 +41,7 @@ export class UserModel implements AuthenticatedUser {
       userSub: this.userSub,
       email: this.email,
       name: this.name,
+      botpressUserKeyId: this.botpressUserKeyId,
       phoneNumber: this.phoneNumber,
       userType: this.userType,
       language: this.language,
@@ -57,6 +60,7 @@ export class UserModel implements AuthenticatedUser {
       userSub: item.userSub,
       email: item.email,
       name: item.name,
+      botpressUserKeyId: item.botpressUserKeyId,
       phoneNumber: item.phoneNumber,
       userType: item.userType,
       language: item.language,

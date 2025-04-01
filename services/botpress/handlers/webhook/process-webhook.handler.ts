@@ -104,7 +104,7 @@ export const handler: Handler = async (event: SQSEvent) => {
           };
     
           try {
-            const sentCount = await websocketService.sendMessageToUser(userId, wsMessage);
+            const sentCount = await websocketService.sendMessageToUser(userId, wsMessage, true);
             logger.info('WebSocket notification sent', { 
               userId, 
               connectionCount: sentCount 

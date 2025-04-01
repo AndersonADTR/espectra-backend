@@ -20,6 +20,16 @@ export interface BotpressMessage {
   metadata?: Record<string, any>;
 }
 
+export interface BotpressUserCreate {
+  user: {
+    id: string;
+    name: string;
+    createdAt: string;
+    updatedAt: string;
+  },
+  key: string;
+}
+
 export interface BotpressResponse {
   messages: BotpressMessage[];
   conversationId: string;
@@ -43,6 +53,7 @@ export class BotpressApiClient {
       baseURL: process.env.BOTPRESS_API_URL,
       timeout: 10000, // 10 seconds
       headers: {
+        'Accept': 'application/json',
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${process.env.BOTPRESS_API_KEY}`
       }
@@ -134,6 +145,25 @@ export class BotpressApiClient {
         userId, 
         conversationId 
       });
+      throw error;
+    }
+  }
+
+  /**
+   * Creates a new user in Botpress
+   * @param userId User ID
+   * @param name User name
+   * @returns Botpress user creation response
+   */
+  public async createUser(userId: string, name: string): Promise<BotpressUserCreate> {
+    try {
+      const response = await this.axios.post('/users', {
+        id: userId,
+        name: name
+      });
+      return response.data;
+    } catch (error) {
+      this.logger.error('Error creating user in Botpress', { error, userId });
       throw error;
     }
   }
@@ -267,6 +297,26 @@ export class BotpressService {
   }
 
   /**
+   * Creates a new user in Botpress
+   * @param userId User ID
+   * @param name User name
+   * @returns Botpress user creation response
+   */
+  public async createBotpressUser(userId: string, name: string): Promise<BotpressUserCreate> {
+    try {
+      const user = await this.apiClient.createUser(userId, name);
+      this.logger.info('Botpress user created successfully', { 
+        user: user.user,
+        key: user.key
+      });
+      return user;
+    } catch (error) {
+      this.logger.error('Error creating Botpress user', { error, userId });
+      throw error;
+    }
+  }
+
+  /**
    * Retrieves conversation history
    * @param userId User ID
    * @param conversationId Conversation ID
@@ -279,7 +329,7 @@ export class BotpressService {
       if (!context) {
         return null;
       }
-      
+      context
       // Verify that the conversation belongs to the user
       if (context.userId !== userId) {
         this.logger.warn('User attempted to access conversation they do not own', { 

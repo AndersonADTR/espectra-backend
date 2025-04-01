@@ -36,10 +36,6 @@ Resources:
                   - cloudwatch:GetMetricData
                   - cloudwatch:GetMetricStatistics
                 Resource: "*"
-                Condition:
-                  StringEquals:
-                    cloudwatch:namespace: 
-                      - ${self:custom.service}/${self:provider.stage}
               # Agregar permisos para Redis/ElastiCache
               - Effect: Allow
                 Action:

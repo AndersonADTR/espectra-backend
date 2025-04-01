@@ -13,6 +13,7 @@ import {
   AuthenticatedUser 
 } from '../types/auth.types';
 import { CognitoService } from './cognito.service';
+import { BotpressService } from '@services/botpress/services/botpress/botpress.service';
 import { TokenService } from './token.service';
 import { UserModel, UserStatus } from '../models/user.model';
 import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
@@ -33,6 +34,7 @@ export class AuthenticationService {
   private readonly logger: Logger;
   private readonly metrics: MetricsService;
   private readonly cognitoService: CognitoService;
+  private readonly botpressService: BotpressService;
   private readonly tokenService: TokenService;
   private readonly dynamodb: DynamoDBDocumentClient;
   private readonly observability: ObservabilityService;
@@ -47,6 +49,7 @@ export class AuthenticationService {
     const ddbClient = new DynamoDBClient({});
     this.dynamodb = DynamoDBDocumentClient.from(ddbClient);
 
+    this.botpressService = BotpressService.getInstance();
     this.observability = ObservabilityService.getInstance();
     this.anomalyDetection = AnomalyDetectionService.getInstance();
     
@@ -75,16 +78,25 @@ export class AuthenticationService {
       // Registrar en Cognito
       try {
         userSub = await this.cognitoService.registerUser(credentials) || '';
-        console.log('Cognito registration completed', { email: credentials.email });
+        this.logger.info('Cognito registration completed', { email: credentials.email });
       } catch (error) {
-        userSub = '';
-        console.log('Cognito registration failed', { error, email: credentials.email });
         this.logger.error('Cognito registration failed', { error, email: credentials.email });
         await this.metrics.incrementCounter('RegistrationFailureCognito');
         throw error;
       }
 
       const userId = uuidv4();
+      let botpressUserKeyId: string | undefined;
+
+      // Crear usuario en Botpress
+      try {
+        const botpressResponse = await this.botpressService.createBotpressUser(userId, credentials.email);
+        botpressUserKeyId = botpressResponse.key;
+        this.logger.info('Botpress user created', { name: credentials.email });
+      } catch (error) {
+        this.logger.error('Botpress user creation failed', { error, email: credentials.email });
+        await this.metrics.incrementCounter('RegistrationFailureBotpress');
+      }
 
       // Preparar el usuario
       const user = new UserModel({
@@ -92,6 +104,7 @@ export class AuthenticationService {
         userSub: userSub,
         email: credentials.email,
         name: credentials.name,
+        botpressUserKeyId: botpressUserKeyId,
         phoneNumber: credentials.phoneNumber,
         userType: credentials.userType || 'basic',
         language: credentials.language || 'es',
@@ -108,7 +121,7 @@ export class AuthenticationService {
         }
       }];
       
-      console.log('User record prepared', { user });
+      this.logger.info('User record prepared', { user });
 
       // Confirmar transacción DynamoDB
       try {
@@ -130,6 +143,15 @@ export class AuthenticationService {
           });
           console.error('Failed to cleanup Cognito user after DynamoDB failure', { error, cleanupError, email: credentials.email });
         }
+        throw error;
+      }
+
+      try {
+        
+      } catch (error) {
+        console.log('Error in user registration', { error, email: credentials.email });
+        this.logger.error('Error in user registration', { error, email: credentials.email });
+        await this.metrics.incrementCounter('RegistrationFailureDynamoDB');
         throw error;
       }
 
