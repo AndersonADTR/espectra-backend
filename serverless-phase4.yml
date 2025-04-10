@@ -55,8 +55,7 @@ provider:
       Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-handoff-queue-url
 
     # DynamoDB Tables
-    CONNECTION_TABLE:
-      Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-connections-table-name
+    CONNECTION_TABLE: ${cf:${self:custom.service_fase3}-${sls:stage}.ConnectionsTableName}
     CHAT_HISTORY_TABLE:
       Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-chat-history-table-name
     CONTEXT_TABLE:
@@ -77,7 +76,7 @@ provider:
       Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-eventbus-name
 
     # WebSocket
-    WEBSOCKET_API_ENDPOINT: ${self:custom.service}-${self:provider.stage}-websocket-endpoint
+    WEBSOCKET_API_ENDPOINT: ${cf:${self:service}-${sls:stage}.WebSocketApiEndpoint}
 
     # Redis Configuration
     REDIS_HOST:
@@ -95,6 +94,7 @@ provider:
 
 custom:
   service: espectra-backend
+  service_fase3: espectra-backend-phase3
   
   logRetentionInDays: 14
   
@@ -374,7 +374,7 @@ functions:
 
   # Botpress Integration Functions
   botpressWebhook:
-    handler: services/botpress/handlers/webhook.handler
+    handler: services/botpress/handlers/webhook/botpress-webhook.handler
     name: ${self:custom.service}-${self:provider.stage}-botpress-webhook
     role: 
       Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-lambda-role-arn
@@ -632,7 +632,7 @@ outputs:
 
   WebSocketApiEndpoint:
     Description: WebSocket API Endpoint
-    Value: !Sub wss://${WebSocketApi}.execute-api.${AWS::Region}.amazonaws.com/${self:provider.stage}
+    Value: !Sub https://${WebSocketApi}.execute-api.${AWS::Region}.amazonaws.com/${self:provider.stage}
     Export:
       Name: ${self:custom.service}-${self:provider.stage}-websocket-endpoint
 

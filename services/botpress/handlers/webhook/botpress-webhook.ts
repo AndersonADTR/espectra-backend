@@ -1,10 +1,11 @@
-// services/botpress/handlers/webhook/botpress-webhook.handler.ts
+// services/botpress/handlers/webhook/botpress-webhook.ts
 
 import { Handler, APIGatewayProxyEvent } from 'aws-lambda';
 import { SQSClient, SendMessageCommand } from '@aws-sdk/client-sqs';
 import { Logger } from '@shared/utils/logger';
 import { MetricsService } from '@shared/utils/metrics';
 import * as crypto from 'crypto';
+import { WebSocketService } from '../../../websocket/services/websocket.service';
 
 /**
  * Handler Lambda para procesar webhooks de Botpress
@@ -13,6 +14,7 @@ import * as crypto from 'crypto';
 export const handler: Handler = async (event: APIGatewayProxyEvent) => {
   const logger = new Logger('BotpressWebhookHandler');
   const metrics = new MetricsService('BotpressWebhook');
+  const websocketService = new WebSocketService();
   
   logger.info('Processing Botpress webhook', { routeKey: event.requestContext.httpMethod });
   metrics.incrementCounter('WebhooksReceived');
@@ -31,20 +33,20 @@ export const handler: Handler = async (event: APIGatewayProxyEvent) => {
     }
     
     // Verificar la autenticidad del webhook usando firma HMAC
-    if (!verifyWebhookSignature(event)) {
-      logger.error('Invalid webhook signature');
-      metrics.incrementCounter('WebhookErrors', 1, { reason: 'invalid_signature' });
+    if (!verifyWebhookSecretKey(event)) {
+      logger.error('Invalid webhook secret key');
+      metrics.incrementCounter('WebhookErrors', 1, { reason: 'invalid_secret_key' });
       return {
         statusCode: 401,
-        body: JSON.stringify({ message: 'Invalid webhook signature' })
+        body: JSON.stringify({ message: 'Invalid webhook secret key' })
       };
     }
     
-    // Parsear el cuerpo del webhook
-    const webhookData = JSON.parse(event.body);
+    // Parsear el cuerpo del webhook y extraer la data
+    const webhookData = JSON.parse(event.body).data;
     
     // Validar estructura básica del webhook
-    if (!webhookData.conversationId || !webhookData.messages) {
+    if (!webhookData?.conversationId || !webhookData?.payload?.message) {
       logger.error('Invalid webhook format', { webhookData });
       metrics.incrementCounter('WebhookErrors', 1, { reason: 'invalid_format' });
       return {
@@ -52,9 +54,12 @@ export const handler: Handler = async (event: APIGatewayProxyEvent) => {
         body: JSON.stringify({ message: 'Invalid webhook format' })
       };
     }
-    
-    // Enviar a SQS para procesamiento asíncrono
-    await sendToProcessingQueue(webhookData);
+
+    // Enviar a SQS para procesamiento asíncrono (implementacion futura)
+    // await sendToProcessingQueue(webhookData);
+
+    // Enviar respuesta al websocket para actualizar el chat
+    await websocketService.sendMessage(webhookData.conversationId, webhookData.payload.message);
     
     metrics.recordLatency('WebhookProcessingTime', Date.now() - startTime);
     metrics.incrementCounter('WebhooksProcessed');
@@ -72,7 +77,7 @@ export const handler: Handler = async (event: APIGatewayProxyEvent) => {
     
     metrics.incrementCounter('WebhookErrors', 1, { reason: 'internal_error' });
     metrics.recordLatency('WebhookProcessingTime', Date.now() - startTime);
-    
+
     return {
       statusCode: 500,
       body: JSON.stringify({
@@ -88,46 +93,35 @@ export const handler: Handler = async (event: APIGatewayProxyEvent) => {
  * @param event Evento API Gateway
  * @returns True si la firma es válida
  */
-function verifyWebhookSignature(event: APIGatewayProxyEvent): boolean {
-  const logger = new Logger('WebhookSignatureVerifier');
-  
+function verifyWebhookSecretKey(event: APIGatewayProxyEvent): boolean {
+  const logger = new Logger('WebhookSecretKeyVerifier');
+
   try {
-    const signature = event.headers['x-botpress-signature'];
-    const timestamp = event.headers['x-botpress-timestamp'];
+    const requestSecretKey = event.headers['X-Secret-Key'];
     
-    if (!signature || !timestamp) {
-      logger.error('Missing signature headers', { headers: event.headers });
+    if (!requestSecretKey) {
+      logger.error('Missing secret key headers', { headers: event.headers });
       return false;
     }
     
-    const webhookSecret = process.env.BOTPRESS_WEBHOOK_SECRET;
+    const webhookSecret = process.env.BOTPRESS_API_KEY;
     if (!webhookSecret) {
       logger.error('Webhook secret not configured');
       return false;
     }
     
-    // Verificar que el timestamp no sea muy antiguo (5 minutos)
-    const timestampMs = parseInt(timestamp);
-    const now = Date.now();
-    if (now - timestampMs > 5 * 60 * 1000) {
-      logger.error('Webhook timestamp too old', { timestamp, now, diff: now - timestampMs });
+    // Verificar que la llave secreta sea correcta
+    if (requestSecretKey !== webhookSecret) {
+      logger.error('Invalid secret key', { receivedKey: requestSecretKey });
       return false;
     }
-    
-    // Calcular firma esperada
-    const payload = `${timestamp}.${event.body}`;
-    const expectedSignature = crypto
-      .createHmac('sha256', webhookSecret)
-      .update(payload)
-      .digest('hex');
-    
-    // Comparar firmas con tiempo constante para evitar timing attacks
-    return crypto.timingSafeEqual(
-      Buffer.from(signature),
-      Buffer.from(expectedSignature)
-    );
+    else {
+      logger.info('Webhook secret key verified successfully');
+      return true;
+    }
+
   } catch (error) {
-    logger.error('Error verifying webhook signature', { 
+    logger.error('Error verifying webhook key', {
       error: error instanceof Error ? error.message : 'Unknown error'
     });
     return false;

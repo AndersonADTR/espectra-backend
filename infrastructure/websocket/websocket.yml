@@ -285,7 +285,7 @@ Outputs:
 
   WebSocketApiEndpoint:
     Description: WebSocket API Endpoint
-    Value: !Sub wss://${WebSocketApi}.execute-api.${AWS::Region}.amazonaws.com/${self:provider.stage}
+    Value: !Sub https://${WebSocketApi}.execute-api.${AWS::Region}.amazonaws.com/${self:provider.stage}
     Export:
       Name: ${self:custom.service}-${self:provider.stage}-websocket-endpoint
 
