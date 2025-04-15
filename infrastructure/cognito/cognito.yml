@@ -29,8 +29,9 @@ Resources:
           - Name: verified_phone_number
             Priority: 2
       EmailConfiguration:
-        EmailSendingAccount: COGNITO_DEFAULT
-        #From: "noreply@customDomain" #${self:custom.customDomain.domainName}"
+        EmailSendingAccount: DEVELOPER
+        From: "anderson.montilva@technoapes.co"
+        SourceArn: !Sub "arn:aws:ses:${AWS::Region}:${AWS::AccountId}:identity/anderson.montilva@technoapes.co"
       Policies:
         PasswordPolicy:
           MinimumLength: 8

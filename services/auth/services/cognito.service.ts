@@ -399,11 +399,38 @@ export class CognitoService {
 
   async forgotPassword(email: string): Promise<void> {
     try {
+      console.log('CognitoService.forgotPassword called', {
+        email,
+        userPoolId: this.userPoolId,
+        clientId: this.clientId
+      });
+
       // Generar SECRET_HASH
       const secretHash = this.calculateSecretHash(
         email,
         this.clientId
       );
+
+      console.log('SECRET_HASH generated successfully');
+
+      // Verificar si el usuario existe en Cognito antes de intentar recuperar la contraseña
+      try {
+        console.log('Verifying if user exists in Cognito', { email });
+        await this.getUserByEmail(email);
+        console.log('User exists in Cognito', { email });
+      } catch (userError) {
+        if ((userError as Error).name === 'UserNotFoundException') {
+          console.log('User not found in Cognito, attempting to proceed anyway', { email });
+          // Continuamos con el proceso para mantener el comportamiento consistente
+        } else {
+          console.error('Error verifying user existence', {
+            error: userError,
+            errorName: userError instanceof Error ? userError.name : 'Unknown',
+            errorMessage: userError instanceof Error ? userError.message : String(userError),
+            email
+          });
+        }
+      }
 
       const command = new ForgotPasswordCommand({
         ClientId: this.clientId,
@@ -411,17 +438,74 @@ export class CognitoService {
         SecretHash: secretHash
       });
 
-      await this.client.send(command);
+      console.log('Sending ForgotPasswordCommand to Cognito');
+      const response = await this.client.send(command);
+      console.log('ForgotPasswordCommand response received', {
+        success: true,
+        responseType: typeof response,
+        hasResponse: !!response,
+        deliveryDetails: response.CodeDeliveryDetails ? {
+          destination: response.CodeDeliveryDetails.Destination,
+          deliveryMedium: response.CodeDeliveryDetails.DeliveryMedium,
+          attributeName: response.CodeDeliveryDetails.AttributeName
+        } : 'No delivery details'
+      });
 
-      this.logger.info('Password recovery code sent successfully', { email });
+      this.logger.info('Password recovery code sent successfully', {
+        email,
+        deliveryDetails: response.CodeDeliveryDetails ? {
+          destination: response.CodeDeliveryDetails.Destination,
+          deliveryMedium: response.CodeDeliveryDetails.DeliveryMedium,
+          attributeName: response.CodeDeliveryDetails.AttributeName
+        } : 'No delivery details'
+      });
+      console.log('Password recovery code sent successfully', { email });
 
     } catch (error) {
-      this.logger.error('Error sending password recovery code', { error, email });
+      this.logger.error('Error sending password recovery code', {
+        error,
+        errorName: error instanceof Error ? error.name : 'Unknown',
+        errorMessage: error instanceof Error ? error.message : String(error),
+        email
+      });
+      console.error('Detailed error sending password recovery code', {
+        error,
+        errorName: error instanceof Error ? error.name : 'Unknown',
+        errorMessage: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : 'No stack trace',
+        email
+      });
 
       // No propagamos el error si el usuario no existe para no revelar información
-      if ((error as Error).name === 'UserNotFoundException') {
+      if (error instanceof Error && error.name === 'UserNotFoundException') {
         this.logger.info('Password recovery requested for non-existent user', { email });
+        console.log('Password recovery requested for non-existent user (handled silently)', { email });
         return;
+      }
+
+      // Verificar si es un error de configuración de SES
+      if (error instanceof Error &&
+          (error.name === 'InvalidParameterException' ||
+           error.name === 'InvalidEmailRoleAccessPolicyException' ||
+           error.message.includes('email'))) {
+        console.error('Possible SES configuration issue', {
+          error,
+          message: error.message,
+          email
+        });
+
+        // Verificar si el error es específico de SES no verificado
+        if (error.message.includes('not verified') ||
+            error.message.includes('identity') ||
+            error.message.includes('verification')) {
+          throw new AuthenticationError(
+            'Email delivery configuration error: The sender email is not verified in SES. Please verify the email in the AWS SES console.'
+          );
+        }
+
+        throw new AuthenticationError(
+          'Email delivery configuration error: ' + error.message
+        );
       }
 
       throw new AuthenticationError(
@@ -432,11 +516,20 @@ export class CognitoService {
 
   async confirmForgotPassword(email: string, confirmationCode: string, newPassword: string): Promise<void> {
     try {
+      console.log('CognitoService.confirmForgotPassword called', {
+        email,
+        confirmationCode: '******', // No mostrar el código completo por seguridad
+        userPoolId: this.userPoolId,
+        clientId: this.clientId
+      });
+
       // Generar SECRET_HASH
       const secretHash = this.calculateSecretHash(
         email,
         this.clientId
       );
+
+      console.log('SECRET_HASH generated successfully');
 
       const command = new ConfirmForgotPasswordCommand({
         ClientId: this.clientId,
@@ -446,15 +539,31 @@ export class CognitoService {
         SecretHash: secretHash
       });
 
+      console.log('Sending ConfirmForgotPasswordCommand to Cognito');
       await this.client.send(command);
+      console.log('ConfirmForgotPasswordCommand response received successfully');
 
       this.logger.info('Password reset completed successfully', { email });
 
     } catch (error) {
-      this.logger.error('Error confirming password reset', { error, email });
-      throw new AuthenticationError(
-        'Failed to reset password: ' + ((error as Error).message || 'Unknown error')
-      );
+      this.logger.error('Error confirming password reset', {
+        error,
+        email,
+        errorName: error instanceof Error ? error.name : 'Unknown',
+        errorMessage: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : 'No stack trace'
+      });
+
+      console.error('Detailed error confirming password reset', {
+        error,
+        errorName: error instanceof Error ? error.name : 'Unknown',
+        errorMessage: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : 'No stack trace',
+        email
+      });
+
+      // Propagar el error original para que sea manejado por el servicio de autenticación
+      throw error;
     }
   }
 

@@ -1,14 +1,14 @@
-// services/auth/handlers/forgot-password.ts
+// services/auth/handlers/test-email.ts
 
 import { APIGatewayProxyHandler } from 'aws-lambda';
-import { AuthenticationService } from '../services/authentication.service';
+import { EmailService } from '@shared/services/email/email.service';
 import { validateRequest } from '@shared/middleware/validation/validation.middleware';
 import { withErrorHandling } from '@shared/middleware/error/error-handling.middleware';
 import { Logger } from '@shared/utils/logger';
 import * as Joi from 'joi';
 
 // Schema de validación
-const forgotPasswordSchema = Joi.object({
+const testEmailSchema = Joi.object({
   email: Joi.string()
     .email()
     .required()
@@ -18,33 +18,45 @@ const forgotPasswordSchema = Joi.object({
     })
 });
 
-const logger = new Logger('ForgotPasswordHandler');
+const logger = new Logger('TestEmailHandler');
 
-const forgotPasswordHandler: APIGatewayProxyHandler = async (event) => {
-  logger.info('Processing forgot password request');
-
-  const authService = new AuthenticationService();
+const testEmailHandler: APIGatewayProxyHandler = async (event) => {
+  logger.info('Processing test email request');
 
   try {
     // El body ya está validado por el middleware
     const { email } = JSON.parse(event.body!);
 
-    logger.info('Forgot password request received', { email });
+    logger.info('Test email request received', { email });
 
     // Agregar logs detallados para depuración
-    logger.info('Starting forgot password process', {
+    logger.info('Starting test email process', { 
       email,
       environment: process.env.NODE_ENV,
       region: process.env.REGION,
-      cognitoUserPoolId: process.env.COGNITO_USER_POOL_ID,
-      cognitoClientId: process.env.COGNITO_CLIENT_ID
+      sesFromEmail: process.env.SES_FROM_EMAIL || 'anderson.montilva@technoapes.co'
     });
-
+    
     try {
-      // Solicitar recuperación de contraseña
-      await authService.forgotPassword(email);
+      // Enviar correo de prueba
+      const emailService = EmailService.getInstance();
+      const messageId = await emailService.sendEmail({
+        to: email,
+        subject: 'Test Email from SPECTRUM Platform',
+        text: 'This is a test email from the SPECTRUM platform.',
+        html: `
+          <html>
+            <body>
+              <h1>Test Email from SPECTRUM</h1>
+              <p>This is a test email from the SPECTRUM platform.</p>
+              <p>If you received this email, it means that SES is correctly configured.</p>
+              <p>Time sent: ${new Date().toISOString()}</p>
+            </body>
+          </html>
+        `
+      });
 
-      logger.info('Password reset requested successfully', { email });
+      logger.info('Test email sent successfully', { email, messageId });
 
       return {
         statusCode: 200,
@@ -56,13 +68,13 @@ const forgotPasswordHandler: APIGatewayProxyHandler = async (event) => {
         },
         body: JSON.stringify({
           success: true,
-          message: 'Password reset instructions sent to your email',
-          data: null,
+          message: 'Test email sent successfully',
+          data: { messageId },
           errors: null
         })
       };
     } catch (serviceError) {
-      logger.error('Error in forgot password service', {
+      logger.error('Error sending test email', {
         error: serviceError,
         email,
         errorName: serviceError instanceof Error ? serviceError.name : 'Unknown',
@@ -72,31 +84,9 @@ const forgotPasswordHandler: APIGatewayProxyHandler = async (event) => {
 
       // Manejar errores específicos
       if (serviceError instanceof Error) {
-        // Error de configuración de SES
-        if (serviceError.message.includes('Email delivery configuration error')) {
-          return {
-            statusCode: 500,
-            headers: {
-              'Content-Type': 'application/json',
-              'Access-Control-Allow-Origin': '*',
-              'Access-Control-Allow-Methods': 'OPTIONS,POST,GET',
-              'Access-Control-Allow-Headers': 'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'
-            },
-            body: JSON.stringify({
-              success: false,
-              message: 'Unable to send email at this time',
-              data: null,
-              errors: {
-                email: ['Email delivery service is currently unavailable. Please try again later.'],
-                details: serviceError.message
-              }
-            })
-          };
-        }
-
         // Error de verificación de email
-        if (serviceError.message.includes('not verified') ||
-            serviceError.message.includes('identity') ||
+        if (serviceError.message.includes('not verified') || 
+            serviceError.message.includes('identity') || 
             serviceError.message.includes('verification')) {
           return {
             statusCode: 500,
@@ -130,17 +120,41 @@ const forgotPasswordHandler: APIGatewayProxyHandler = async (event) => {
         },
         body: JSON.stringify({
           success: false,
-          message: 'An error occurred while processing your request',
+          message: 'An error occurred while sending the test email',
           data: null,
           errors: {
-            server: ['Unable to process password reset request. Please try again later.'],
+            server: ['Unable to send test email. Please try again later.'],
             details: process.env.NODE_ENV === 'dev' ? (serviceError instanceof Error ? serviceError.message : String(serviceError)) : 'Internal server error'
           }
         })
       };
     }
-  } finally {
-    await authService.cleanup();
+  } catch (error) {
+    logger.error('Unexpected error in test email handler', {
+      error,
+      errorName: error instanceof Error ? error.name : 'Unknown',
+      errorMessage: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : 'No stack trace'
+    });
+
+    return {
+      statusCode: 500,
+      headers: {
+        'Content-Type': 'application/json',
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Methods': 'OPTIONS,POST,GET',
+        'Access-Control-Allow-Headers': 'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'
+      },
+      body: JSON.stringify({
+        success: false,
+        message: 'An unexpected error occurred',
+        data: null,
+        errors: {
+          server: ['An unexpected error occurred while processing your request.'],
+          details: process.env.NODE_ENV === 'dev' ? (error instanceof Error ? error.message : String(error)) : 'Internal server error'
+        }
+      })
+    };
   }
 };
 
@@ -150,8 +164,8 @@ import { rateLimit, rateLimitPresets } from '@shared/middleware/rate-limit/rate-
 // Exportar el handler con los middlewares aplicados
 export const handler = withErrorHandling(
   rateLimit(rateLimitPresets.strict)(
-    validateRequest(forgotPasswordSchema)(
-      forgotPasswordHandler
+    validateRequest(testEmailSchema)(
+      testEmailHandler
     )
   )
 );

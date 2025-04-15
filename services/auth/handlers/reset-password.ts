@@ -43,6 +43,16 @@ const resetPasswordHandler: APIGatewayProxyHandler = async (event) => {
     // El body ya está validado por el middleware
     const { email, password, confirmationCode } = JSON.parse(event.body!);
 
+    logger.info('Parsed body before validation', {
+      parsedBody: {
+        email,
+        password: '********', // No mostrar la contraseña completa por seguridad
+        confirmationCode
+      }
+    });
+
+    logger.info('Starting password reset process', { email });
+
     // Restablecer contraseña
     await authService.resetPassword(email, password, confirmationCode);
 
@@ -52,7 +62,9 @@ const resetPasswordHandler: APIGatewayProxyHandler = async (event) => {
       statusCode: 200,
       headers: {
         'Content-Type': 'application/json',
-        'Access-Control-Allow-Origin': '*'
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Methods': 'OPTIONS,POST,GET',
+        'Access-Control-Allow-Headers': 'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'
       },
       body: JSON.stringify({
         success: true,
@@ -61,6 +73,16 @@ const resetPasswordHandler: APIGatewayProxyHandler = async (event) => {
         errors: null
       })
     };
+
+  } catch (error) {
+    logger.error('Error confirming password reset', {
+      error,
+      errorName: error instanceof Error ? error.name : 'Unknown',
+      errorMessage: error instanceof Error ? error.message : String(error)
+    });
+
+    // Propagar el error para que sea manejado por el middleware de manejo de errores
+    throw error;
 
   } finally {
     await authService.cleanup();

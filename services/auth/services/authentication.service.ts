@@ -1,6 +1,7 @@
 // services/auth/services/authentication.service.ts
 
 import { Logger } from '@shared/utils/logger';
+import { EmailService } from '@shared/services/email/email.service';
 import {
   ValidationError,
   ConflictError,
@@ -23,7 +24,8 @@ import {
   QueryCommand,
   TransactWriteCommand,
   UpdateCommand,
-  GetCommand
+  GetCommand,
+  ScanCommand
 } from "@aws-sdk/lib-dynamodb";
 import { v4 as uuidv4 } from 'uuid';
 import { ObservabilityService } from '@shared/services/observability/observability.service';
@@ -70,34 +72,181 @@ export class AuthenticationService {
   async forgotPassword(email: string): Promise<void> {
     try {
       this.logger.info('Starting password recovery process', { email });
+      console.log('Starting password recovery process', { email });
 
       // Verificar que el usuario existe
       const user = await this.getUserByEmail(email);
+      console.log('User lookup result:', {
+        userExists: !!user,
+        email,
+        userId: user?.userId,
+        userSub: user?.userSub,
+        userStatus: user?.status
+      });
+
       if (!user) {
         // No informamos al cliente si el email existe o no por seguridad
         this.logger.info('Password recovery requested for non-existent user', { email });
+        console.log('Password recovery requested for non-existent user', { email });
         return;
       }
 
-      // Solicitar código de recuperación a Cognito
-      await this.cognitoService.forgotPassword(email);
+      // Verificar que el usuario tenga un userSub válido (necesario para Cognito)
+      if (!user.userSub) {
+        this.logger.warn('User does not have a valid userSub', { email, userId: user.userId });
+        console.log('User does not have a valid userSub', { email, userId: user.userId });
+        // Intentamos recuperar el userSub de Cognito
+        try {
+          const cognitoUser = await this.cognitoService.getUserByEmail(email);
+          if (cognitoUser && cognitoUser.sub) {
+            // Actualizar el userSub en la base de datos
+            await this.updateUserSub(user.userId, cognitoUser.sub);
+            user.userSub = cognitoUser.sub;
+            this.logger.info('Updated user with Cognito sub', { email, userId: user.userId, sub: cognitoUser.sub });
+            console.log('Updated user with Cognito sub', { email, userId: user.userId, sub: cognitoUser.sub });
+          }
+        } catch (subError) {
+          this.logger.error('Error retrieving userSub from Cognito', {
+            error: subError,
+            email,
+            userId: user.userId
+          });
+          console.error('Error retrieving userSub from Cognito', {
+            error: subError,
+            email,
+            userId: user.userId
+          });
+        }
+      }
 
-      this.logger.info('Password recovery code sent successfully', { email });
-      await this.metrics.incrementCounter('PasswordRecoveryRequested');
-      await this.observability.trackAuthEvent('PasswordRecoveryRequested', { email });
+      try {
+        // Intentar primero con Cognito
+        console.log('Trying to send password reset code via Cognito', { email });
+        try {
+          await this.cognitoService.forgotPassword(email);
+          console.log('Cognito forgotPassword call successful', { email });
+          this.logger.info('Password recovery code sent successfully via Cognito', { email });
+        } catch (cognitoError) {
+          console.error('Error sending password reset code via Cognito:', {
+            error: cognitoError,
+            name: cognitoError instanceof Error ? cognitoError.name : 'Unknown',
+            message: cognitoError instanceof Error ? cognitoError.message : String(cognitoError),
+            stack: cognitoError instanceof Error ? cognitoError.stack : 'No stack trace'
+          });
+
+          // Verificar si es un error de verificación de email
+          if (cognitoError instanceof Error &&
+              (cognitoError.message.includes('not verified') ||
+               cognitoError.message.includes('identity') ||
+               cognitoError.message.includes('verification'))) {
+            console.log('Email verification issue detected, trying direct SES as fallback');
+          } else if (cognitoError instanceof Error && cognitoError.name === 'InvalidParameterException') {
+            console.log('Invalid parameter issue detected, trying direct SES as fallback');
+          } else {
+            // Para otros errores, podemos decidir si reintentamos o no
+            console.log('Unknown Cognito error, trying direct SES as fallback');
+          }
+
+          // Si falla Cognito, intentar con nuestro servicio de correo
+          console.log('Trying to send password reset email via direct SES', { email });
+
+          // Generar un código de 6 dígitos
+          const resetCode = Math.floor(100000 + Math.random() * 900000).toString();
+
+          // Guardar el código en Redis para validarlo después
+          // TODO: Implementar almacenamiento del código
+
+          // Enviar correo con el código
+          try {
+            const emailService = EmailService.getInstance();
+            console.log('EmailService instance created', {
+              defaultSender: process.env.SES_FROM_EMAIL || 'anderson.montilva@technoapes.co',
+              region: process.env.REGION || 'us-east-1'
+            });
+
+            await emailService.sendPasswordResetEmail(email, resetCode);
+
+            console.log('Password reset email sent successfully via direct SES', { email });
+            this.logger.info('Password reset email sent successfully via direct SES', { email });
+          } catch (sesError) {
+            console.error('Error sending email via direct SES:', {
+              error: sesError,
+              name: sesError instanceof Error ? sesError.name : 'Unknown',
+              message: sesError instanceof Error ? sesError.message : String(sesError),
+              stack: sesError instanceof Error ? sesError.stack : 'No stack trace'
+            });
+
+            // Propagar el error original de Cognito si SES también falla
+            throw cognitoError;
+          }
+        }
+
+        await this.metrics.incrementCounter('PasswordRecoveryRequested');
+        await this.observability.trackAuthEvent('PasswordRecoveryRequested', { email });
+
+      } catch (emailError) {
+        console.error('All email delivery methods failed:', {
+          error: emailError,
+          name: emailError instanceof Error ? emailError.name : 'Unknown',
+          message: emailError instanceof Error ? emailError.message : String(emailError),
+          stack: emailError instanceof Error ? emailError.stack : 'No stack trace'
+        });
+
+        throw new AuthenticationError(
+          'Failed to send password recovery email: ' + ((emailError as Error).message || 'Unknown error')
+        );
+      }
 
     } catch (error) {
-      this.logger.error('Error in password recovery process', { error, email });
+      this.logger.error('Error in password recovery process', {
+        error,
+        errorName: error instanceof Error ? error.name : 'Unknown',
+        errorMessage: error instanceof Error ? error.message : String(error),
+        email
+      });
+      console.error('Error in password recovery process', {
+        error,
+        errorName: error instanceof Error ? error.name : 'Unknown',
+        errorMessage: error instanceof Error ? error.message : String(error),
+        email
+      });
       await this.metrics.incrementCounter('PasswordRecoveryFailed');
 
       // No propagamos el error para no revelar si el email existe
-      if ((error as Error).name === 'UserNotFoundException') {
+      if (error instanceof Error && error.name === 'UserNotFoundException') {
+        console.log('UserNotFoundException handled silently', { email });
         return;
       }
 
       throw new AuthenticationError(
         'Password recovery failed: ' + ((error as Error).message || 'Unknown error')
       );
+    }
+  }
+
+  /**
+   * Actualiza el userSub de un usuario
+   *
+   * @param userId - ID del usuario
+   * @param userSub - Sub de Cognito
+   */
+  private async updateUserSub(userId: string, userSub: string): Promise<void> {
+    try {
+      await this.dynamodb.send(new UpdateCommand({
+        TableName: `${process.env.SERVICE_NAME}-${process.env.STAGE}-users`,
+        Key: {
+          userId: userId
+        },
+        UpdateExpression: 'SET userSub = :userSub',
+        ExpressionAttributeValues: {
+          ':userSub': userSub
+        }
+      }));
+
+      this.logger.info('User sub updated successfully', { userId, userSub });
+    } catch (error) {
+      this.logger.error('Error updating user sub', { error, userId, userSub });
+      // No lanzamos el error para no interrumpir el flujo principal
     }
   }
 
@@ -132,15 +281,52 @@ export class AuthenticationService {
       await this.observability.trackAuthEvent('PasswordResetCompleted', { email });
 
     } catch (error) {
-      this.logger.error('Error in password reset process', { error, email });
+      this.logger.error('Error in password reset process', {
+        error,
+        email,
+        errorName: error instanceof Error ? error.name : 'Unknown',
+        errorMessage: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : 'No stack trace'
+      });
       await this.metrics.incrementCounter('PasswordResetFailed');
 
+      // Manejar errores específicos
       if ((error as Error).name === 'CodeMismatchException') {
-        throw new ValidationError('Invalid confirmation code');
+        // Código incorrecto
+        throw new ValidationError(
+          'The confirmation code is incorrect. Please check the code and try again.'
+        );
       }
 
       if ((error as Error).name === 'ExpiredCodeException') {
-        throw new ValidationError('Confirmation code has expired');
+        // Código expirado - sugerir solicitar un nuevo código
+        this.logger.info('Confirmation code has expired, suggesting to request a new code', { email });
+
+        // Intentar enviar un nuevo código automáticamente
+        try {
+          this.logger.info('Attempting to send a new confirmation code', { email });
+          await this.forgotPassword(email);
+
+          throw new ValidationError(
+            'The confirmation code has expired. We have sent a new code to your email. Please check your inbox and try again with the new code.'
+          );
+        } catch (sendError) {
+          this.logger.error('Failed to send a new confirmation code', {
+            error: sendError,
+            email,
+            originalError: error
+          });
+
+          throw new ValidationError(
+            'The confirmation code has expired. Please request a new code using the forgot password feature.'
+          );
+        }
+      }
+
+      if ((error as Error).name === 'LimitExceededException') {
+        throw new ValidationError(
+          'Too many attempts. Please try again after some time.'
+        );
       }
 
       throw new AuthenticationError(
@@ -466,17 +652,101 @@ export class AuthenticationService {
 
   async validateToken(token: string): Promise<AuthenticatedUser> {
     try {
+      // Verificar el token JWT
       const payload = await this.tokenService.verifyToken(token);
-      const user = await this.getUserByEmail(payload.email);
+      this.logger.info('Token verified successfully', {
+        sub: payload.sub,
+        username: payload.username,
+        hasEmail: !!payload.email
+      });
 
-      if (!user) {
-        throw new AuthenticationError('User not found');
+      // Imprimir el payload completo para depuración
+      this.logger.debug('Token payload', { payload: JSON.stringify(payload) });
+
+      // Intentar buscar al usuario por email primero
+      let user: AuthenticatedUser | null = null;
+      let searchMethods: string[] = [];
+      let searchErrors: Record<string, string> = {};
+
+      if (payload.email && payload.email.trim() !== '') {
+        this.logger.info('Searching user by email', { email: payload.email });
+        searchMethods.push('email');
+        try {
+          user = await this.getUserByEmail(payload.email);
+          if (user) {
+            this.logger.info('User found by email', { userId: user.userId, email: payload.email });
+            return user; // Retornar inmediatamente si encontramos al usuario
+          }
+        } catch (emailError) {
+          const errorMessage = emailError instanceof Error ? emailError.message : String(emailError);
+          this.logger.warn('Error searching user by email', { error: errorMessage, email: payload.email });
+          searchErrors['email'] = errorMessage;
+          // Continuamos con otros métodos de búsqueda
+        }
       }
 
-      return user;
+      // Si no se encuentra por email o no hay email, intentar buscar por username/sub
+      if (payload.username) {
+        this.logger.info('Searching user by username', { username: payload.username });
+        searchMethods.push('username');
+        try {
+          user = await this.getUserBySub(payload.username);
+          if (user) {
+            this.logger.info('User found by username', { userId: user.userId, username: payload.username });
+            return user; // Retornar inmediatamente si encontramos al usuario
+          }
+        } catch (usernameError) {
+          const errorMessage = usernameError instanceof Error ? usernameError.message : String(usernameError);
+          this.logger.warn('Error searching user by username', { error: errorMessage, username: payload.username });
+          searchErrors['username'] = errorMessage;
+          // Continuamos con otros métodos de búsqueda
+        }
+      }
+
+      // Si aún no se encuentra, intentar buscar por sub directamente
+      if (payload.sub) {
+        this.logger.info('Searching user by sub', { sub: payload.sub });
+        searchMethods.push('sub');
+        try {
+          user = await this.getUserBySub(payload.sub);
+          if (user) {
+            this.logger.info('User found by sub', { userId: user.userId, sub: payload.sub });
+            return user; // Retornar inmediatamente si encontramos al usuario
+          }
+        } catch (subError) {
+          const errorMessage = subError instanceof Error ? subError.message : String(subError);
+          this.logger.warn('Error searching user by sub', { error: errorMessage, sub: payload.sub });
+          searchErrors['sub'] = errorMessage;
+        }
+      }
+
+      // Si llegamos aquí, no encontramos al usuario por ningún método
+      this.logger.error('User not found after trying multiple methods', {
+        searchMethods,
+        searchErrors,
+        sub: payload.sub,
+        username: payload.username,
+        hasEmail: !!payload.email
+      });
+
+      // Construir un mensaje de error detallado
+      let errorMessage = `User not found. Tried searching by: ${searchMethods.join(', ')}`;
+
+      // Agregar detalles de errores si los hay
+      if (Object.keys(searchErrors).length > 0) {
+        const errorDetails = Object.entries(searchErrors)
+          .map(([method, error]) => `${method}: ${error}`)
+          .join('; ');
+        errorMessage += `. Errors: ${errorDetails}`;
+      }
+
+      throw new AuthenticationError(errorMessage);
 
     } catch (error) {
-      this.logger.error('Error validating token', { error });
+      this.logger.error('Error validating token', {
+        error: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : undefined
+      });
       throw error instanceof AuthenticationError ? error : new AuthenticationError(
         'Token validation failed: ' + ((error as Error).message || 'Unknown error')
       );
@@ -523,6 +793,11 @@ export class AuthenticationService {
   }
 
   private async getUserByEmail(email: string): Promise<AuthenticatedUser | null> {
+    if (!email || email.trim() === '') {
+      this.logger.warn('Empty email provided to getUserByEmail');
+      return null;
+    }
+
     try {
       const response = await this.dynamodb.send(new QueryCommand({
         TableName: `${process.env.SERVICE_NAME}-${process.env.STAGE}-users`,
@@ -542,6 +817,85 @@ export class AuthenticationService {
 
     } catch (error) {
       this.logger.error('Error getting user by email', { error, email });
+      throw new AuthenticationError(
+        'Failed to get user: ' + ((error as Error).message || 'Unknown error')
+      );
+    }
+  }
+
+  private async getUserBySub(sub: string): Promise<AuthenticatedUser | null> {
+    if (!sub || sub.trim() === '') {
+      this.logger.warn('Empty sub provided to getUserBySub');
+      return null;
+    }
+
+    try {
+      // Intentar primero con el índice SubIndex (que es el correcto según la infraestructura)
+      this.logger.info('Searching user by sub using SubIndex', { sub });
+
+      try {
+        const queryResponse = await this.dynamodb.send(new QueryCommand({
+          TableName: `${process.env.SERVICE_NAME}-${process.env.STAGE}-users`,
+          IndexName: 'SubIndex', // Nombre correcto del índice según infrastructure/dynamodb/user-tables.yml
+          KeyConditionExpression: 'userSub = :userSub',
+          ExpressionAttributeValues: {
+            ':userSub': sub
+          },
+          Limit: 1
+        }));
+
+        if (queryResponse.Items && queryResponse.Items.length > 0) {
+          this.logger.info('User found by SubIndex', { sub });
+          return UserModel.fromDynamoDB(queryResponse.Items[0]);
+        }
+
+        this.logger.info('User not found using SubIndex', { sub });
+      } catch (indexError) {
+        // Si hay un error con el índice, continuamos con los otros métodos
+        this.logger.warn('Error using SubIndex, falling back to scan', {
+          error: indexError instanceof Error ? indexError.message : String(indexError),
+          sub
+        });
+      }
+
+      // Si no encontramos con el índice o hubo un error, intentamos con scan
+      this.logger.info('Scanning for user by userSub', { sub });
+
+      const scanResponse = await this.dynamodb.send(new ScanCommand({
+        TableName: `${process.env.SERVICE_NAME}-${process.env.STAGE}-users`,
+        FilterExpression: 'userSub = :userSub',
+        ExpressionAttributeValues: {
+          ':userSub': sub
+        },
+        Limit: 1
+      }));
+
+      if (scanResponse.Items && scanResponse.Items.length > 0) {
+        this.logger.info('User found by userSub scan', { sub });
+        return UserModel.fromDynamoDB(scanResponse.Items[0]);
+      }
+
+      // Si no encontramos por userSub, intentamos buscar por userId
+      // (en caso de que el sub se esté usando como userId)
+      this.logger.info('Trying to get user by userId', { userId: sub });
+
+      const getResponse = await this.dynamodb.send(new GetCommand({
+        TableName: `${process.env.SERVICE_NAME}-${process.env.STAGE}-users`,
+        Key: {
+          userId: sub
+        }
+      }));
+
+      if (getResponse.Item) {
+        this.logger.info('User found by userId', { userId: sub });
+        return UserModel.fromDynamoDB(getResponse.Item);
+      }
+
+      this.logger.info('User not found by any method', { sub });
+      return null;
+
+    } catch (error) {
+      this.logger.error('Error getting user by sub', { error, sub });
       throw new AuthenticationError(
         'Failed to get user: ' + ((error as Error).message || 'Unknown error')
       );

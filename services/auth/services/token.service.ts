@@ -8,13 +8,13 @@ import { RedisService } from '@shared/services/cache/redis.service';
 import { ObservabilityService } from "@shared/services/observability/observability.service";
 
 export class TokenService {
-  
+
   private readonly verifier: any;
   private readonly redis: RedisService;
   private readonly observability: ObservabilityService;
 
   constructor() {
-    
+
     // Solo configuramos el verificador de Cognito
     this.verifier = CognitoJwtVerifier.create({
       userPoolId: config.getRequired<string>('COGNITO_USER_POOL_ID'),
@@ -50,22 +50,34 @@ export class TokenService {
       await this.observability.trackAuthEvent('TokenValidationSuccess');
 
       console.log('TokenService: Tracking auth event');
-      
+
+      // Imprimir el payload completo para depuración
+      console.log('TokenService: Token payload', JSON.stringify(payload, null, 2));
+
+      // Extraer el username (que es el sub en Cognito)
+      const sub = payload.sub;
+
+      // Crear el objeto TokenPayload con los campos disponibles
       return {
-        sub: payload.sub,
-        email: payload.email,
-        userType: payload['custom:userType'],
-        name: payload.name,
+        sub: sub,
+        // El email puede no estar presente en el token de acceso
+        email: payload.email || '',
+        // El userType puede estar en custom:userType o no estar presente
+        userType: payload['custom:userType'] || 'basic',
+        // El nombre puede no estar presente
+        name: payload.name || '',
         iat: payload.iat,
-        exp: payload.exp
+        exp: payload.exp,
+        // Agregar el username para poder buscar al usuario
+        username: payload.username || sub
       };
 
     } catch (error) {
-      console.warn('Redis blacklist check failed, proceeding with token refresh', { 
-        error: error instanceof Error ? error.message : 'Unknown error' 
+      console.warn('Redis blacklist check failed, proceeding with token refresh', {
+        error: error instanceof Error ? error.message : 'Unknown error'
       });
       await this.observability.trackAuthEvent('TokenValidationFailure');
-      
+
       throw new AuthenticationError(
         'Invalid token: ' + ((error as Error).message || 'Unknown error')
       );
@@ -75,11 +87,11 @@ export class TokenService {
   async invalidateToken(token: string): Promise<void> {
     try {
       const payload = await this.verifier.verify(token);
-      
+
       // Calcular tiempo restante de expiración
       const now = Math.floor(Date.now() / 1000);
       const timeToExpire = payload.exp - now;
-      
+
       if (timeToExpire > 0) {
         // Agregar token a la blacklist
         await this.redis.getClient().setex(
@@ -103,14 +115,14 @@ export class TokenService {
     try {
         const exists = await Promise.race([
             this.redis.getClient().exists(`blacklist:${token}`),
-            new Promise((_, reject) => 
+            new Promise((_, reject) =>
                 setTimeout(() => reject(new Error('Redis operation timed out')), 3000)
             )
         ]);
 
         return exists === 1;
     } catch (error) {
-        console.warn('Error checking token blacklist, assuming token valid', { 
+        console.warn('Error checking token blacklist, assuming token valid', {
             error: error instanceof Error ? error.message : 'Unknown error'
         });
         return false;

@@ -255,7 +255,7 @@ export class BusinessMetricsService {
         // Crear expresión de filtro para cada dimensión
         Object.entries(dimensions).forEach(([key, value], index) => {
           const dimKey = `:dim${index}`;
-          const dimName = `:name${index}`;
+          //const dimName = `:name${index}`;
           filterExpressions.push(`dimensions.${key} = ${dimKey}`);
           expressionValues[dimKey] = value;
         });

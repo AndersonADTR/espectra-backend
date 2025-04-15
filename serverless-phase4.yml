@@ -12,7 +12,7 @@ provider:
   websocket:
     apiId: !Ref WebSocketApi
     stage: ${self:provider.stage}
-  
+
   httpApi:
     cors: true
   apiGateway:
@@ -30,7 +30,7 @@ provider:
     subnetIds:
       - Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-private-subnet-1-id
       - Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-private-subnet-2-id
-      
+
   environment:
     # System Variables
     STAGE: ${self:provider.stage}
@@ -39,9 +39,9 @@ provider:
     NODE_ENV: ${self:provider.stage}
     LOG_LEVEL: ${self:custom.logLevel.${self:provider.stage}}
     API_VERSION: "v1"
-    
+
     # Cognito Variables
-    COGNITO_USER_POOL_ID: 
+    COGNITO_USER_POOL_ID:
       Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-user-pool-id
     COGNITO_CLIENT_ID:
       Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-user-pool-client-id
@@ -89,20 +89,20 @@ provider:
     METRICS_RETENTION_DAYS: ${self:custom.monitoring.metricsRetention}
     SESSION_ALERT_THRESHOLD: ${self:custom.monitoring.sessionAlertThreshold}
     RATE_LIMIT_SESSION_CREATION: ${self:custom.rateLimit.sessionCreation}
-    
+
     COGNITO_CLIENT_SECRET: ${ssm:/espectra/${self:provider.stage}/cognito/client-secret}
 
 custom:
   service: espectra-backend
   service_fase3: espectra-backend-phase3
-  
+
   logRetentionInDays: 14
-  
+
   logLevel:
     dev: 'DEBUG'
     staging: 'INFO'
     prod: 'WARN'
-  
+
   # Configuración de Table Names
   tableNames:
     connections: ${self:custom.service}-${self:provider.stage}-connection-table
@@ -115,7 +115,7 @@ custom:
   session:
     ttl: ${ssm:/espectra/${self:provider.stage}/session/ttl}
     extendDuration: ${ssm:/espectra/${self:provider.stage}/session/extend-duration}
-  
+
   monitoring:
     metricsRetention: ${ssm:/espectra/${self:provider.stage}/monitoring/metrics-retention}
     sessionAlertThreshold: ${ssm:/espectra/${self:provider.stage}/monitoring/session-alert-threshold}
@@ -207,19 +207,19 @@ functions:
   restAuthorizer:
     handler: services/auth/handlers/authorizer.handler
     name: ${self:custom.service}-${self:provider.stage}-rest-authorizer
-    role: 
+    role:
       Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-lambda-role-arn
     memorySize: 256
     environment:
-      COGNITO_USER_POOL_ID: 
+      COGNITO_USER_POOL_ID:
         Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-user-pool-id
-      COGNITO_CLIENT_ID: 
+      COGNITO_CLIENT_ID:
         Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-user-pool-client-id
 
   register:
     handler: services/auth/handlers/register.handler
     name: ${self:custom.service}-${self:provider.stage}-register
-    role: 
+    role:
       Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-lambda-role-arn
     events:
       - http:
@@ -260,7 +260,7 @@ functions:
   login:
     handler: services/auth/handlers/login.handler
     name: ${self:custom.service}-${self:provider.stage}-login
-    role: 
+    role:
       Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-lambda-role-arn
     events:
       - http:
@@ -273,9 +273,9 @@ functions:
   refreshToken:
     handler: services/auth/handlers/refreshToken.handler
     name: ${self:custom.service}-${self:provider.stage}-refreshToken
-    role: 
+    role:
       Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-lambda-role-arn
-    vpc: 
+    vpc:
       securityGroupIds:
         - Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-lambda-sg-id
       subnetIds:
@@ -289,16 +289,16 @@ functions:
           restApi:
             id: !Ref RestApiId
     environment:
-      COGNITO_USER_POOL_ID: 
+      COGNITO_USER_POOL_ID:
         Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-user-pool-id
-      COGNITO_CLIENT_ID: 
+      COGNITO_CLIENT_ID:
         Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-user-pool-client-id
       COGNITO_CLIENT_SECRET: ${ssm:/espectra/${self:provider.stage}/cognito/client-secret}
 
   logout:
     handler: services/auth/handlers/logout.handler
     name: ${self:custom.service}-${self:provider.stage}-logout
-    role: 
+    role:
       Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-lambda-role-arn
     events:
       - http:
@@ -313,7 +313,7 @@ functions:
   me:
     handler: services/auth/handlers/me.handler
     name: ${self:custom.service}-${self:provider.stage}-me
-    role: 
+    role:
       Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-lambda-role-arn
     events:
       - http:
@@ -328,7 +328,7 @@ functions:
   forgotPassword:
     handler: services/auth/handlers/forgot-password.handler
     name: ${self:custom.service}-${self:provider.stage}-forgot-password
-    role: 
+    role:
       Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-lambda-role-arn
     events:
       - http:
@@ -338,16 +338,17 @@ functions:
           restApi:
             id: !Ref RestApiId
     environment:
-      COGNITO_USER_POOL_ID: 
+      COGNITO_USER_POOL_ID:
         Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-user-pool-id
-      COGNITO_CLIENT_ID: 
+      COGNITO_CLIENT_ID:
         Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-user-pool-client-id
       COGNITO_CLIENT_SECRET: ${ssm:/espectra/${self:provider.stage}/cognito/client-secret}
+      SES_FROM_EMAIL: 'anderson.montilva@technoapes.co'
 
   resetPassword:
     handler: services/auth/handlers/reset-password.handler
     name: ${self:custom.service}-${self:provider.stage}-reset-password
-    role: 
+    role:
       Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-lambda-role-arn
     events:
       - http:
@@ -357,16 +358,16 @@ functions:
           restApi:
             id: !Ref RestApiId
     environment:
-      COGNITO_USER_POOL_ID: 
+      COGNITO_USER_POOL_ID:
         Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-user-pool-id
-      COGNITO_CLIENT_ID: 
+      COGNITO_CLIENT_ID:
         Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-user-pool-client-id
       COGNITO_CLIENT_SECRET: ${ssm:/espectra/${self:provider.stage}/cognito/client-secret}
 
   verifyEmail:
     handler: services/auth/handlers/verify-email.handler
     name: ${self:custom.service}-${self:provider.stage}-verify-email
-    role: 
+    role:
       Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-lambda-role-arn
     events:
       - http:
@@ -376,30 +377,45 @@ functions:
           restApi:
             id: !Ref RestApiId
     environment:
-      COGNITO_USER_POOL_ID: 
+      COGNITO_USER_POOL_ID:
         Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-user-pool-id
-      COGNITO_CLIENT_ID: 
+      COGNITO_CLIENT_ID:
         Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-user-pool-client-id
       COGNITO_CLIENT_SECRET: ${ssm:/espectra/${self:provider.stage}/cognito/client-secret}
+
+  testEmail:
+    handler: services/auth/handlers/test-email.handler
+    name: ${self:custom.service}-${self:provider.stage}-test-email
+    role:
+      Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-lambda-role-arn
+    events:
+      - http:
+          path: auth/test-email
+          method: post
+          cors: true
+          restApi:
+            id: !Ref RestApiId
+    environment:
+      SES_FROM_EMAIL: 'anderson.montilva@technoapes.co'
 
   # WebSocket Functions
   wsAuthorizer:
     handler: services/websocket/handlers/authorizer.handler
     name: ${self:custom.service}-${self:provider.stage}-websocket-authorizer
-    role: 
+    role:
       Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-lambda-role-arn
     memorySize: 256
     timeout: 29
     environment:
-      COGNITO_USER_POOL_ID: 
+      COGNITO_USER_POOL_ID:
         Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-user-pool-id
-      COGNITO_CLIENT_ID: 
+      COGNITO_CLIENT_ID:
         Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-user-pool-client-id
 
   webSocketConnect:
     handler: services/websocket/handlers/connect.handler
     name: ${self:custom.service}-${self:provider.stage}-webSocketConnect
-    role: 
+    role:
       Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-lambda-role-arn
     events:
       - websocket:
@@ -414,7 +430,7 @@ functions:
   webSocketDisconnect:
     handler: services/websocket/handlers/disconnect.handler
     name: ${self:custom.service}-${self:provider.stage}-webSocketDisconnect
-    role: 
+    role:
       Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-lambda-role-arn
     events:
       - websocket:
@@ -425,18 +441,18 @@ functions:
   webSocketMessage:
     handler: services/websocket/handlers/message.handler
     name: ${self:custom.service}-${self:provider.stage}-webSocketMessage
-    role: 
+    role:
       Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-lambda-role-arn
     events:
       - websocket:
           route: $default
           websocketApi:
             id: !Ref WebSocketApi
-  
+
   webSocketAgent:
     handler: services/websocket/handlers/agent.handler
     name: ${self:custom.service}-${self:provider.stage}-webSocketAgent
-    role: 
+    role:
       Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-lambda-role-arn
     events:
       - websocket:
@@ -448,7 +464,7 @@ functions:
   botpressWebhook:
     handler: services/botpress/handlers/webhook/botpress-webhook.handler
     name: ${self:custom.service}-${self:provider.stage}-botpress-webhook
-    role: 
+    role:
       Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-lambda-role-arn
     vpc: null
     events:
@@ -467,7 +483,7 @@ functions:
   processMessage:
     handler: services/botpress/handlers/message/process-message.handler
     name: ${self:custom.service}-${self:provider.stage}-process-message
-    role: 
+    role:
       Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-lambda-role-arn
     vpc: null
     events:
@@ -481,7 +497,7 @@ functions:
   handoffRequest:
     handler: services/botpress/handlers/handoff/request.handler
     name: ${self:custom.service}-${self:provider.stage}-handoff-request
-    role: 
+    role:
       Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-lambda-role-arn
     vpc: null
     events:
@@ -500,7 +516,7 @@ functions:
   handoffAccept:
     handler: services/botpress/handlers/handoff/accept.handler
     name: ${self:custom.service}-${self:provider.stage}-handoff-accept
-    role: 
+    role:
       Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-lambda-role-arn
     vpc: null
     events:
@@ -520,7 +536,7 @@ functions:
   startSession:
     handler: services/session/handlers/start.handler
     name: ${self:custom.service}-${self:provider.stage}-start-session
-    role: 
+    role:
       Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-lambda-role-arn
     vpc: null
     events:
@@ -536,7 +552,7 @@ functions:
   createSession:
     handler: services/auth/handlers/session.createSession
     name: ${self:custom.service}-${self:provider.stage}-create-session
-    role: 
+    role:
       Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-lambda-role-arn
     vpc: null
     events:
@@ -556,13 +572,13 @@ functions:
     #   - Effect: Allow
     #     Action:
     #       - dynamodb:PutItem
-    #     Resource: 
+    #     Resource:
     #       Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-chat-sessions-table-arn
 
   extendSession:
     handler: services/auth/handlers/session.extendSession
     name: ${self:custom.service}-${self:provider.stage}-extend-session
-    role: 
+    role:
       Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-lambda-role-arn
     vpc: null
     events:
@@ -581,7 +597,7 @@ functions:
   endSession:
     handler: services/session/handlers/end.handler
     name: ${self:custom.service}-${self:provider.stage}-end-session
-    role: 
+    role:
       Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-lambda-role-arn
     vpc: null
     events:
@@ -598,7 +614,7 @@ functions:
   metricsCollector:
     handler: services/metrics/handlers/collector.handler
     name: ${self:custom.service}-${self:provider.stage}-metrics-collector
-    role: 
+    role:
       Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-lambda-role-arn
     vpc: null
     events:
@@ -611,7 +627,7 @@ functions:
 resources:
   - ${file(infrastructure/apigateway/api.yml)}
   - ${file(infrastructure/apigateway/chat-api-routes.yml)}
-  
+
   - ${file(infrastructure/security/waf.yml)}
 
   - ${file(infrastructure/websocket/websocket.yml)}
@@ -641,7 +657,7 @@ outputs:
     Value: !Ref RestApiAuthorizer
     Export:
       Name: ${self:custom.service}-${self:provider.stage}-rest-authorizer-id
-      
+
   ChatResourceId:
     Description: Chat Resource ID
     Value: !Ref ChatResource
@@ -665,7 +681,7 @@ outputs:
     Value: !Ref HandoffResource
     Export:
       Name: ${self:custom.service}-${self:provider.stage}-handoff-resource-id
-      
+
   WebACLId:
     Description: ID of the Web ACL
     Value: !GetAtt SpectraWebACL.Id
@@ -695,7 +711,7 @@ outputs:
     Value: !Ref WebSocketIPSet
     Export:
       Name: ${self:custom.service}-${self:provider.stage}-websocket-ipset-id
-      
+
   WebSocketApiId:
     Description: WebSocket API ID
     Value: !Ref WebSocketApi
