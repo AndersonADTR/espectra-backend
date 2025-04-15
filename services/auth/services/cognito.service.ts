@@ -1,6 +1,6 @@
 // services/auth/services/cognito.service.ts
 
-import { 
+import {
   CognitoIdentityProviderClient,
   SignUpCommand,
   InitiateAuthCommand,
@@ -10,7 +10,10 @@ import {
   AuthFlowType,
   AttributeType,
   AdminDeleteUserCommand,
-  ListUsersCommand
+  ListUsersCommand,
+  ForgotPasswordCommand,
+  ConfirmForgotPasswordCommand,
+  ConfirmSignUpCommand
 } from "@aws-sdk/client-cognito-identity-provider";
 import * as crypto from 'crypto';
 import { NodeHttpHandler } from "@aws-sdk/node-http-handler";
@@ -27,7 +30,7 @@ export class CognitoService {
 
   constructor() {
     this.logger = new Logger('CognitoService');
-    
+
     // Agregar configuración de timeout
     this.client = new CognitoIdentityProviderClient({
         region: config.getRequired<string>('AWS_REGION'),
@@ -38,7 +41,7 @@ export class CognitoService {
             socketTimeout: 5000
         })
     });
-    
+
     this.userPoolId = config.getRequired<string>('COGNITO_USER_POOL_ID');
     this.clientId = config.getRequired<string>('COGNITO_CLIENT_ID');
 
@@ -48,7 +51,7 @@ export class CognitoService {
         region: config.getRequired<string>('AWS_REGION')
     });
   }
-  
+
   private calculateSecretHash(username: string, clientId: string): string {
     const clientSecret = process.env.COGNITO_CLIENT_SECRET;
     if (!clientSecret) {
@@ -62,9 +65,9 @@ export class CognitoService {
   async refreshUserTokens(userSub: string, refreshToken: string): Promise<any> {
     try {
 
-      console.log('Starting token refresh cognito service', { 
+      console.log('Starting token refresh cognito service', {
         cognitoSub: userSub,
-        refreshToken: refreshToken 
+        refreshToken: refreshToken
       });
 
       // Calcular SECRET_HASH
@@ -101,10 +104,10 @@ export class CognitoService {
         refreshToken: response.AuthenticationResult.RefreshToken || refreshToken,
         expiresIn: response.AuthenticationResult.ExpiresIn || 3600
       };
-      
+
     } catch (error) {
       console.log('Error refreshing user tokens', { error });
-      
+
       if ((error as Error).name === 'NotAuthorizedException') {
         throw new AuthenticationError('Invalid refresh token');
       }
@@ -117,7 +120,7 @@ export class CognitoService {
 
   async registerUser(credentials: RegisterCredentials): Promise<string | undefined> {
     try {
-      console.log('Starting Cognito user registration', { 
+      console.log('Starting Cognito user registration', {
           email: credentials.email,
           userPoolId: this.userPoolId,
           clientId: this.clientId
@@ -158,7 +161,7 @@ export class CognitoService {
       const user = await this.client.send(command);
       const duration = Date.now() - startTime;
 
-      console.log('Cognito registration complete', { 
+      console.log('Cognito registration complete', {
           email: credentials.email,
           duration
       });
@@ -201,7 +204,7 @@ export class CognitoService {
       });
 
       const response = await this.client.send(command);
-      
+
       if (!response.AuthenticationResult) {
         throw new AuthenticationError('Authentication failed: No tokens received');
       }
@@ -247,12 +250,12 @@ export class CognitoService {
         });
 
         await this.client.send(command);
-        
+
         this.logger.info('User deleted from Cognito', { email });
 
     } catch (error) {
         this.logger.error('Error deleting user from Cognito', { error, email });
-        
+
         if ((error as Error).name === 'UserNotFoundException') {
             // Si el usuario no existe, consideramos que la operación fue exitosa
             return;
@@ -285,36 +288,36 @@ export class CognitoService {
 
   async getUserBySub(userSub: string): Promise<Record<string, string>> {
     try {
-      
+
       const listUsersCommand = new ListUsersCommand({
         UserPoolId: this.userPoolId,
         Filter: `sub = "${userSub}"`,
         Limit: 1
       });
-  
+
       const listResponse = await this.client.send(listUsersCommand);
-      
+
       if (!listResponse.Users || listResponse.Users.length === 0) {
         throw new Error('User not found');
       }
-      
+
       const username = listResponse.Users[0].Username;
-      
+
       if (!username) {
         throw new Error('Username not found for the provided Sub');
       }
-      
+
       const command = new AdminGetUserCommand({
         UserPoolId: this.userPoolId,
         Username: username
       });
-  
+
       const response = await this.client.send(command);
-  
+
       if (!response.UserAttributes) {
         throw new Error('No user attributes found');
       }
-  
+
       // Convertir los atributos a un objeto
       const attributes: Record<string, string> = {};
       response.UserAttributes.forEach(attr => {
@@ -322,23 +325,23 @@ export class CognitoService {
           attributes[attr.Name] = attr.Value;
         }
       });
-  
+
       this.logger.info('User retrieved by Sub successfully', { userSub });
       return attributes;
-  
+
     } catch (error) {
       this.logger.error('Error getting user from Cognito by Sub', { error, userSub });
-      
+
       if ((error as Error).name === 'UserNotFoundException') {
         throw new AuthenticationError('User not found');
       }
-  
+
       throw new AuthenticationError(
         'Failed to get user: ' + ((error as Error).message || 'Unknown error')
       );
     }
   }
-  
+
 
   async getUserByEmail(email: string): Promise<Record<string, string>> {
     try {
@@ -365,7 +368,7 @@ export class CognitoService {
 
     } catch (error) {
       console.log('Error getting user from Cognito', { error, email });
-      
+
       if ((error as Error).name === 'UserNotFoundException') {
         throw new AuthenticationError('User not found');
       }
@@ -383,13 +386,101 @@ export class CognitoService {
       });
 
       await this.client.send(command);
-      
+
       this.logger.info('User signed out successfully');
 
     } catch (error) {
       this.logger.error('Error signing out user', { error });
       throw new AuthenticationError(
         'Failed to sign out: ' + ((error as Error).message || 'Unknown error')
+      );
+    }
+  }
+
+  async forgotPassword(email: string): Promise<void> {
+    try {
+      // Generar SECRET_HASH
+      const secretHash = this.calculateSecretHash(
+        email,
+        this.clientId
+      );
+
+      const command = new ForgotPasswordCommand({
+        ClientId: this.clientId,
+        Username: email,
+        SecretHash: secretHash
+      });
+
+      await this.client.send(command);
+
+      this.logger.info('Password recovery code sent successfully', { email });
+
+    } catch (error) {
+      this.logger.error('Error sending password recovery code', { error, email });
+
+      // No propagamos el error si el usuario no existe para no revelar información
+      if ((error as Error).name === 'UserNotFoundException') {
+        this.logger.info('Password recovery requested for non-existent user', { email });
+        return;
+      }
+
+      throw new AuthenticationError(
+        'Failed to send password recovery code: ' + ((error as Error).message || 'Unknown error')
+      );
+    }
+  }
+
+  async confirmForgotPassword(email: string, confirmationCode: string, newPassword: string): Promise<void> {
+    try {
+      // Generar SECRET_HASH
+      const secretHash = this.calculateSecretHash(
+        email,
+        this.clientId
+      );
+
+      const command = new ConfirmForgotPasswordCommand({
+        ClientId: this.clientId,
+        Username: email,
+        ConfirmationCode: confirmationCode,
+        Password: newPassword,
+        SecretHash: secretHash
+      });
+
+      await this.client.send(command);
+
+      this.logger.info('Password reset completed successfully', { email });
+
+    } catch (error) {
+      this.logger.error('Error confirming password reset', { error, email });
+      throw new AuthenticationError(
+        'Failed to reset password: ' + ((error as Error).message || 'Unknown error')
+      );
+    }
+  }
+
+  async confirmSignUpWithCode(email: string, confirmationCode: string): Promise<void> {
+    try {
+      // Generar SECRET_HASH
+      const secretHash = this.calculateSecretHash(
+        email,
+        this.clientId
+      );
+
+      const command = new ConfirmSignUpCommand({
+        ClientId: this.clientId,
+        Username: email,
+        ConfirmationCode: confirmationCode,
+        SecretHash: secretHash
+      });
+
+      await this.client.send(command);
+
+      this.logger.info('Email verification completed successfully', { email });
+
+    } catch (error) {
+      this.logger.error('Error confirming email verification', { error, email });
+      throw new AuthenticationError(
+        'Failed to verify email: ' + ((error as Error).message || 'Unknown error')
       );
     }
   }

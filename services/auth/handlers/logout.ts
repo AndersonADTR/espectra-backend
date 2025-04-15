@@ -12,7 +12,7 @@ const logoutHandler: APIGatewayProxyHandler = async (event) => {
   logger.info('Processing logout request');
 
   const authService = new AuthenticationService();
-  
+
   try {
     // Obtener el token de autorización
     const authHeader = event.headers.Authorization || event.headers.authorization;
@@ -41,7 +41,10 @@ const logoutHandler: APIGatewayProxyHandler = async (event) => {
         ...(cookies.length > 0 && { 'Set-Cookie': cookies.join(', ') })
       },
       body: JSON.stringify({
-        message: 'Logout successful'
+        success: true,
+        message: 'Logout successful',
+        data: null,
+        errors: null
       })
     };
 

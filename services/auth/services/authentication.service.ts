@@ -1,28 +1,29 @@
 // services/auth/services/authentication.service.ts
 
 import { Logger } from '@shared/utils/logger';
-import { 
-  ValidationError, 
-  ConflictError, 
+import {
+  ValidationError,
+  ConflictError,
   AuthenticationError
 } from '@shared/utils/errors';
-import { 
-  LoginCredentials, 
-  RegisterCredentials, 
+import {
+  LoginCredentials,
+  RegisterCredentials,
   AuthenticationResult,
-  AuthenticatedUser 
+  AuthenticatedUser
 } from '../types/auth.types';
 import { CognitoService } from './cognito.service';
 import { BotpressService } from '@services/botpress/services/botpress/botpress.service';
 import { TokenService } from './token.service';
 import { UserModel, UserStatus } from '../models/user.model';
 import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
-import { 
-  DynamoDBDocumentClient, 
-  PutCommand, 
-  QueryCommand, 
-  TransactWriteCommand, 
-  UpdateCommand
+import {
+  DynamoDBDocumentClient,
+  PutCommand,
+  QueryCommand,
+  TransactWriteCommand,
+  UpdateCommand,
+  GetCommand
 } from "@aws-sdk/lib-dynamodb";
 import { v4 as uuidv4 } from 'uuid';
 import { ObservabilityService } from '@shared/services/observability/observability.service';
@@ -45,14 +46,189 @@ export class AuthenticationService {
     this.metrics = new MetricsService('Authentication');
     this.cognitoService = new CognitoService();
     this.tokenService = new TokenService();
-    
+
     const ddbClient = new DynamoDBClient({});
     this.dynamodb = DynamoDBDocumentClient.from(ddbClient);
 
     this.botpressService = BotpressService.getInstance();
     this.observability = ObservabilityService.getInstance();
     this.anomalyDetection = AnomalyDetectionService.getInstance();
-    
+
+  }
+
+  /**
+   * Inicia el proceso de recuperación de contraseña para un usuario
+   *
+   * Este método verifica si el usuario existe y envía un código de recuperación
+   * a su dirección de correo electrónico. Por razones de seguridad, no se revela
+   * si el email existe o no en la respuesta.
+   *
+   * @param email - La dirección de correo electrónico del usuario
+   * @returns Promise<void> - No devuelve ningún valor
+   * @throws AuthenticationError - Si ocurre un error durante el proceso
+   */
+  async forgotPassword(email: string): Promise<void> {
+    try {
+      this.logger.info('Starting password recovery process', { email });
+
+      // Verificar que el usuario existe
+      const user = await this.getUserByEmail(email);
+      if (!user) {
+        // No informamos al cliente si el email existe o no por seguridad
+        this.logger.info('Password recovery requested for non-existent user', { email });
+        return;
+      }
+
+      // Solicitar código de recuperación a Cognito
+      await this.cognitoService.forgotPassword(email);
+
+      this.logger.info('Password recovery code sent successfully', { email });
+      await this.metrics.incrementCounter('PasswordRecoveryRequested');
+      await this.observability.trackAuthEvent('PasswordRecoveryRequested', { email });
+
+    } catch (error) {
+      this.logger.error('Error in password recovery process', { error, email });
+      await this.metrics.incrementCounter('PasswordRecoveryFailed');
+
+      // No propagamos el error para no revelar si el email existe
+      if ((error as Error).name === 'UserNotFoundException') {
+        return;
+      }
+
+      throw new AuthenticationError(
+        'Password recovery failed: ' + ((error as Error).message || 'Unknown error')
+      );
+    }
+  }
+
+  /**
+   * Restablece la contraseña de un usuario utilizando un código de confirmación
+   *
+   * Este método verifica el código de confirmación enviado al usuario y establece
+   * la nueva contraseña. También actualiza el estado del usuario si es necesario.
+   *
+   * @param email - La dirección de correo electrónico del usuario
+   * @param newPassword - La nueva contraseña
+   * @param confirmationCode - El código de confirmación enviado al usuario
+   * @returns Promise<void> - No devuelve ningún valor
+   * @throws ValidationError - Si el código de confirmación es inválido o ha expirado
+   * @throws AuthenticationError - Si ocurre un error durante el proceso
+   */
+  async resetPassword(email: string, newPassword: string, confirmationCode: string): Promise<void> {
+    try {
+      this.logger.info('Starting password reset process', { email });
+
+      // Confirmar el código y establecer la nueva contraseña
+      await this.cognitoService.confirmForgotPassword(email, confirmationCode, newPassword);
+
+      // Actualizar el estado del usuario si es necesario
+      const user = await this.getUserByEmail(email);
+      if (user && user.status === UserStatus.PENDING_PASSWORD_RESET) {
+        await this.updateUserStatus(user.userId, UserStatus.ACTIVE);
+      }
+
+      this.logger.info('Password reset completed successfully', { email });
+      await this.metrics.incrementCounter('PasswordResetSuccess');
+      await this.observability.trackAuthEvent('PasswordResetCompleted', { email });
+
+    } catch (error) {
+      this.logger.error('Error in password reset process', { error, email });
+      await this.metrics.incrementCounter('PasswordResetFailed');
+
+      if ((error as Error).name === 'CodeMismatchException') {
+        throw new ValidationError('Invalid confirmation code');
+      }
+
+      if ((error as Error).name === 'ExpiredCodeException') {
+        throw new ValidationError('Confirmation code has expired');
+      }
+
+      throw new AuthenticationError(
+        'Password reset failed: ' + ((error as Error).message || 'Unknown error')
+      );
+    }
+  }
+
+  /**
+   * Verifica la dirección de correo electrónico de un usuario
+   *
+   * Este método verifica el código de confirmación enviado al usuario y actualiza
+   * el estado del usuario a ACTIVE si la verificación es exitosa.
+   *
+   * @param email - La dirección de correo electrónico a verificar
+   * @param code - El código de verificación enviado al usuario
+   * @returns Promise<void> - No devuelve ningún valor
+   * @throws ValidationError - Si el código de verificación es inválido o ha expirado
+   * @throws AuthenticationError - Si ocurre un error durante el proceso
+   */
+  async verifyEmail(email: string, code: string): Promise<void> {
+    try {
+      this.logger.info('Starting email verification process', { email });
+
+      // Confirmar el código de verificación
+      await this.cognitoService.confirmSignUpWithCode(email, code);
+
+      // Actualizar el estado del usuario
+      const user = await this.getUserByEmail(email);
+      if (user && user.status === UserStatus.PENDING_VERIFICATION) {
+        await this.updateUserStatus(user.userId, UserStatus.ACTIVE);
+      }
+
+      this.logger.info('Email verification completed successfully', { email });
+      await this.metrics.incrementCounter('EmailVerificationSuccess');
+      await this.observability.trackAuthEvent('EmailVerified', { email });
+
+    } catch (error) {
+      this.logger.error('Error in email verification process', { error, email });
+      await this.metrics.incrementCounter('EmailVerificationFailed');
+
+      if ((error as Error).name === 'CodeMismatchException') {
+        throw new ValidationError('Invalid verification code');
+      }
+
+      if ((error as Error).name === 'ExpiredCodeException') {
+        throw new ValidationError('Verification code has expired');
+      }
+
+      throw new AuthenticationError(
+        'Email verification failed: ' + ((error as Error).message || 'Unknown error')
+      );
+    }
+  }
+
+  /**
+   * Actualiza el estado de un usuario
+   *
+   * Este método actualiza el estado de un usuario en la base de datos.
+   * No lanza errores para no interrumpir el flujo principal, pero registra
+   * cualquier error que ocurra.
+   *
+   * @param userId - El ID único del usuario
+   * @param status - El nuevo estado del usuario
+   * @returns Promise<void> - No devuelve ningún valor
+   */
+  private async updateUserStatus(userId: string, status: UserStatus): Promise<void> {
+    try {
+      await this.dynamodb.send(new UpdateCommand({
+        TableName: `${process.env.SERVICE_NAME}-${process.env.STAGE}-users`,
+        Key: {
+          userId: userId
+        },
+        UpdateExpression: 'SET #status = :status',
+        ExpressionAttributeNames: {
+          '#status': 'status'
+        },
+        ExpressionAttributeValues: {
+          ':status': status
+        }
+      }));
+
+      this.logger.info('User status updated successfully', { userId, status });
+
+    } catch (error) {
+      this.logger.error('Error updating user status', { error, userId, status });
+      // No lanzamos el error ya que esto no debería interrumpir el flujo principal
+    }
   }
 
   async registerUser(credentials: RegisterCredentials): Promise<AuthenticatedUser> {
@@ -120,13 +296,13 @@ export class AuthenticationService {
           ConditionExpression: 'attribute_not_exists(email)',
         }
       }];
-      
+
       this.logger.info('User record prepared', { user });
 
       // Confirmar transacción DynamoDB
       try {
-        await this.dynamodb.send(new TransactWriteCommand({ 
-          TransactItems: transactItems 
+        await this.dynamodb.send(new TransactWriteCommand({
+          TransactItems: transactItems
         }));
         console.log('User record created in DynamoDB', { email: credentials.email });
       } catch (error) {
@@ -147,7 +323,7 @@ export class AuthenticationService {
       }
 
       try {
-        
+
       } catch (error) {
         console.log('Error in user registration', { error, email: credentials.email });
         this.logger.error('Error in user registration', { error, email: credentials.email });
@@ -170,7 +346,7 @@ export class AuthenticationService {
       const duration = Date.now() - startTime;
       await this.metrics.recordLatency('RegistrationDuration', duration);
       await this.metrics.incrementCounter('RegistrationSuccess');
-      
+
       await this.observability.trackAuthEvent('UserRegistered', {
         userType: user.userType,
         duration
@@ -194,7 +370,7 @@ export class AuthenticationService {
       console.log('User registration failed', { error, email: credentials.email });
 
       await this.metrics.incrementCounter('RegistrationFailure');
-      
+
       this.logger.error('User registration failed', {
         error,
         email: credentials.email,
@@ -218,7 +394,7 @@ export class AuthenticationService {
 
       // Obtener información del usuario
       const userAttributes = await this.cognitoService.getUserByEmail(credentials.email);
-      
+
       // Actualizar último login en DynamoDB
       const user = await this.getOrCreateUserRecord(userAttributes);
 
@@ -248,7 +424,7 @@ export class AuthenticationService {
     try {
       // Invalidar el token en Cognito
       await this.cognitoService.signOut(accessToken);
-      
+
       // Agregar el token a la blacklist
       await this.tokenService.invalidateToken(accessToken);
 
@@ -292,7 +468,7 @@ export class AuthenticationService {
     try {
       const payload = await this.tokenService.verifyToken(token);
       const user = await this.getUserByEmail(payload.email);
-      
+
       if (!user) {
         throw new AuthenticationError('User not found');
       }
@@ -316,7 +492,7 @@ export class AuthenticationService {
 
       // Intentar obtener el usuario existente
       const existingUser = await this.getUserByEmail(email);
-      
+
       if (existingUser) {
         // Actualizar último login
         await this.updateLastLogin(existingUser.userId);
@@ -372,6 +548,42 @@ export class AuthenticationService {
     }
   }
 
+  /**
+   * Obtiene la información de un usuario por su ID
+   *
+   * Este método busca un usuario en la base de datos utilizando su ID único.
+   *
+   * @param userId - El ID único del usuario
+   * @returns Promise<AuthenticatedUser | null> - La información del usuario o null si no existe
+   * @throws AuthenticationError - Si ocurre un error durante la consulta
+   */
+  async getUserById(userId: string): Promise<AuthenticatedUser | null> {
+    try {
+      this.logger.info('Getting user by ID', { userId });
+
+      const response = await this.dynamodb.send(new GetCommand({
+        TableName: `${process.env.SERVICE_NAME}-${process.env.STAGE}-users`,
+        Key: {
+          userId: userId
+        }
+      }));
+
+      if (!response.Item) {
+        this.logger.info('User not found', { userId });
+        return null;
+      }
+
+      this.logger.info('User found', { userId });
+      return UserModel.fromDynamoDB(response.Item);
+
+    } catch (error) {
+      this.logger.error('Error getting user by ID', { error, userId });
+      throw new AuthenticationError(
+        'Failed to get user: ' + ((error as Error).message || 'Unknown error')
+      );
+    }
+  }
+
   private async updateLastLogin(userId: string): Promise<void> {
     try {
       await this.dynamodb.send(new UpdateCommand({
@@ -408,7 +620,7 @@ export class AuthenticationService {
 
       // Obtener información del usuario
       const userAttributes = await this.cognitoService.getUserBySub(userSub);
-      
+
       // Actualizar último login en DynamoDB
       const user = await this.getOrCreateUserRecord(userAttributes);
 
@@ -428,7 +640,7 @@ export class AuthenticationService {
       return result;
     } catch (error) {
       console.log('Error refreshing tokens', { error });
-      
+
       if ((error as Error).name === 'NotAuthorizedException') {
         throw new AuthenticationError('Invalid refresh token');
       }

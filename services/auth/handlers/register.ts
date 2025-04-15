@@ -55,7 +55,7 @@ const registerHandler: APIGatewayProxyHandler = async (event) => {
   logger.info('Starting registration process');
 
   const authService = new AuthenticationService();
-  
+
   try {
     // El evento ya viene con el body validado por el middleware
     const credentials = JSON.parse(event.body!) as RegisterCredentials;
@@ -63,9 +63,9 @@ const registerHandler: APIGatewayProxyHandler = async (event) => {
     // Registrar usuario
     const user = await authService.registerUser(credentials);
 
-    logger.info('User registered successfully', { 
+    logger.info('User registered successfully', {
       email: credentials.email,
-      userType: credentials.userType 
+      userType: credentials.userType
     });
 
     return {
@@ -75,13 +75,17 @@ const registerHandler: APIGatewayProxyHandler = async (event) => {
         'Access-Control-Allow-Origin': '*'
       },
       body: JSON.stringify({
+        success: true,
         message: 'User registered successfully',
-        user: {
-          userId: user.userId,
-          email: user.email,
-          name: user.name,
-          userType: user.userType
-        }
+        data: {
+          user: {
+            userId: user.userId,
+            email: user.email,
+            name: user.name,
+            userType: user.userType
+          }
+        },
+        errors: null
       })
     };
 
@@ -90,9 +94,14 @@ const registerHandler: APIGatewayProxyHandler = async (event) => {
   }
 };
 
-// Aquí es donde se aplica la validación mediante el middleware
+// Importar el middleware de rate limit
+import { rateLimit, rateLimitPresets } from '@shared/middleware/rate-limit/rate-limit.middleware';
+
+// Aquí es donde se aplica la validación y el rate limiting mediante middlewares
 export const handler = withErrorHandling(
-  validateRequest(registerSchema)(
-    registerHandler
+  rateLimit(rateLimitPresets.strict)(
+    validateRequest(registerSchema)(
+      registerHandler
+    )
   )
 );

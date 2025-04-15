@@ -30,7 +30,7 @@ const refreshTokenHandler: APIGatewayProxyHandler = async (event) => {
   logger.info('Processing refresh token request');
 
   const authService = new AuthenticationService();
-  
+
   try {
 
     let refreshToken: string;
@@ -94,13 +94,17 @@ const refreshTokenHandler: APIGatewayProxyHandler = async (event) => {
         ...(cookies.length > 0 && { 'Set-Cookie': cookies.join(', ') })
       },
       body: JSON.stringify({
+        success: true,
         message: 'Token refresh successful',
-        tokens: {
-          accessToken: result.tokens.accessToken,
-          idToken: result.tokens.idToken,
-          expiresIn: result.tokens.expiresIn,
-          ...(process.env.STAGE !== 'prod' && { refreshToken: result.tokens.refreshToken })
-        }
+        data: {
+          tokens: {
+            accessToken: result.tokens.accessToken,
+            idToken: result.tokens.idToken,
+            expiresIn: result.tokens.expiresIn,
+            ...(process.env.STAGE !== 'prod' && { refreshToken: result.tokens.refreshToken })
+          }
+        },
+        errors: null
       })
     };
 

@@ -1,9 +1,8 @@
 // shared/middleware/rate-limit/rate-limit.middleware.ts
 
-import { APIGatewayProxyHandler, APIGatewayProxyEvent, Context } from 'aws-lambda';
-import Redis from 'ioredis';
+import { APIGatewayProxyHandler, APIGatewayProxyEvent, APIGatewayProxyResult, Context } from 'aws-lambda';
 import { Logger } from '@shared/utils/logger';
-import { config } from '@shared/config/config.service';
+import { RedisService } from '@shared/services/cache/redis.service';
 import { TooManyRequestsError } from '@shared/utils/errors/rate-limit-error';
 
 export interface RateLimitConfig {
@@ -14,82 +13,107 @@ export interface RateLimitConfig {
 
 export class RateLimitMiddleware {
   private static logger = new Logger('RateLimitMiddleware');
-  private static redis: Redis;
-
-  private static async getRedisClient(): Promise<Redis> {
-    if (!this.redis) {
-      this.redis = new Redis({
-        host: config.getRequired<string>('REDIS_HOST'),
-        port: config.get<number>('REDIS_PORT', 6379),
-        password: config.get<string>('REDIS_PASSWORD'),
-        retryStrategy: (times) => {
-          if (times > 3) {
-            this.logger.error('Redis connection failed multiple times');
-            return null;
-          }
-          return Math.min(times * 100, 3000);
-        }
-      });
-
-      this.redis.on('error', (error) => {
-        this.logger.error('Redis error', { error });
-      });
-    }
-
-    return this.redis;
-  }
 
   static rateLimit(config: RateLimitConfig) {
     return (handler: APIGatewayProxyHandler): APIGatewayProxyHandler => {
-      return async (event: APIGatewayProxyEvent, context: Context) => {
-        const redis = await this.getRedisClient();
-        
+      return async (event: APIGatewayProxyEvent, context: Context): Promise<APIGatewayProxyResult> => {
         try {
           // Obtener IP del cliente
           const clientIp = event.requestContext.identity.sourceIp;
-          
+
           // Construir key para Redis
           const key = `${config.keyPrefix || 'rateLimit'}:${clientIp}:${event.path}`;
-          
-          // Usar Redis para tracking
-          const multi = redis.multi();
-          multi.incr(key);
-          multi.pttl(key);
-          
-          const [count, ttl] = await multi.exec() as unknown as [number, number][];
-          
-          // Si es el primer intento, establecer TTL
-          if (count[1] === 1) {
-            await redis.pexpire(key, config.windowMs);
-          }
 
-          // Verificar límite
-          if (count[1] > config.max) {
-            const resetTime = new Date(Date.now() + ttl[1]);
-            
-            throw new TooManyRequestsError('Rate limit exceeded', {
-              retryAfter: Math.ceil(ttl[1] / 1000),
-              resetTime: resetTime.toISOString()
+          // Variables para rate limiting
+          let count = 1;
+          let ttl = config.windowMs;
+          let headers: { [key: string]: string | number | boolean } = {};
+
+          try {
+            // Obtener instancia del servicio Redis centralizado
+            const redisService = RedisService.getInstance();
+
+            // Verificar si Redis está conectado
+            const isConnected = await redisService.checkConnection();
+
+            if (isConnected) {
+              const redis = redisService.getClient();
+
+              // Usar Redis para tracking
+              const multi = redisService.multi();
+              multi.incr(key);
+              multi.pttl(key);
+
+              const results = await multi.exec();
+
+              if (results) {
+                count = results[0][1] as number;
+                ttl = results[1][1] as number;
+
+                // Si es el primer intento, establecer TTL
+                if (count === 1) {
+                  await redis.pexpire(key, config.windowMs);
+                  ttl = config.windowMs;
+                }
+
+                // Verificar límite
+                if (count > config.max) {
+                  const resetTime = new Date(Date.now() + ttl);
+
+                  throw new TooManyRequestsError('Rate limit exceeded', {
+                    retryAfter: Math.ceil(ttl / 1000),
+                    resetTime: resetTime.toISOString()
+                  });
+                }
+
+                // Agregar headers de rate limit
+                headers = {
+                  'X-RateLimit-Limit': config.max.toString(),
+                  'X-RateLimit-Remaining': Math.max(0, config.max - count).toString(),
+                  'X-RateLimit-Reset': new Date(Date.now() + ttl).toISOString()
+                };
+              } else {
+                this.logger.warn('Redis multi command returned null results, skipping rate limiting');
+              }
+            } else {
+              this.logger.warn('Redis is not connected, skipping rate limiting');
+            }
+          } catch (redisError) {
+            // Si hay un error con Redis, lo registramos pero permitimos que la solicitud continúe
+            this.logger.error('Error in Redis operations, skipping rate limiting', {
+              error: redisError instanceof Error ? redisError.message : String(redisError),
+              stack: redisError instanceof Error ? redisError.stack : undefined
             });
           }
-
-          // Agregar headers de rate limit
-          const headers: { [key: string]: string | number | boolean } = {
-            'X-RateLimit-Limit': config.max.toString(),
-            'X-RateLimit-Remaining': Math.max(0, config.max - count[1]).toString(),
-            'X-RateLimit-Reset': new Date(Date.now() + ttl[1]).toISOString()
-          };
 
           // Ejecutar el handler
           const result = await handler(event, context, () => {});
 
           // Agregar headers al resultado
+          if (!result) {
+            return {
+              statusCode: 500,
+              body: JSON.stringify({
+                success: false,
+                message: 'Internal server error',
+                data: null,
+                errors: {
+                  server: ['An unexpected error occurred']
+                }
+              }),
+              headers: {
+                'Content-Type': 'application/json',
+                ...headers
+              }
+            };
+          }
+
           return {
             ...result,
-            statusCode: result?.statusCode || 200,
-            body: result?.body || '',
+            statusCode: result.statusCode || 200,
+            body: result.body || '',
             headers: {
-              ...(result?.headers || {}),
+              ...(result.headers || {}),
               ...headers
             }
           };
@@ -105,23 +129,22 @@ export class RateLimitMiddleware {
               statusCode: 429,
               headers,
               body: JSON.stringify({
-                code: 'TOO_MANY_REQUESTS',
-                message: (error as TooManyRequestsError).message,
-                retryAfter: (error as TooManyRequestsError).metadata?.retryAfter,
-                resetTime: (error as TooManyRequestsError).metadata?.resetTime
+                success: false,
+                message: 'Too many requests, please try again later',
+                data: null,
+                errors: {
+                  rateLimit: ['Rate limit exceeded. Please try again later.']
+                }
               })
             };
           }
           throw error;
+        } finally {
+          // No cerramos la conexión aquí, ya que el servicio Redis es centralizado
+          // y se encarga de su propio ciclo de vida
         }
       };
     };
-  }
-
-  static async cleanup(): Promise<void> {
-    if (this.redis) {
-      await this.redis.quit();
-    }
   }
 }
 
@@ -129,7 +152,7 @@ export class RateLimitMiddleware {
 export const rateLimitPresets = {
   strict: {
     windowMs: 60000,     // 1 minuto
-    max: 30,            // 30 intentos por minuto
+    max: 5,             // 5 intentos por minuto para endpoints críticos
     keyPrefix: 'rl:str'
   },
   moderate: {
@@ -145,5 +168,5 @@ export const rateLimitPresets = {
 };
 
 // Helper para uso más simple
-export const rateLimit = (config: RateLimitConfig = rateLimitPresets.moderate) => 
+export const rateLimit = (config: RateLimitConfig = rateLimitPresets.moderate) =>
   RateLimitMiddleware.rateLimit(config);

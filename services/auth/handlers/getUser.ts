@@ -1,16 +1,15 @@
 // services/auth/handlers/getUser.ts
-import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
-import { DynamoDBDocumentClient, GetCommand } from "@aws-sdk/lib-dynamodb";
 import { APIGatewayProxyHandler } from 'aws-lambda';
+import { AuthenticationService } from '../services/authentication.service';
+import { withErrorHandling } from '@shared/middleware/error/error-handling.middleware';
+import { Logger } from '@shared/utils/logger';
 
-// Inicializar el cliente DynamoDB
-const ddbClient = new DynamoDBClient({
-  region: process.env.REGION || 'us-east-1'
-});
-const dynamodb = DynamoDBDocumentClient.from(ddbClient);
+const logger = new Logger('GetUserHandler');
 
-export const handler: APIGatewayProxyHandler = async (event) => {
-  console.log('GetUser handler started');
+const getUserHandler: APIGatewayProxyHandler = async (event) => {
+  logger.info('Processing get user request');
+
+  const authService = new AuthenticationService();
 
   try {
     // Validar userId
@@ -23,37 +22,39 @@ export const handler: APIGatewayProxyHandler = async (event) => {
           'Access-Control-Allow-Origin': '*'
         },
         body: JSON.stringify({
-          message: 'Missing userId parameter' 
+          success: false,
+          message: 'Missing userId parameter',
+          data: null,
+          errors: {
+            userId: ['User ID is required']
+          }
         })
       };
     }
 
-    console.log(`Fetching user data for userId: ${userId}`);
+    logger.info(`Fetching user data for userId: ${userId}`);
 
-    // Obtener el usuario de DynamoDB
-    const result = await dynamodb.send(new GetCommand({
-      TableName: `${process.env.SERVICE_NAME}-${process.env.STAGE}-users`,
-      Key: {
-        userId: userId
-      }
-    }));
+    // Obtener el usuario usando el servicio de autenticación
+    const user = await authService.getUserById(userId);
 
     // Verificar si el usuario existe
-    if (!result.Item) {
+    if (!user) {
       return {
         statusCode: 404,
         headers: {
           'Content-Type': 'application/json',
           'Access-Control-Allow-Origin': '*'
         },
-        body: JSON.stringify({ 
-          message: 'User not found' 
+        body: JSON.stringify({
+          success: false,
+          message: 'User not found',
+          data: null,
+          errors: {
+            userId: ['User with the specified ID was not found']
+          }
         })
       };
     }
-
-    // Remover campos sensibles antes de enviar la respuesta
-    const { password, ...userWithoutPassword } = result.Item;
 
     // Devolver datos del usuario
     return {
@@ -62,24 +63,27 @@ export const handler: APIGatewayProxyHandler = async (event) => {
         'Content-Type': 'application/json',
         'Access-Control-Allow-Origin': '*'
       },
-      body: JSON.stringify(userWithoutPassword)
-    };
-
-  } catch (error) {
-    console.error('Error retrieving user:', error);
-
-    return {
-      statusCode: 500,
-      headers: {
-        'Content-Type': 'application/json',
-        'Access-Control-Allow-Origin': '*'
-      },
       body: JSON.stringify({
-        message: 'Error retrieving user',
-        error: process.env.STAGE === 'dev' ? 
-          error instanceof Error ? error.message : 'Unknown error' 
-          : 'Internal server error'
+        success: true,
+        message: 'User retrieved successfully',
+        data: {
+          user: {
+            userId: user.userId,
+            email: user.email,
+            name: user.name,
+            userType: user.userType,
+            createdAt: user.createdAt,
+            lastLogin: user.lastLogin
+          }
+        },
+        errors: null
       })
     };
+
+  } finally {
+    await authService.cleanup();
   }
 };
+
+// Exportar el handler con el middleware de error
+export const handler = withErrorHandling(getUserHandler);

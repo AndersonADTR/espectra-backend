@@ -27,7 +27,7 @@ const loginHandler: APIGatewayProxyHandler = async (event) => {
   console.log('Processing login request');
 
   const authService = new AuthenticationService();
-  
+
   try {
     // El body ya está validado por el middleware
     const loginData: LoginCredentials = JSON.parse(event.body!);
@@ -35,7 +35,7 @@ const loginHandler: APIGatewayProxyHandler = async (event) => {
     // Intentar login
     const result = await authService.login(loginData);
 
-    console.log('Login successful', { 
+    console.log('Login successful', {
       userId: result.user.userId,
       userType: result.user.userType
     });
@@ -59,20 +59,24 @@ const loginHandler: APIGatewayProxyHandler = async (event) => {
         ...(cookies.length > 0 && { 'Set-Cookie': cookies.join(', ') })
       },
       body: JSON.stringify({
+        success: true,
         message: 'Login successful',
-        user: {
-          userId: result.user.userId,
-          userSub: result.user.userSub,
-          email: result.user.email,
-          name: result.user.name,
-          userType: result.user.userType
+        data: {
+          user: {
+            userId: result.user.userId,
+            userSub: result.user.userSub,
+            email: result.user.email,
+            name: result.user.name,
+            userType: result.user.userType
+          },
+          tokens: {
+            accessToken: result.tokens.accessToken,
+            idToken: result.tokens.idToken,
+            expiresIn: result.tokens.expiresIn,
+            ...(process.env.STAGE !== 'prod' && { refreshToken: result.tokens.refreshToken })
+          }
         },
-        tokens: {
-          accessToken: result.tokens.accessToken,
-          idToken: result.tokens.idToken,
-          expiresIn: result.tokens.expiresIn,
-          ...(process.env.STAGE !== 'prod' && { refreshToken: result.tokens.refreshToken })
-        }
+        errors: null
       })
     };
 
@@ -81,17 +85,14 @@ const loginHandler: APIGatewayProxyHandler = async (event) => {
   }
 };
 
-// Exportar el handler con los middlewares aplicados
-// export const handler = withErrorHandling(
-//   rateLimit(rateLimitPresets.strict)(
-//     validateRequest(loginSchema)(
-//       loginHandler
-//     )
-//   )
-// );
+// Importar el middleware de rate limit
+import { rateLimit, rateLimitPresets } from '@shared/middleware/rate-limit/rate-limit.middleware';
 
+// Exportar el handler con los middlewares aplicados
 export const handler = withErrorHandling(
-  validateRequest(loginSchema)(
-    loginHandler
+  rateLimit(rateLimitPresets.strict)(
+    validateRequest(loginSchema)(
+      loginHandler
+    )
   )
 );

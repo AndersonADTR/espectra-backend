@@ -310,6 +310,78 @@ functions:
           restApi:
             id: !Ref RestApiId
 
+  me:
+    handler: services/auth/handlers/me.handler
+    name: ${self:custom.service}-${self:provider.stage}-me
+    role: 
+      Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-lambda-role-arn
+    events:
+      - http:
+          path: auth/me
+          method: get
+          cors: true
+          authorizer:
+            name: restAuthorizer
+          restApi:
+            id: !Ref RestApiId
+
+  forgotPassword:
+    handler: services/auth/handlers/forgot-password.handler
+    name: ${self:custom.service}-${self:provider.stage}-forgot-password
+    role: 
+      Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-lambda-role-arn
+    events:
+      - http:
+          path: auth/forgot-password
+          method: post
+          cors: true
+          restApi:
+            id: !Ref RestApiId
+    environment:
+      COGNITO_USER_POOL_ID: 
+        Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-user-pool-id
+      COGNITO_CLIENT_ID: 
+        Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-user-pool-client-id
+      COGNITO_CLIENT_SECRET: ${ssm:/espectra/${self:provider.stage}/cognito/client-secret}
+
+  resetPassword:
+    handler: services/auth/handlers/reset-password.handler
+    name: ${self:custom.service}-${self:provider.stage}-reset-password
+    role: 
+      Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-lambda-role-arn
+    events:
+      - http:
+          path: auth/reset-password
+          method: post
+          cors: true
+          restApi:
+            id: !Ref RestApiId
+    environment:
+      COGNITO_USER_POOL_ID: 
+        Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-user-pool-id
+      COGNITO_CLIENT_ID: 
+        Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-user-pool-client-id
+      COGNITO_CLIENT_SECRET: ${ssm:/espectra/${self:provider.stage}/cognito/client-secret}
+
+  verifyEmail:
+    handler: services/auth/handlers/verify-email.handler
+    name: ${self:custom.service}-${self:provider.stage}-verify-email
+    role: 
+      Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-lambda-role-arn
+    events:
+      - http:
+          path: auth/verify-email
+          method: post
+          cors: true
+          restApi:
+            id: !Ref RestApiId
+    environment:
+      COGNITO_USER_POOL_ID: 
+        Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-user-pool-id
+      COGNITO_CLIENT_ID: 
+        Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-user-pool-client-id
+      COGNITO_CLIENT_SECRET: ${ssm:/espectra/${self:provider.stage}/cognito/client-secret}
+
   # WebSocket Functions
   wsAuthorizer:
     handler: services/websocket/handlers/authorizer.handler
