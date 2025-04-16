@@ -13,7 +13,8 @@ import {
   ListUsersCommand,
   ForgotPasswordCommand,
   ConfirmForgotPasswordCommand,
-  ConfirmSignUpCommand
+  ConfirmSignUpCommand,
+  ResendConfirmationCodeCommand
 } from "@aws-sdk/client-cognito-identity-provider";
 import * as crypto from 'crypto';
 import { NodeHttpHandler } from "@aws-sdk/node-http-handler";
@@ -399,15 +400,19 @@ export class CognitoService {
 
   async forgotPassword(email: string): Promise<void> {
     try {
+      // Normalizar el email (convertir a minúsculas y eliminar espacios)
+      const normalizedEmail = email.toLowerCase().trim();
+
       console.log('CognitoService.forgotPassword called', {
-        email,
+        email: normalizedEmail,
         userPoolId: this.userPoolId,
-        clientId: this.clientId
+        clientId: this.clientId,
+        timestamp: new Date().toISOString()
       });
 
       // Generar SECRET_HASH
       const secretHash = this.calculateSecretHash(
-        email,
+        normalizedEmail,
         this.clientId
       );
 
@@ -415,26 +420,32 @@ export class CognitoService {
 
       // Verificar si el usuario existe en Cognito antes de intentar recuperar la contraseña
       try {
-        console.log('Verifying if user exists in Cognito', { email });
-        await this.getUserByEmail(email);
-        console.log('User exists in Cognito', { email });
+        console.log('Verifying if user exists in Cognito', { email: normalizedEmail });
+        const userInfo = await this.getUserByEmail(normalizedEmail);
+        console.log('User exists in Cognito', {
+          email: normalizedEmail,
+          userStatus: userInfo.UserStatus,
+          userCreatedAt: userInfo.UserCreateDate,
+          userLastModified: userInfo.UserLastModifiedDate
+        });
       } catch (userError) {
         if ((userError as Error).name === 'UserNotFoundException') {
-          console.log('User not found in Cognito, attempting to proceed anyway', { email });
+          console.log('User not found in Cognito, attempting to proceed anyway', { email: normalizedEmail });
           // Continuamos con el proceso para mantener el comportamiento consistente
         } else {
           console.error('Error verifying user existence', {
             error: userError,
             errorName: userError instanceof Error ? userError.name : 'Unknown',
             errorMessage: userError instanceof Error ? userError.message : String(userError),
-            email
+            email: normalizedEmail
           });
         }
       }
 
+      // Crear el comando con el email normalizado
       const command = new ForgotPasswordCommand({
         ClientId: this.clientId,
-        Username: email,
+        Username: normalizedEmail,
         SecretHash: secretHash
       });
 
@@ -444,6 +455,7 @@ export class CognitoService {
         success: true,
         responseType: typeof response,
         hasResponse: !!response,
+        timestamp: new Date().toISOString(),
         deliveryDetails: response.CodeDeliveryDetails ? {
           destination: response.CodeDeliveryDetails.Destination,
           deliveryMedium: response.CodeDeliveryDetails.DeliveryMedium,
@@ -452,14 +464,15 @@ export class CognitoService {
       });
 
       this.logger.info('Password recovery code sent successfully', {
-        email,
+        email: normalizedEmail,
+        timestamp: new Date().toISOString(),
         deliveryDetails: response.CodeDeliveryDetails ? {
           destination: response.CodeDeliveryDetails.Destination,
           deliveryMedium: response.CodeDeliveryDetails.DeliveryMedium,
           attributeName: response.CodeDeliveryDetails.AttributeName
         } : 'No delivery details'
       });
-      console.log('Password recovery code sent successfully', { email });
+      console.log('Password recovery code sent successfully', { email: normalizedEmail, timestamp: new Date().toISOString() });
 
     } catch (error) {
       this.logger.error('Error sending password recovery code', {
@@ -516,34 +529,53 @@ export class CognitoService {
 
   async confirmForgotPassword(email: string, confirmationCode: string, newPassword: string): Promise<void> {
     try {
+      // Normalizar el email (convertir a minúsculas y eliminar espacios)
+      const normalizedEmail = email.toLowerCase().trim();
+
+      // Normalizar el código de confirmación (eliminar espacios y otros caracteres no válidos)
+      const normalizedCode = confirmationCode.trim().replace(/\s+/g, '');
+
       console.log('CognitoService.confirmForgotPassword called', {
-        email,
-        confirmationCode: '******', // No mostrar el código completo por seguridad
+        email: normalizedEmail,
+        codeLength: normalizedCode.length,
+        codeMasked: normalizedCode.substring(0, 2) + '****' + normalizedCode.substring(normalizedCode.length - 2),
         userPoolId: this.userPoolId,
         clientId: this.clientId
       });
 
+      // Verificar que el código tenga la longitud correcta (generalmente 6 dígitos)
+      if (normalizedCode.length !== 6 || !/^\d+$/.test(normalizedCode)) {
+        console.warn('Confirmation code format may be invalid', {
+          email: normalizedEmail,
+          codeLength: normalizedCode.length,
+          isNumeric: /^\d+$/.test(normalizedCode)
+        });
+      }
+
       // Generar SECRET_HASH
       const secretHash = this.calculateSecretHash(
-        email,
+        normalizedEmail,
         this.clientId
       );
 
       console.log('SECRET_HASH generated successfully');
 
+      // Crear el comando con los valores normalizados
       const command = new ConfirmForgotPasswordCommand({
         ClientId: this.clientId,
-        Username: email,
-        ConfirmationCode: confirmationCode,
+        Username: normalizedEmail,
+        ConfirmationCode: normalizedCode,
         Password: newPassword,
         SecretHash: secretHash
       });
 
       console.log('Sending ConfirmForgotPasswordCommand to Cognito');
+
+      // Intentar confirmar la contraseña olvidada
       await this.client.send(command);
       console.log('ConfirmForgotPasswordCommand response received successfully');
 
-      this.logger.info('Password reset completed successfully', { email });
+      this.logger.info('Password reset completed successfully', { email: normalizedEmail });
 
     } catch (error) {
       this.logger.error('Error confirming password reset', {
@@ -562,6 +594,28 @@ export class CognitoService {
         email
       });
 
+      // Verificar si el error es de código expirado
+      if (error instanceof Error &&
+          (error.name === 'ExpiredCodeException' ||
+           error.message.includes('Invalid code provided'))) {
+
+        // Intentar obtener más información sobre el usuario
+        try {
+          const userInfo = await this.getUserByEmail(email);
+          console.log('User info retrieved for debugging expired code issue', {
+            email,
+            userStatus: userInfo.UserStatus,
+            userCreatedAt: userInfo.UserCreateDate,
+            userLastModified: userInfo.UserLastModifiedDate
+          });
+        } catch (userError) {
+          console.error('Failed to retrieve user info for debugging', {
+            email,
+            error: userError
+          });
+        }
+      }
+
       // Propagar el error original para que sea manejado por el servicio de autenticación
       throw error;
     }
@@ -569,27 +623,217 @@ export class CognitoService {
 
   async confirmSignUpWithCode(email: string, confirmationCode: string): Promise<void> {
     try {
+      // Normalizar el email (convertir a minúsculas y eliminar espacios)
+      const normalizedEmail = email.toLowerCase().trim();
+
+      // Normalizar el código de confirmación (eliminar espacios y otros caracteres no válidos)
+      const normalizedCode = confirmationCode.trim().replace(/\s+/g, '');
+
+      console.log('CognitoService.confirmSignUpWithCode called', {
+        email: normalizedEmail,
+        codeLength: normalizedCode.length,
+        codeMasked: normalizedCode.substring(0, 2) + '****' + normalizedCode.substring(normalizedCode.length - 2),
+        userPoolId: this.userPoolId,
+        clientId: this.clientId,
+        timestamp: new Date().toISOString()
+      });
+
+      // Verificar que el código tenga la longitud correcta (generalmente 6 dígitos)
+      if (normalizedCode.length !== 6 || !/^\d+$/.test(normalizedCode)) {
+        console.warn('Confirmation code format may be invalid', {
+          email: normalizedEmail,
+          codeLength: normalizedCode.length,
+          isNumeric: /^\d+$/.test(normalizedCode),
+          code: normalizedCode
+        });
+      }
+
+      // Verificar si el usuario existe en Cognito antes de intentar verificar
+      try {
+        console.log('Verifying if user exists in Cognito', { email: normalizedEmail });
+        const userInfo = await this.getUserByEmail(normalizedEmail);
+        console.log('User exists in Cognito', {
+          email: normalizedEmail,
+          userStatus: userInfo.UserStatus,
+          userCreatedAt: userInfo.UserCreateDate,
+          userLastModified: userInfo.UserLastModifiedDate
+        });
+      } catch (userError) {
+        console.error('Error verifying user existence', {
+          error: userError,
+          errorName: userError instanceof Error ? userError.name : 'Unknown',
+          errorMessage: userError instanceof Error ? userError.message : String(userError),
+          email: normalizedEmail
+        });
+        // Continuamos con el proceso a pesar del error
+      }
+
       // Generar SECRET_HASH
       const secretHash = this.calculateSecretHash(
-        email,
+        normalizedEmail,
         this.clientId
       );
 
+      console.log('SECRET_HASH generated successfully');
+
+      console.log('Creating ConfirmSignUpCommand', {
+        clientId: this.clientId,
+        username: normalizedEmail,
+        confirmationCodeLength: normalizedCode.length,
+        hasSecretHash: !!secretHash
+      });
+
       const command = new ConfirmSignUpCommand({
         ClientId: this.clientId,
-        Username: email,
-        ConfirmationCode: confirmationCode,
+        Username: normalizedEmail,
+        ConfirmationCode: normalizedCode,
         SecretHash: secretHash
       });
 
+      console.log('Sending ConfirmSignUpCommand to Cognito');
       await this.client.send(command);
+      console.log('ConfirmSignUpCommand response received successfully');
 
-      this.logger.info('Email verification completed successfully', { email });
+      this.logger.info('Email verification completed successfully', { email: normalizedEmail });
 
     } catch (error) {
+      console.error('Error confirming email verification', {
+        error,
+        errorName: error instanceof Error ? error.name : 'Unknown',
+        errorMessage: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : 'No stack trace',
+        email
+      });
+
       this.logger.error('Error confirming email verification', { error, email });
+
+      // Verificar si es un error de código incorrecto
+      if (error instanceof Error && error.name === 'CodeMismatchException') {
+        console.log('Code mismatch error details', {
+          email,
+          errorMessage: error.message,
+          timestamp: new Date().toISOString()
+        });
+      }
+
       throw new AuthenticationError(
         'Failed to verify email: ' + ((error as Error).message || 'Unknown error')
+      );
+    }
+  }
+
+  /**
+   * Reenvía el código de confirmación para verificar el correo electrónico
+   *
+   * @param email - La dirección de correo electrónico del usuario
+   * @returns Promise<void> - No devuelve ningún valor
+   * @throws AuthenticationError - Si ocurre un error durante el proceso
+   */
+  async resendConfirmationCode(email: string): Promise<void> {
+    try {
+      // Normalizar el email (convertir a minúsculas y eliminar espacios)
+      const normalizedEmail = email.toLowerCase().trim();
+
+      console.log('CognitoService.resendConfirmationCode called', {
+        email: normalizedEmail,
+        userPoolId: this.userPoolId,
+        clientId: this.clientId,
+        timestamp: new Date().toISOString()
+      });
+
+      // Generar SECRET_HASH
+      const secretHash = this.calculateSecretHash(
+        normalizedEmail,
+        this.clientId
+      );
+
+      console.log('SECRET_HASH generated successfully');
+
+      // Verificar si el usuario existe en Cognito antes de intentar reenviar el código
+      try {
+        console.log('Verifying if user exists in Cognito', { email: normalizedEmail });
+        const userInfo = await this.getUserByEmail(normalizedEmail);
+        console.log('User exists in Cognito', {
+          email: normalizedEmail,
+          userStatus: userInfo.UserStatus,
+          userCreatedAt: userInfo.UserCreateDate,
+          userLastModified: userInfo.UserLastModifiedDate
+        });
+      } catch (userError) {
+        if ((userError as Error).name === 'UserNotFoundException') {
+          console.log('User not found in Cognito, cannot resend verification code', { email: normalizedEmail });
+          this.logger.info('User not found in Cognito, cannot resend verification code', { email: normalizedEmail });
+          return;
+        } else {
+          console.error('Error verifying user existence', {
+            error: userError,
+            errorName: userError instanceof Error ? userError.name : 'Unknown',
+            errorMessage: userError instanceof Error ? userError.message : String(userError),
+            email: normalizedEmail
+          });
+        }
+      }
+
+      console.log('Creating ResendConfirmationCodeCommand', {
+        clientId: this.clientId,
+        username: normalizedEmail,
+        hasSecretHash: !!secretHash
+      });
+
+      const command = new ResendConfirmationCodeCommand({
+        ClientId: this.clientId,
+        Username: normalizedEmail,
+        SecretHash: secretHash
+      });
+
+      console.log('Sending ResendConfirmationCodeCommand to Cognito');
+      const response = await this.client.send(command);
+      console.log('ResendConfirmationCodeCommand response received', {
+        success: true,
+        responseType: typeof response,
+        hasResponse: !!response,
+        timestamp: new Date().toISOString(),
+        deliveryDetails: response && response.CodeDeliveryDetails ? {
+          destination: response.CodeDeliveryDetails.Destination,
+          deliveryMedium: response.CodeDeliveryDetails.DeliveryMedium,
+          attributeName: response.CodeDeliveryDetails.AttributeName
+        } : 'No delivery details'
+      });
+
+      this.logger.info('Confirmation code resent successfully', {
+        email: normalizedEmail,
+        deliveryDetails: response && response.CodeDeliveryDetails ? {
+          destination: response.CodeDeliveryDetails.Destination,
+          deliveryMedium: response.CodeDeliveryDetails.DeliveryMedium,
+          attributeName: response.CodeDeliveryDetails.AttributeName
+        } : 'No delivery details'
+      });
+
+    } catch (error) {
+      console.error('Error resending confirmation code', {
+        error,
+        errorName: error instanceof Error ? error.name : 'Unknown',
+        errorMessage: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : 'No stack trace',
+        email
+      });
+
+      this.logger.error('Error resending confirmation code', {
+        error,
+        email,
+        errorName: error instanceof Error ? error.name : 'Unknown',
+        errorMessage: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : 'No stack trace'
+      });
+
+      // No propagamos el error si el usuario no existe para no revelar información
+      if ((error as Error).name === 'UserNotFoundException') {
+        this.logger.info('Confirmation code requested for non-existent user', { email });
+        return;
+      }
+
+      throw new AuthenticationError(
+        'Failed to resend confirmation code: ' + ((error as Error).message || 'Unknown error')
       );
     }
   }

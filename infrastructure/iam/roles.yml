@@ -63,6 +63,11 @@ Resources:
                   - cognito-idp:AdminCreateUser
                   - cognito-idp:AdminSetUserPassword
                   - cognito-idp:AdminUpdateUserAttributes
+                  - cognito-idp:ConfirmForgotPassword
+                  - cognito-idp:ForgotPassword
+                  - cognito-idp:ConfirmSignUp
+                  - cognito-idp:ChangePassword
+                  - cognito-idp:AdminResetUserPassword
                   - cognito-idp:AdminDeleteUser
                   - cognito-idp:AdminGetUser
                   - cognito-idp:ListUsers

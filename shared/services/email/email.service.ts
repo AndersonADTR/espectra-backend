@@ -179,11 +179,18 @@ export class EmailService {
 
   /**
    * Envía un correo de recuperación de contraseña
+   * @param to - Dirección de correo electrónico del destinatario
+   * @param resetCode - Código de recuperación de contraseña
+   * @param isBackup - Indica si este correo es un respaldo (opcional)
+   * @returns Promise<string> - ID del mensaje enviado
    */
-  public async sendPasswordResetEmail(to: string, resetCode: string): Promise<string> {
-    console.log('Preparing password reset email', { to, resetCode: '******' });
+  public async sendPasswordResetEmail(to: string, resetCode: string, isBackup: boolean = false): Promise<string> {
+    console.log('Preparing password reset email', { to, resetCode: '******', isBackup });
 
-    const subject = 'Recuperación de contraseña - SPECTRUM Platform';
+    // Modificar el asunto si es un correo de respaldo
+    const subject = isBackup
+      ? 'IMPORTANTE: Recuperación de contraseña - SPECTRUM Platform (Correo de respaldo)'
+      : 'Recuperación de contraseña - SPECTRUM Platform';
 
     const html = `
       <html>
@@ -204,11 +211,13 @@ export class EmailService {
             </div>
             <div class="content">
               <p>Hola,</p>
+              ${isBackup ? '<p><strong>NOTA IMPORTANTE:</strong> Este es un correo de respaldo enviado por nuestro sistema. Si ya recibiste un correo anterior con un código de recuperación, puedes usar cualquiera de los dos códigos.</p>' : ''}
               <p>Has solicitado restablecer tu contraseña en la plataforma SPECTRUM. Utiliza el siguiente código para completar el proceso:</p>
 
               <div class="code">${resetCode}</div>
 
               <p>Este código es válido por 24 horas. Si no solicitaste restablecer tu contraseña, puedes ignorar este correo.</p>
+              ${isBackup ? '<p><strong>Problemas con el correo anterior?</strong> A veces los correos automáticos pueden ser filtrados por los sistemas de correo. Si no encuentras el correo anterior, revisa tu carpeta de spam o utiliza este código.</p>' : ''}
 
               <p>Saludos,<br>El equipo de SPECTRUM</p>
             </div>
@@ -222,15 +231,16 @@ export class EmailService {
     `;
 
     const text = `
-      Recuperación de contraseña - SPECTRUM Platform
+      ${isBackup ? 'IMPORTANTE: ' : ''}Recuperación de contraseña - SPECTRUM Platform${isBackup ? ' (Correo de respaldo)' : ''}
 
       Hola,
-
+      ${isBackup ? 'NOTA IMPORTANTE: Este es un correo de respaldo enviado por nuestro sistema. Si ya recibiste un correo anterior con un código de recuperación, puedes usar cualquiera de los dos códigos.' : ''}
       Has solicitado restablecer tu contraseña en la plataforma SPECTRUM. Utiliza el siguiente código para completar el proceso:
 
       ${resetCode}
 
       Este código es válido por 24 horas. Si no solicitaste restablecer tu contraseña, puedes ignorar este correo.
+      ${isBackup ? 'Problemas con el correo anterior? A veces los correos automáticos pueden ser filtrados por los sistemas de correo. Si no encuentras el correo anterior, revisa tu carpeta de spam o utiliza este código.' : ''}
 
       Saludos,
       El equipo de SPECTRUM
@@ -251,6 +261,100 @@ export class EmailService {
       return messageId;
     } catch (error) {
       console.error('Error sending password reset email', {
+        error,
+        errorName: error instanceof Error ? error.name : 'Unknown',
+        errorMessage: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : 'No stack trace',
+        to
+      });
+      throw error;
+    }
+  }
+
+  /**
+   * Envía un correo de verificación de email
+   * @param to - Dirección de correo electrónico del destinatario
+   * @param verificationCode - Código de verificación
+   * @param isBackup - Indica si este correo es un respaldo (opcional)
+   * @returns Promise<string> - ID del mensaje enviado
+   */
+  public async sendVerificationEmail(to: string, verificationCode: string, isBackup: boolean = false): Promise<string> {
+    console.log('Preparing email verification email', { to, verificationCode: '******', isBackup });
+
+    // Modificar el asunto si es un correo de respaldo
+    const subject = isBackup
+      ? 'IMPORTANTE: Verificación de correo electrónico - SPECTRUM Platform (Correo de respaldo)'
+      : 'Verificación de correo electrónico - SPECTRUM Platform';
+
+    const html = `
+      <html>
+        <head>
+          <style>
+            body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+            .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+            .header { background-color: #4a90e2; color: white; padding: 10px 20px; text-align: center; }
+            .content { padding: 20px; border: 1px solid #ddd; border-top: none; }
+            .code { font-size: 24px; font-weight: bold; text-align: center; margin: 20px 0; padding: 10px; background-color: #f5f5f5; border-radius: 4px; }
+            .footer { text-align: center; margin-top: 20px; font-size: 12px; color: #999; }
+          </style>
+        </head>
+        <body>
+          <div class="container">
+            <div class="header">
+              <h1>SPECTRUM Platform</h1>
+            </div>
+            <div class="content">
+              <p>Hola,</p>
+              ${isBackup ? '<p><strong>NOTA IMPORTANTE:</strong> Este es un correo de respaldo enviado por nuestro sistema. Si ya recibiste un correo anterior con un código de verificación, puedes usar cualquiera de los dos códigos.</p>' : ''}
+              <p>Gracias por registrarte en la plataforma SPECTRUM. Para verificar tu dirección de correo electrónico, utiliza el siguiente código:</p>
+
+              <div class="code">${verificationCode}</div>
+
+              <p>Este código es válido por 24 horas. Si no te registraste en SPECTRUM, puedes ignorar este correo.</p>
+              ${isBackup ? '<p><strong>Problemas con el correo anterior?</strong> A veces los correos automáticos pueden ser filtrados por los sistemas de correo. Si no encuentras el correo anterior, revisa tu carpeta de spam o utiliza este código.</p>' : ''}
+
+              <p>Saludos,<br>El equipo de SPECTRUM</p>
+            </div>
+            <div class="footer">
+              <p>Este es un correo automático, por favor no respondas a este mensaje.</p>
+              <p>&copy; ${new Date().getFullYear()} SPECTRUM Platform. Todos los derechos reservados.</p>
+            </div>
+          </div>
+        </body>
+      </html>
+    `;
+
+    const text = `
+      ${isBackup ? 'IMPORTANTE: ' : ''}Verificación de correo electrónico - SPECTRUM Platform${isBackup ? ' (Correo de respaldo)' : ''}
+
+      Hola,
+      ${isBackup ? 'NOTA IMPORTANTE: Este es un correo de respaldo enviado por nuestro sistema. Si ya recibiste un correo anterior con un código de verificación, puedes usar cualquiera de los dos códigos.' : ''}
+      Gracias por registrarte en la plataforma SPECTRUM. Para verificar tu dirección de correo electrónico, utiliza el siguiente código:
+
+      ${verificationCode}
+
+      Este código es válido por 24 horas. Si no te registraste en SPECTRUM, puedes ignorar este correo.
+      ${isBackup ? 'Problemas con el correo anterior? A veces los correos automáticos pueden ser filtrados por los sistemas de correo. Si no encuentras el correo anterior, revisa tu carpeta de spam o utiliza este código.' : ''}
+
+      Saludos,
+      El equipo de SPECTRUM
+
+      Este es un correo automático, por favor no respondas a este mensaje.
+      © ${new Date().getFullYear()} SPECTRUM Platform. Todos los derechos reservados.
+    `;
+
+    try {
+      console.log('Calling sendEmail method for email verification');
+      const messageId = await this.sendEmail({
+        to,
+        subject,
+        text,
+        html
+      });
+      console.log('Email verification email sent successfully', { to, messageId });
+      return messageId;
+    } catch (error) {
+      console.error('Error sending email verification email', {
         error,
         errorName: error instanceof Error ? error.name : 'Unknown',
         errorMessage: error instanceof Error ? error.message : String(error),

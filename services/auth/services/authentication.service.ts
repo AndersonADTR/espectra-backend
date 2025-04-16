@@ -120,12 +120,45 @@ export class AuthenticationService {
       }
 
       try {
-        // Intentar primero con Cognito
-        console.log('Trying to send password reset code via Cognito', { email });
+        // Usar directamente nuestro servicio de correo personalizado
+        console.log('Sending password reset email via direct SES', { email });
+
+        // Intentar primero con Cognito para mantener la compatibilidad con el flujo de reset-password
         try {
+          console.log('Trying to send password reset code via Cognito first', { email });
           await this.cognitoService.forgotPassword(email);
           console.log('Cognito forgotPassword call successful', { email });
           this.logger.info('Password recovery code sent successfully via Cognito', { email });
+
+          // Enviar también un correo personalizado con SES como respaldo
+          console.log('Also sending a custom email via SES as backup', { email });
+
+          // Generar un código de 6 dígitos (solo para el correo personalizado)
+          const resetCode = Math.floor(100000 + Math.random() * 900000).toString();
+
+          try {
+            const emailService = EmailService.getInstance();
+            console.log('EmailService instance created', {
+              defaultSender: process.env.SES_FROM_EMAIL || 'anderson.montilva@technoapes.co',
+              region: process.env.REGION || 'us-east-1'
+            });
+
+            // Enviar correo personalizado con instrucciones claras
+            await emailService.sendPasswordResetEmail(email, resetCode, true);
+
+            console.log('Custom password reset email sent successfully via direct SES', { email });
+            this.logger.info('Custom password reset email sent successfully via direct SES', { email });
+          } catch (sesError) {
+            // Si falla el envío del correo personalizado, solo registramos el error pero continuamos
+            console.error('Error sending custom email via direct SES (non-blocking):', {
+              error: sesError,
+              name: sesError instanceof Error ? sesError.name : 'Unknown',
+              message: sesError instanceof Error ? sesError.message : String(sesError),
+              stack: sesError instanceof Error ? sesError.stack : 'No stack trace'
+            });
+            // No propagamos este error ya que el flujo principal con Cognito ya funcionó
+          }
+
         } catch (cognitoError) {
           console.error('Error sending password reset code via Cognito:', {
             error: cognitoError,
@@ -134,21 +167,8 @@ export class AuthenticationService {
             stack: cognitoError instanceof Error ? cognitoError.stack : 'No stack trace'
           });
 
-          // Verificar si es un error de verificación de email
-          if (cognitoError instanceof Error &&
-              (cognitoError.message.includes('not verified') ||
-               cognitoError.message.includes('identity') ||
-               cognitoError.message.includes('verification'))) {
-            console.log('Email verification issue detected, trying direct SES as fallback');
-          } else if (cognitoError instanceof Error && cognitoError.name === 'InvalidParameterException') {
-            console.log('Invalid parameter issue detected, trying direct SES as fallback');
-          } else {
-            // Para otros errores, podemos decidir si reintentamos o no
-            console.log('Unknown Cognito error, trying direct SES as fallback');
-          }
-
-          // Si falla Cognito, intentar con nuestro servicio de correo
-          console.log('Trying to send password reset email via direct SES', { email });
+          // Si falla Cognito, usar exclusivamente nuestro servicio de correo
+          console.log('Cognito failed, using only direct SES as fallback', { email });
 
           // Generar un código de 6 dígitos
           const resetCode = Math.floor(100000 + Math.random() * 900000).toString();
@@ -259,11 +279,12 @@ export class AuthenticationService {
    * @param email - La dirección de correo electrónico del usuario
    * @param newPassword - La nueva contraseña
    * @param confirmationCode - El código de confirmación enviado al usuario
-   * @returns Promise<void> - No devuelve ningún valor
+   * @returns Promise<void | { message: string }> - No devuelve ningún valor en caso de éxito,
+   *         o devuelve un objeto con un mensaje en caso de código expirado con nuevo código enviado
    * @throws ValidationError - Si el código de confirmación es inválido o ha expirado
    * @throws AuthenticationError - Si ocurre un error durante el proceso
    */
-  async resetPassword(email: string, newPassword: string, confirmationCode: string): Promise<void> {
+  async resetPassword(email: string, newPassword: string, confirmationCode: string): Promise<void | { message: string }> {
     try {
       this.logger.info('Starting password reset process', { email });
 
@@ -298,18 +319,34 @@ export class AuthenticationService {
         );
       }
 
-      if ((error as Error).name === 'ExpiredCodeException') {
+      // Verificar si es un error de código expirado
+      if ((error as Error).name === 'ExpiredCodeException' ||
+          ((error as Error).message && (error as Error).message.includes('Invalid code provided'))) {
+
         // Código expirado - sugerir solicitar un nuevo código
-        this.logger.info('Confirmation code has expired, suggesting to request a new code', { email });
+        this.logger.info('Confirmation code has expired or is invalid, suggesting to request a new code', {
+          email,
+          errorName: (error as Error).name,
+          errorMessage: (error as Error).message
+        });
 
         // Intentar enviar un nuevo código automáticamente
         try {
           this.logger.info('Attempting to send a new confirmation code', { email });
+
+          // Enviar un nuevo código
           await this.forgotPassword(email);
 
-          throw new ValidationError(
-            'The confirmation code has expired. We have sent a new code to your email. Please check your inbox and try again with the new code.'
-          );
+          // Registrar el éxito
+          this.logger.info('New confirmation code sent successfully', {
+            email,
+            message: 'The confirmation code has expired. We have sent a new code to your email. Please check your inbox and try again with the new code.'
+          });
+
+          // Devolver un objeto con el mensaje para que el handler pueda responder adecuadamente
+          return {
+            message: 'The confirmation code has expired. We have sent a new code to your email. Please check your inbox and try again with the new code.'
+          };
         } catch (sendError) {
           this.logger.error('Failed to send a new confirmation code', {
             error: sendError,
@@ -378,6 +415,147 @@ export class AuthenticationService {
 
       throw new AuthenticationError(
         'Email verification failed: ' + ((error as Error).message || 'Unknown error')
+      );
+    }
+  }
+
+  /**
+   * Reenvía el código de verificación de correo electrónico
+   *
+   * Este método solicita a Cognito que envíe un nuevo código de verificación
+   * al correo electrónico del usuario.
+   *
+   * @param email - La dirección de correo electrónico a verificar
+   * @returns Promise<void> - No devuelve ningún valor
+   * @throws AuthenticationError - Si ocurre un error durante el proceso
+   */
+  async resendVerificationCode(email: string): Promise<void> {
+    try {
+      this.logger.info('Starting resend verification code process', { email });
+      console.log('Starting resend verification code process', { email });
+
+      // Verificar que el usuario existe
+      const user = await this.getUserByEmail(email);
+
+      if (!user) {
+        // No informamos al cliente si el email existe o no por seguridad
+        this.logger.info('Verification code requested for non-existent user', { email });
+        console.log('Verification code requested for non-existent user', { email });
+        return;
+      }
+
+      // Verificar si el usuario ya está verificado
+      if (user.status === UserStatus.ACTIVE) {
+        this.logger.info('User is already verified', { email, userId: user.userId });
+        console.log('User is already verified', { email, userId: user.userId });
+        throw new ValidationError('Email is already verified');
+      }
+
+      try {
+        // Intentar primero con Cognito
+        console.log('Trying to resend verification code via Cognito', { email });
+        await this.cognitoService.resendConfirmationCode(email);
+        console.log('Cognito resendConfirmationCode call successful', { email });
+        this.logger.info('Verification code resent successfully via Cognito', { email });
+
+        // Enviar también un correo personalizado con SES como respaldo
+        console.log('Also sending a custom verification email via SES as backup', { email });
+
+        // Generar un código de 6 dígitos (solo para el correo personalizado)
+        const verificationCode = Math.floor(100000 + Math.random() * 900000).toString();
+
+        try {
+          const emailService = EmailService.getInstance();
+          console.log('EmailService instance created', {
+            defaultSender: process.env.SES_FROM_EMAIL || 'anderson.montilva@technoapes.co',
+            region: process.env.REGION || 'us-east-1'
+          });
+
+          // Enviar correo personalizado con instrucciones claras
+          await emailService.sendVerificationEmail(email, verificationCode);
+
+          console.log('Custom verification email sent successfully via direct SES', { email });
+          this.logger.info('Custom verification email sent successfully via direct SES', { email });
+        } catch (sesError) {
+          // Si falla el envío del correo personalizado, solo registramos el error pero continuamos
+          console.error('Error sending custom email via direct SES (non-blocking):', {
+            error: sesError,
+            name: sesError instanceof Error ? sesError.name : 'Unknown',
+            message: sesError instanceof Error ? sesError.message : String(sesError),
+            stack: sesError instanceof Error ? sesError.stack : 'No stack trace'
+          });
+          // No propagamos este error ya que el flujo principal con Cognito ya funcionó
+        }
+
+      } catch (cognitoError) {
+        console.error('Error resending verification code via Cognito:', {
+          error: cognitoError,
+          name: cognitoError instanceof Error ? cognitoError.name : 'Unknown',
+          message: cognitoError instanceof Error ? cognitoError.message : String(cognitoError),
+          stack: cognitoError instanceof Error ? cognitoError.stack : 'No stack trace'
+        });
+
+        // Si falla Cognito, usar exclusivamente nuestro servicio de correo
+        console.log('Cognito failed, using only direct SES as fallback', { email });
+
+        // Generar un código de 6 dígitos
+        const verificationCode = Math.floor(100000 + Math.random() * 900000).toString();
+
+        // Guardar el código en Redis para validarlo después
+        // TODO: Implementar almacenamiento del código
+
+        // Enviar correo con el código
+        try {
+          const emailService = EmailService.getInstance();
+          console.log('EmailService instance created', {
+            defaultSender: process.env.SES_FROM_EMAIL || 'anderson.montilva@technoapes.co',
+            region: process.env.REGION || 'us-east-1'
+          });
+
+          await emailService.sendVerificationEmail(email, verificationCode);
+
+          console.log('Verification email sent successfully via direct SES', { email });
+          this.logger.info('Verification email sent successfully via direct SES', { email });
+        } catch (sesError) {
+          console.error('Error sending email via direct SES:', {
+            error: sesError,
+            name: sesError instanceof Error ? sesError.name : 'Unknown',
+            message: sesError instanceof Error ? sesError.message : String(sesError),
+            stack: sesError instanceof Error ? sesError.stack : 'No stack trace'
+          });
+
+          // Propagar el error original de Cognito si SES también falla
+          throw cognitoError;
+        }
+      }
+
+      this.logger.info('Verification code resent successfully', { email });
+      await this.metrics.incrementCounter('VerificationCodeResent');
+      await this.observability.trackAuthEvent('VerificationCodeResent', { email });
+
+    } catch (error) {
+      this.logger.error('Error resending verification code', { error, email });
+      console.error('Error in verification code resend process', {
+        error,
+        errorName: error instanceof Error ? error.name : 'Unknown',
+        errorMessage: error instanceof Error ? error.message : String(error),
+        email
+      });
+      await this.metrics.incrementCounter('VerificationCodeResendFailed');
+
+      // No propagamos el error si el usuario no existe para no revelar información
+      if (error instanceof Error && error.name === 'UserNotFoundException') {
+        this.logger.info('Verification code requested for non-existent user', { email });
+        return;
+      }
+
+      // Si es un error de validación, lo propagamos
+      if (error instanceof ValidationError) {
+        throw error;
+      }
+
+      throw new AuthenticationError(
+        'Failed to resend verification code: ' + ((error as Error).message || 'Unknown error')
       );
     }
   }

@@ -383,6 +383,25 @@ functions:
         Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-user-pool-client-id
       COGNITO_CLIENT_SECRET: ${ssm:/espectra/${self:provider.stage}/cognito/client-secret}
 
+  resendVerificationCode:
+    handler: services/auth/handlers/resend-verification-code.handler
+    name: ${self:custom.service}-${self:provider.stage}-resend-verification-code
+    role:
+      Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-lambda-role-arn
+    events:
+      - http:
+          path: auth/resend-verification-code
+          method: post
+          cors: true
+          restApi:
+            id: !Ref RestApiId
+    environment:
+      COGNITO_USER_POOL_ID:
+        Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-user-pool-id
+      COGNITO_CLIENT_ID:
+        Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-user-pool-client-id
+      COGNITO_CLIENT_SECRET: ${ssm:/espectra/${self:provider.stage}/cognito/client-secret}
+
   testEmail:
     handler: services/auth/handlers/test-email.handler
     name: ${self:custom.service}-${self:provider.stage}-test-email

@@ -54,7 +54,33 @@ const resetPasswordHandler: APIGatewayProxyHandler = async (event) => {
     logger.info('Starting password reset process', { email });
 
     // Restablecer contraseña
-    await authService.resetPassword(email, password, confirmationCode);
+    const result = await authService.resetPassword(email, password, confirmationCode);
+
+    // Verificar si el método devolvió un resultado (caso de código expirado con nuevo código enviado)
+    if (result && typeof result === 'object' && 'message' in result) {
+      logger.info('Password reset process returned a message', {
+        email,
+        message: result.message
+      });
+
+      // Devolver un mensaje informativo al cliente
+      return {
+        statusCode: 200,
+        headers: {
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*',
+          'Access-Control-Allow-Methods': 'OPTIONS,POST,GET',
+          'Access-Control-Allow-Headers': 'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'
+        },
+        body: JSON.stringify({
+          success: false,
+          message: result.message,
+          code: 'CODE_EXPIRED_NEW_CODE_SENT',
+          data: null,
+          errors: null
+        })
+      };
+    }
 
     logger.info('Password reset successfully', { email });
 
