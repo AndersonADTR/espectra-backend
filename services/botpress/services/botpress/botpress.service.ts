@@ -112,37 +112,37 @@ export class BotpressApiClient {
     );
   }
 
+  public async getOrCreateConversation(conversationId: string): Promise<any> {
+    const response = await this.axios.post('/conversations/get-or-create', {
+      id: conversationId
+    });
+    return response.data;
+  }
+
   /**
    * Sends a message to Botpress
-   * @param userId User ID
    * @param conversationId Conversation ID
    * @param message Message text or object
-   * @param context Optional conversation context
    * @returns Botpress response
    */
   public async sendMessage(
-    userId: string,
     conversationId: string,
-    message: string | BotpressMessage,
-    context?: any
+    message: string | BotpressMessage
   ): Promise<BotpressResponse> {
     try {
       const messageObj = typeof message === 'string' 
-        ? { type: 'text', payload: { text: message } } 
+        ? { type: 'text', text: message }
         : message;
-      
-      const response = await this.axios.post('/conversations/messages', {
-        userId,
+
+      const response = await this.axios.post('/messages', {
         conversationId,
-        message: messageObj,
-        context
+        payload: messageObj
       });
       
       return response.data;
     } catch (error) {
       this.logger.error('Error sending message to Botpress', { 
-        error, 
-        userId, 
+        error,
         conversationId 
       });
       throw error;
@@ -197,12 +197,14 @@ export class BotpressService {
    * @param userId User ID
    * @param message Message text or object
    * @param conversationId Optional conversation ID (will be generated if not provided)
+   * @param verifyConversationExists
    * @returns Processed response
    */
   public async sendMessage(
     userId: string,
     message: string | BotpressMessage,
-    conversationId?: string
+    conversationId?: string,
+    verifyConversationExists?: boolean
   ): Promise<BotpressResponse> {
     // Generate conversation ID if not provided
     const actualConversationId = conversationId || `conv-${userId}-${Date.now()}`;
@@ -234,6 +236,11 @@ export class BotpressService {
         };
         await this.contextService.saveContext(context);
       }
+
+      // Verify conversation exists if required
+      if (verifyConversationExists) {
+        await this.apiClient.getOrCreateConversation(actualConversationId);
+      }
       
       // Add user message to context
       const userMessage = {
@@ -250,10 +257,8 @@ export class BotpressService {
       
       // Send message to Botpress
       const response = await this.apiClient.sendMessage(
-        userId,
         actualConversationId,
-        message,
-        context
+        message
       );
       
       // Consume tokens based on actual usage

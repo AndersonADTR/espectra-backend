@@ -3,6 +3,7 @@
 import { v4 as uuidv4 } from 'uuid';
 import { WSMessage, WSConnectionStatus } from '../types/websocket.types';
 import { ConnectionService } from './connection.service';
+import { ConversationsService } from './conversations';
 import { BotpressService } from '@services/botpress/services/botpress/botpress.service';
 import { WebSocketService } from '../services/websocket.service';
 import { Connection } from '../models/connection';
@@ -40,7 +41,8 @@ export class MessageService {
   private readonly webSocketService: WebSocketService;
   private readonly contextService: ConversationContextService;
   private readonly tokenService: TokenManagementService;
-  
+  private readonly conversationsService: ConversationsService;
+
   // Cola para mensajes pendientes de entrega
   private readonly messageQueue: Map<string, MessageQueueItem> = new Map();
   private readonly MAX_RETRY_ATTEMPTS = 3;
@@ -55,6 +57,7 @@ export class MessageService {
     this.webSocketService = new WebSocketService();
     this.contextService = ConversationContextService.getInstance();
     this.tokenService = TokenManagementService.getInstance();
+    this.conversationsService = ConversationsService.getInstance();
 
     // Iniciar procesamiento de cola de mensajes pendientes
     this.startMessageQueueProcessor();
@@ -277,15 +280,15 @@ export class MessageService {
           userId: connection.userId,
           required: tokensRequired
         });
-        
+
         return messageId;
       }
-      
+
       // Verificar si el mensaje debe ir a un asesor
-      if (this.isHandoffRequest(message) || 
+      if (this.isHandoffRequest(message) ||
           (await this.isInHandoffState(message.conversationId))) {
         await this.notifyHumanAgent(connection, message);
-        
+
         // Enviar indicación de que el mensaje está siendo procesado por un asesor
         await this.sendMessage(connection.connectionId, {
           type: 'HANDOFF_STATUS',
@@ -305,14 +308,14 @@ export class MessageService {
             content: 'true',
             timestamp: new Date().toISOString()
           });
-          
+
           // Enviar a Botpress
           const response = await this.botpressService.sendMessage(
             connection.userId,
             message.content,
             message.conversationId
           );
-          
+
           // Detener indicador de escritura
           await this.sendMessage(connection.connectionId, {
             messageId: messageId,
@@ -321,7 +324,7 @@ export class MessageService {
             content: 'false',
             timestamp: new Date().toISOString()
           });
-          
+
           // Enviar respuesta al cliente
           await this.sendMessage(connection.connectionId, {
             messageId: messageId,
@@ -330,18 +333,18 @@ export class MessageService {
             content: response.messages.toString(),
             timestamp: new Date().toISOString(),
           }, true);
-          
+
           // Verificar si es necesario handoff
           if (response.metadata?.needsHandoff) {
             await this.initiateHandoff(connection, message);
           }
         } catch (error) {
-          this.logger.error('Error processing message with Botpress', { 
+          this.logger.error('Error processing message with Botpress', {
             error: error instanceof Error ? error.message : 'Unknown error',
             userId: connection.userId,
             conversationId: message.conversationId
           });
-          
+
           // Notificar error al usuario
           await this.sendMessage(connection.connectionId, {
             type: 'ERROR',
@@ -350,23 +353,23 @@ export class MessageService {
             timestamp: new Date().toISOString(),
             messageId
           }, true);
-          
+
           this.metrics.incrementCounter('BotpressProcessingErrors');
         }
       }
-      
+
       this.metrics.incrementCounter('UserMessagesProcessed');
       this.metrics.recordLatency('MessageProcessingLatency', Date.now() - startTime);
-      
+
       return messageId;
     } catch (error) {
-      this.logger.error('Error processing user message', { 
+      this.logger.error('Error processing user message', {
         error: error instanceof Error ? error.message : 'Unknown error',
         userId: connection.userId,
         connectionId: connection.connectionId,
         conversationId: message.conversationId
       });
-      
+
       try {
         // Notificar error al usuario
         await this.sendMessage(connection.connectionId, {
@@ -377,15 +380,15 @@ export class MessageService {
           messageId
         }, true);
       } catch (sendError) {
-        this.logger.error('Failed to send error notification', { 
-          error: sendError, 
-          connectionId: connection.connectionId 
+        this.logger.error('Failed to send error notification', {
+          error: sendError,
+          connectionId: connection.connectionId
         });
       }
-      
+
       this.metrics.incrementCounter('MessageProcessingErrors');
       this.metrics.recordLatency('MessageProcessingLatency', Date.now() - startTime);
-      
+
       throw error;
     }
   }
@@ -397,7 +400,7 @@ export class MessageService {
    */
   async notifyHumanAgent(connection: Connection, message: WSMessage): Promise<void> {
     const startTime = Date.now();
-    
+
     try {
       this.logger.info('Notifying human agent', {
         connectionId: connection.connectionId,
@@ -420,22 +423,22 @@ export class MessageService {
           }
         },
       };
-      
+
       // Actualizar estado de la conexión
       await this.connectionService.updateConnectionStatus(
-        connection.connectionId, 
+        connection.connectionId,
         'IN_PROGRESS'
       );
-      
+
       // Actualizar contexto de la conversación
       await this.contextService.updateStatus(
-        message.conversationId, 
+        message.conversationId,
         ConversationStatus.PENDING_HANDOFF
       );
-      
+
       // Enviar al sistema de handoff (servicio Botpress)
       await this.botpressService.initiateHandoff(connection.userId, message.conversationId);
-      
+
       // Buscar asesores disponibles y notificarles
       // (Esta parte se implementará completamente en Fase 3)
       // Por ahora, enviaremos a todos los asesores disponibles
@@ -443,7 +446,7 @@ export class MessageService {
       if (availableAdvisors.length > 0) {
         const advisorUserIds = availableAdvisors.map(advisor => advisor.userId);
         await this.webSocketService.broadcastMessage(agentMessage, advisorUserIds);
-        
+
         this.logger.info('Handoff request broadcast to advisors', {
           advisorCount: advisorUserIds.length,
           conversationId: message.conversationId
@@ -452,7 +455,7 @@ export class MessageService {
         this.logger.warn('No available advisors for handoff', {
           conversationId: message.conversationId
         });
-        
+
         // Notificar al usuario que no hay asesores disponibles
         await this.sendMessage(connection.connectionId, {
           messageId: message.messageId,
@@ -462,7 +465,7 @@ export class MessageService {
           timestamp: new Date().toISOString()
         }, true);
       }
-      
+
       this.metrics.incrementCounter('HandoffRequestsInitiated');
       this.metrics.recordLatency('HandoffRequestLatency', Date.now() - startTime);
     } catch (error) {
@@ -471,16 +474,16 @@ export class MessageService {
         connectionId: connection.connectionId,
         conversationId: message.conversationId
       });
-      
+
       // Intentar revertir al estado anterior
       try {
         await this.connectionService.updateConnectionStatus(
-          connection.connectionId, 
+          connection.connectionId,
           'CONNECTED'
         );
-        
+
         await this.contextService.updateStatus(
-          message.conversationId, 
+          message.conversationId,
           ConversationStatus.ACTIVE
         );
       } catch (revertError) {
@@ -489,14 +492,14 @@ export class MessageService {
           connectionId: connection.connectionId
         });
       }
-      
+
       this.metrics.incrementCounter('HandoffRequestErrors');
       this.metrics.recordLatency('HandoffRequestLatency', Date.now() - startTime);
-      
+
       throw error;
     }
   }
-  
+
   /**
    * Procesa una respuesta de un asesor humano
    * @param connectionId ID de la conexión del asesor
@@ -504,32 +507,32 @@ export class MessageService {
    */
   async handleAgentResponse(connectionId: string, message: WSMessage): Promise<void> {
     const startTime = Date.now();
-    
+
     try {
       this.logger.info('Handling agent response', {
         connectionId,
         conversationId: message.conversationId,
         messageType: message.type
       });
-      
+
       // Obtener información de la conexión del asesor
       const connection = await this.connectionService.getConnection(connectionId);
       if (!connection) {
         throw new WebSocketError('Connection not found', 404);
       }
-      
+
       // Obtener información de la conversación
       const context = await this.contextService.getContext(message.conversationId);
       if (!context) {
         throw new WebSocketError('Conversation not found', 404);
       }
-      
+
       // Obtener conexiones del usuario
       const userConnections = await this.connectionService.getConnectionsByUserId(context.userId);
       if (userConnections.length === 0) {
         throw new WebSocketError('User not connected', 400, { userId: context.userId });
       }
-      
+
       // Procesar según el tipo de mensaje
       switch (message.type) {
         case 'HANDOFF_ACCEPTED':
@@ -539,9 +542,9 @@ export class MessageService {
             lastAdvisorId: connection.userId,
             lastHandoffTimestamp: Date.now()
           });
-          
+
           await this.contextService.updateStatus(message.conversationId, ConversationStatus.WITH_ADVISOR);
-          
+
           // Notificar al usuario
           for (const userConn of userConnections) {
             await this.sendMessage(userConn.connectionId, {
@@ -555,18 +558,18 @@ export class MessageService {
               }
             }, true);
           }
-          
+
           this.metrics.incrementCounter('HandoffsAccepted');
           break;
-          
+
         case 'HANDOFF_REJECTED':
           // Actualizar estado de conexión
           for (const userConn of userConnections) {
             await this.connectionService.updateConnectionStatus(userConn.connectionId, 'CONNECTED');
           }
-          
+
           await this.contextService.updateStatus(message.conversationId, ConversationStatus.ACTIVE);
-          
+
           // Notificar al usuario
           for (const userConn of userConnections) {
             await this.sendMessage(userConn.connectionId, {
@@ -577,10 +580,10 @@ export class MessageService {
               timestamp: new Date().toISOString()
             }, true);
           }
-          
+
           this.metrics.incrementCounter('HandoffsRejected');
           break;
-          
+
         case 'AGENT_MESSAGE':
           // Guardar mensaje en el historial
           await this.contextService.addMessage(message.conversationId, {
@@ -588,7 +591,7 @@ export class MessageService {
             content: message.content,
             timestamp: Date.now()
           });
-          
+
           // Enviar mensaje al usuario
           for (const userConn of userConnections) {
             await this.sendMessage(userConn.connectionId, {
@@ -600,17 +603,17 @@ export class MessageService {
               metadata: message.metadata
             }, true);
           }
-          
+
           this.metrics.incrementCounter('AgentMessagesSent');
           break;
-          
+
         case 'HANDOFF_COMPLETED':
           // Actualizar estado
           await this.contextService.updateStatus(message.conversationId, ConversationStatus.ACTIVE);
-          
+
           for (const userConn of userConnections) {
             await this.connectionService.updateConnectionStatus(userConn.connectionId, 'CONNECTED');
-            
+
             // Notificar al usuario
             await this.sendMessage(userConn.connectionId, {
               messageId: message.messageId,
@@ -620,14 +623,14 @@ export class MessageService {
               timestamp: new Date().toISOString()
             }, true);
           }
-          
+
           this.metrics.incrementCounter('HandoffsCompleted');
           break;
-          
+
         default:
           throw new WebSocketError(`Unsupported message type: ${message.type}`, 400);
       }
-      
+
       this.metrics.recordLatency('AgentResponseLatency', Date.now() - startTime);
     } catch (error) {
       this.logger.error('Failed to handle agent response', {
@@ -636,10 +639,10 @@ export class MessageService {
         conversationId: message.conversationId,
         messageType: message.type
       });
-      
+
       this.metrics.incrementCounter('AgentResponseErrors');
       this.metrics.recordLatency('AgentResponseLatency', Date.now() - startTime);
-      
+
       throw error;
     }
   }
@@ -659,7 +662,7 @@ export class MessageService {
         content: 'Tu conversación será transferida a un asesor humano.',
         timestamp: new Date().toISOString()
       }, true);
-      
+
       // Llamar al método de notificación a agente
       await this.notifyHumanAgent(connection, message);
     } catch (error) {
@@ -668,7 +671,7 @@ export class MessageService {
         userId: connection.userId,
         conversationId: message.conversationId
       });
-      
+
       throw error;
     }
   }
@@ -679,10 +682,10 @@ export class MessageService {
    * @returns Número estimado de tokens
    */
   private estimateTokenRequirement(message: WSMessage): number {
-    const content = typeof message.content === 'string' 
-      ? message.content 
+    const content = typeof message.content === 'string'
+      ? message.content
       : JSON.stringify(message.content);
-      
+
     // Estimación básica: ~4 caracteres por token
     return Math.max(50, Math.ceil(content.length / 4));
   }
@@ -696,7 +699,7 @@ export class MessageService {
     if (typeof message.content !== 'string') {
       return false;
     }
-    
+
     const content = message.content.toLowerCase();
     return (
       content.includes('hablar con asesor') ||
@@ -719,11 +722,11 @@ export class MessageService {
   private async isInHandoffState(conversationId: string): Promise<boolean> {
     try {
       const context = await this.contextService.getContext(conversationId);
-      
+
       if (!context) {
         return false;
       }
-      
+
       return (
         context.status === 'PENDING_HANDOFF' ||
         context.status === 'WITH_ADVISOR'
@@ -733,7 +736,7 @@ export class MessageService {
         error: error instanceof Error ? error.message : 'Unknown error',
         conversationId
       });
-      
+
       return false;
     }
   }
@@ -746,7 +749,7 @@ export class MessageService {
   private calculateHandoffPriority(message: WSMessage): number {
     const basePriority = HANDOFF_CONFIG.DEFAULT_PRIORITY;
     let priority = basePriority;
-    
+
     // Incrementar prioridad si es usuario de plan superior
     if (message.metadata?.userInfo?.plan) {
       switch (message.metadata.userInfo.plan) {
@@ -761,12 +764,12 @@ export class MessageService {
           break;
       }
     }
-    
+
     // Incrementar si es una solicitud explícita
     if (this.isHandoffRequest(message)) {
       priority += 1;
     }
-    
+
     // Limitar entre 1-10
     return Math.max(1, Math.min(10, priority));
   }
@@ -792,7 +795,7 @@ export class MessageService {
    */
   private queueMessageForRetry(connectionId: string, message: WSMessage): void {
     const queueKey = `${connectionId}:${message.messageId || uuidv4()}`;
-    
+
     this.messageQueue.set(queueKey, {
       userId: message.metadata?.userId || '',
       connectionId,
@@ -800,9 +803,9 @@ export class MessageService {
       attempts: 0,
       nextRetry: Date.now() + this.RETRY_DELAY_MS
     });
-    
+
     this.metrics.incrementCounter('MessagesQueued');
-    
+
     this.logger.info('Message queued for retry', {
       connectionId,
       messageType: message.type,
@@ -817,7 +820,7 @@ export class MessageService {
     if (this.retryInterval) {
       clearInterval(this.retryInterval);
     }
-    
+
     this.retryInterval = setInterval(() => {
       this.processMessageQueue().catch(error => {
         this.logger.error('Error processing message queue', {
@@ -834,39 +837,39 @@ export class MessageService {
     if (this.messageQueue.size === 0) {
       return;
     }
-    
+
     const now = Date.now();
     const itemsToProcess: [string, MessageQueueItem][] = [];
-    
+
     // Identificar mensajes listos para reintento
     for (const [key, item] of this.messageQueue.entries()) {
       if (item.nextRetry && item.nextRetry <= now) {
         itemsToProcess.push([key, item]);
       }
     }
-    
+
     if (itemsToProcess.length === 0) {
       return;
     }
-    
+
     this.logger.info('Processing message queue', {
       readyCount: itemsToProcess.length,
       totalQueued: this.messageQueue.size
     });
-    
+
     // Procesar cada mensaje
     for (const [key, item] of itemsToProcess) {
       try {
         const success = await this.webSocketService.sendMessage(
-          item.connectionId, 
+          item.connectionId,
           item.message
         );
-        
+
         if (success) {
           // Mensaje enviado correctamente, eliminar de la cola
           this.messageQueue.delete(key);
           this.metrics.incrementCounter('QueuedMessagesDelivered');
-          
+
           this.logger.info('Queued message delivered successfully', {
             connectionId: item.connectionId,
             messageType: item.message.type
@@ -874,12 +877,12 @@ export class MessageService {
         } else {
           // Incrementar contador de intentos
           item.attempts++;
-          
+
           if (item.attempts >= this.MAX_RETRY_ATTEMPTS) {
             // Alcanzado máximo de intentos, eliminar de la cola
             this.messageQueue.delete(key);
             this.metrics.incrementCounter('QueuedMessagesAbandoned');
-            
+
             this.logger.warn('Abandoned message after max retries', {
               connectionId: item.connectionId,
               messageType: item.message.type,
@@ -889,7 +892,7 @@ export class MessageService {
             // Programar próximo intento con backoff exponencial
             const delay = this.RETRY_DELAY_MS * Math.pow(2, item.attempts);
             item.nextRetry = now + delay;
-            
+
             this.logger.info('Scheduled message for retry', {
               connectionId: item.connectionId,
               messageType: item.message.type,
@@ -901,14 +904,14 @@ export class MessageService {
       } catch (error) {
         // Error al intentar enviar, manejar igual que envío fallido
         item.attempts++;
-        
+
         this.logger.error('Error retrying queued message', {
           error: error instanceof Error ? error.message : 'Unknown error',
           connectionId: item.connectionId,
           messageType: item.message.type,
           attempt: item.attempts
         });
-        
+
         if (item.attempts >= this.MAX_RETRY_ATTEMPTS) {
           this.messageQueue.delete(key);
           this.metrics.incrementCounter('QueuedMessagesAbandoned');
@@ -928,7 +931,7 @@ export class MessageService {
       clearInterval(this.retryInterval);
       this.retryInterval = null;
     }
-    
+
     this.messageQueue.clear();
     this.logger.info('MessageService resources cleaned up');
   }

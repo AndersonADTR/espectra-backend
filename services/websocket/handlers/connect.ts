@@ -4,6 +4,7 @@ import { APIGatewayProxyHandler, APIGatewayProxyEvent } from 'aws-lambda';
 import { Logger } from '@shared/utils/logger';
 import { MetricsService } from '@shared/utils/metrics';
 import { ConnectionService } from '../services/connection.service';
+import { ConversationsService } from '../services/conversations';
 import { MONITORING_CONFIG } from '../../botpress/config/config';
 import { WebSocketError } from '../utils/errors';
 import { WSMessage } from '../types/websocket.types';
@@ -14,6 +15,7 @@ const logger = new Logger('WebSocketConnectHandler');
 const metrics = new MetricsService(MONITORING_CONFIG.METRICS.NAMESPACE);
 const connectionService = new ConnectionService();
 const websocketService = new WebSocketService();
+const conversationsService = ConversationsService.getInstance();
 
 export const handler: APIGatewayProxyHandler = async (event: APIGatewayProxyEvent) => {
   const connectionId = event.requestContext.connectionId;
@@ -44,9 +46,9 @@ export const handler: APIGatewayProxyHandler = async (event: APIGatewayProxyEven
         headers: event.headers,
         authorizer: event.requestContext.authorizer
       });
-      
+
       metrics.incrementCounter('WebSocketConnectionAuthFailures');
-      
+
       return {
         statusCode: 401,
         headers: {
@@ -74,9 +76,25 @@ export const handler: APIGatewayProxyHandler = async (event: APIGatewayProxyEven
       connectionMetadata
     );
 
-    // Enviar mensaje de bienvenida/confirmación al cliente
+    // Obtener o crear una conversación para el usuario
+    let conversationId = '';
+    let isNewConversation = false;
     try {
-      const welcomeMessage: WSMessage = {
+      // Obtener la conexión recién creada
+      const connection = await connectionService.getConnection(connectionId);
+      if (!connection) {
+        throw new WebSocketError('Connection not found after creation', 500);
+      }
+
+      // Obtener o crear una conversación
+      const { conversationId: convId, welcomeMessage, isNew } =
+        await conversationsService.getOrCreateConversationFromConnection(connection);
+
+      conversationId = convId;
+      isNewConversation = isNew;
+
+      // Enviar mensaje de bienvenida/confirmación al cliente
+      await websocketService.sendMessage(connectionId, {
         messageId: uuidv4(),
         type: 'SESSION_STARTED',
         conversationId: 'system',
@@ -84,26 +102,59 @@ export const handler: APIGatewayProxyHandler = async (event: APIGatewayProxyEven
         timestamp: new Date().toISOString(),
         metadata: {
           connectionId,
+          conversationId,
           serverTime: new Date().toISOString(),
           serverEnvironment: process.env.STAGE || 'dev'
         }
-      };
-      
-      await websocketService.sendMessage(connectionId, welcomeMessage);
-    } catch (welcomeError) {
-      // No interrumpimos la conexión si falla el mensaje de bienvenida
-      logger.warn('Failed to send welcome message', {
-        error: welcomeError instanceof Error ? welcomeError.message : 'Unknown error',
-        connectionId
       });
+
+      // Enviar mensaje de conversación creada o reanudada
+      await websocketService.sendMessage(connectionId, welcomeMessage);
+
+      logger.info(isNew ? 'New conversation created for user' : 'Existing conversation resumed for user', {
+        userId,
+        connectionId,
+        conversationId,
+        isNew
+      });
+    } catch (conversationError) {
+      // No interrumpimos la conexión si falla la obtención o creación de la conversación
+      logger.warn('Failed to get or create conversation or send welcome message', {
+        error: conversationError instanceof Error ? conversationError.message : 'Unknown error',
+        connectionId,
+        userId
+      });
+
+      // Enviar mensaje básico de bienvenida si falla la creación de conversación
+      try {
+        await websocketService.sendMessage(connectionId, {
+          messageId: uuidv4(),
+          type: 'SESSION_STARTED',
+          conversationId: 'system',
+          content: 'Connected successfully to SPECTRUM',
+          timestamp: new Date().toISOString(),
+          metadata: {
+            connectionId,
+            serverTime: new Date().toISOString(),
+            serverEnvironment: process.env.STAGE || 'dev'
+          }
+        });
+      } catch (welcomeError) {
+        logger.warn('Failed to send fallback welcome message', {
+          error: welcomeError instanceof Error ? welcomeError.message : 'Unknown error',
+          connectionId
+        });
+      }
     }
 
     metrics.incrementCounter('WebSocketConnections');
     metrics.incrementCounter('ActiveConnections', 1, { userId });
-    
-    logger.info('WebSocket connection successful', { 
+
+    logger.info('WebSocket connection successful', {
       connectionId,
       userId,
+      conversationId: conversationId || 'not_created',
+      isNewConversation,
       metadata: connectionMetadata
     });
 
@@ -114,7 +165,9 @@ export const handler: APIGatewayProxyHandler = async (event: APIGatewayProxyEven
       },
       body: JSON.stringify({
         message: 'Connected successfully',
-        connectionId
+        connectionId,
+        conversationId: conversationId || undefined,
+        isNewConversation
       })
     };
   } catch (error) {

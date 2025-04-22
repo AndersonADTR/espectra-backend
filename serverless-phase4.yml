@@ -58,10 +58,8 @@ provider:
     CONNECTION_TABLE: ${cf:${self:custom.service_fase3}-${sls:stage}.ConnectionsTableName}
     CHAT_HISTORY_TABLE:
       Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-chat-history-table-name
-    CONTEXT_TABLE:
-      Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-context-table-name
-    TOKEN_TABLE:
-      Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-tokens-table-name
+    CONTEXT_TABLE: ${cf:${self:custom.service_fase2}-${sls:stage}.ConversationContextTableName}
+    TOKEN_TABLE: ${cf:${self:custom.service_fase2}-${sls:stage}.TokenUsageTableName}
     REGISTRATION_REQUESTS_TABLE:
       Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-registration-requests-table-name
     # HANDOFF_TABLE:
@@ -94,6 +92,7 @@ provider:
 
 custom:
   service: espectra-backend
+  service_fase2: espectra-backend-phase2
   service_fase3: espectra-backend-phase3
 
   logRetentionInDays: 14
@@ -630,18 +629,18 @@ functions:
             id: !Ref RestApiId
 
   # Metrics Functions
-  metricsCollector:
-    handler: services/metrics/handlers/collector.handler
-    name: ${self:custom.service}-${self:provider.stage}-metrics-collector
-    role:
-      Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-lambda-role-arn
-    vpc: null
-    events:
-      - schedule: rate(1 minute)
-    environment:
-      METRICS_NAMESPACE: ${self:custom.service}/${self:provider.stage}
-      BOTPRESS_METRICS_TABLE:
-        Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-metrics-table-name
+  # metricsCollector:
+  #   handler: services/metrics/handlers/collector.handler
+  #   name: ${self:custom.service}-${self:provider.stage}-metrics-collector
+  #   role:
+  #     Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-lambda-role-arn
+  #   vpc: null
+  #   events:
+  #     - schedule: rate(1 minute)
+  #   environment:
+  #     METRICS_NAMESPACE: ${self:custom.service}/${self:provider.stage}
+  #     BOTPRESS_METRICS_TABLE:
+  #       Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-metrics-table-name
 
 resources:
   - ${file(infrastructure/apigateway/api.yml)}
