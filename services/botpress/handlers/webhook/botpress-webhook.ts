@@ -59,7 +59,7 @@ export const handler: Handler = async (event: APIGatewayProxyEvent) => {
     // await sendToProcessingQueue(webhookData);
 
     // Enviar respuesta al websocket para actualizar el chat
-    await websocketService.sendMessage(webhookData.conversationId, webhookData.payload.message);
+    await websocketService.sendMessageToConversation(webhookData.conversationId, webhookData.payload.message);
     
     metrics.recordLatency('WebhookProcessingTime', Date.now() - startTime);
     metrics.incrementCounter('WebhooksProcessed');

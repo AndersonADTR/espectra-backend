@@ -26,16 +26,23 @@ export class TokenManagementService {
 
   private constructor() {
     const client = new DynamoDBClient({});
-    this.dynamoDbClient = DynamoDBDocumentClient.from(client);
+    this.dynamoDbClient = DynamoDBDocumentClient.from(client, {
+      marshallOptions: {
+        // Eliminar valores undefined de los objetos
+        removeUndefinedValues: true,
+        // Convertir valores vacíos (strings, sets, listas) a null
+        convertEmptyValues: true
+      }
+    });
     this.eventBridgeClient = new EventBridgeClient({});
     this.cacheService = CacheService.getInstance();
     this.logger = new Logger('TokenManagementService');
     this.metrics = new MetricsService('TokenManagement');
-    
+
     this.tableName = process.env.TOKEN_TABLE || `${process.env.SERVICE_NAME}-${process.env.STAGE}-token-usage-table`;
     this.usersTableName = process.env.USERS_TABLE || `${process.env.SERVICE_NAME}-${process.env.STAGE}-users`;
     this.eventBusName = process.env.EVENT_BUS_NAME || `${process.env.SERVICE_NAME}-${process.env.STAGE}-event-bus`;
-    
+
     // Configurar límites de tokens por plan
     this.tokenLimits = {
       [UserPlan.BASIC]: parseInt(process.env.TOKEN_LIMIT_BASIC || '1000'),
@@ -61,19 +68,19 @@ export class TokenManagementService {
     const startTime = Date.now();
     const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
     const cacheKey = `${this.cacheKeyPrefix}${userId}:${today}`;
-    
+
     try {
       // Intentar obtener de caché primero
       const cachedUsage = await this.cacheService.get<TokenUsage>(cacheKey);
-      
+
       if (cachedUsage) {
         this.metrics.incrementCounter('TokenUsageCacheHit');
         this.metrics.recordLatency('TokenUsageRetrievalLatency', Date.now() - startTime);
         return cachedUsage;
       }
-      
+
       this.metrics.incrementCounter('TokenUsageCacheMiss');
-      
+
       // Obtener de DynamoDB si no está en caché
       const result = await this.dynamoDbClient.send(new GetCommand({
         TableName: this.tableName,
@@ -82,22 +89,22 @@ export class TokenManagementService {
           date: today
         }
       }));
-      
+
       // Si existe un registro para hoy, devolverlo
       if (result.Item) {
         const usage = result.Item as TokenUsage;
-        
+
         // Guardar en caché
         await this.cacheService.set(cacheKey, usage, { ttl: this.cacheTtl });
-        
+
         this.metrics.recordLatency('TokenUsageRetrievalLatency', Date.now() - startTime);
         return usage;
       }
-      
+
       // Si no existe, crear un nuevo registro
       const userPlan = await this.getUserPlan(userId);
       const limit = this.tokenLimits[userPlan] || this.tokenLimits[UserPlan.BASIC];
-      
+
       const newUsage: TokenUsage = {
         userId,
         date: today,
@@ -111,16 +118,16 @@ export class TokenManagementService {
         overageCount: 0,
         overageTokens: 0
       };
-      
+
       // Guardar el nuevo registro
       await this.dynamoDbClient.send(new PutCommand({
         TableName: this.tableName,
         Item: newUsage
       }));
-      
+
       // Guardar en caché
       await this.cacheService.set(cacheKey, newUsage, { ttl: this.cacheTtl });
-      
+
       this.metrics.recordLatency('TokenUsageRetrievalLatency', Date.now() - startTime);
       return newUsage;
     } catch (error) {
@@ -145,66 +152,66 @@ export class TokenManagementService {
     usagePercentage: number;
   }> {
     const startTime = Date.now();
-    
+
     if (tokenCount <= 0) {
       throw new Error('Token count must be positive');
     }
-    
+
     try {
       // Obtener uso actual
       const currentUsage = await this.getUserTokenUsage(userId);
-      
+
       // Calcular nuevos valores
       const hasRemainingTokens = currentUsage.remainingTokens >= tokenCount;
       const actualTokensToConsume = hasRemainingTokens ? tokenCount : currentUsage.remainingTokens;
-      
+
       const updatedUsage: TokenUsage = {
         ...currentUsage,
         totalTokens: currentUsage.totalTokens + actualTokensToConsume,
         remainingTokens: Math.max(0, currentUsage.remainingTokens - actualTokensToConsume),
         lastUpdated: new Date().toISOString()
       };
-      
+
       // Si se consume más de lo disponible, registrar overage
       const overage = !hasRemainingTokens;
       if (overage) {
         const overageTokens = tokenCount - actualTokensToConsume;
         updatedUsage.overageCount = (currentUsage.overageCount || 0) + 1;
         updatedUsage.overageTokens = (currentUsage.overageTokens || 0) + overageTokens;
-        
+
         // Actualizar metadata si existe
         if (updatedUsage.metadata) {
           updatedUsage.metadata.overageCost = this.calculateOverageCost(
-            updatedUsage.overageTokens, 
+            updatedUsage.overageTokens,
             updatedUsage.planType
           );
         } else {
           updatedUsage.metadata = {
             overageCost: this.calculateOverageCost(
-              updatedUsage.overageTokens, 
+              updatedUsage.overageTokens,
               updatedUsage.planType
             )
           };
         }
       }
-      
+
       // Actualizar en DynamoDB
       await this.dynamoDbClient.send(new PutCommand({
         TableName: this.tableName,
         Item: updatedUsage
       }));
-      
+
       // Actualizar caché
       const today = new Date().toISOString().split('T')[0];
       const cacheKey = `${this.cacheKeyPrefix}${userId}:${today}`;
       await this.cacheService.set(cacheKey, updatedUsage, { ttl: this.cacheTtl });
-      
+
       // Calcular porcentaje de uso
       const usagePercentage = ((updatedUsage.dailyLimit - updatedUsage.remainingTokens) / updatedUsage.dailyLimit) * 100;
-      
+
       // Verificar umbrales y enviar alertas si es necesario
       const alertTriggered = await this.checkThresholds(updatedUsage, usagePercentage);
-      
+
       this.metrics.incrementCounter('TokensConsumed', actualTokensToConsume);
       if (overage) {
         this.metrics.incrementCounter('TokenOverages');
@@ -229,7 +236,7 @@ export class TokenManagementService {
           { userId, plan: updatedUsage.planType }
         );
       }
-      
+
       return {
         usage: updatedUsage,
         hasRemainingTokens,
@@ -255,11 +262,11 @@ export class TokenManagementService {
     try {
       const usage = await this.getUserTokenUsage(userId);
       const available = usage.remainingTokens >= requiredTokens;
-      
+
       if (!available) {
         this.metrics.incrementCounter('InsufficientTokenChecks');
       }
-      
+
       return available;
     } catch (error) {
       this.logger.error('Error checking token availability', { error, userId, requiredTokens });
@@ -276,12 +283,12 @@ export class TokenManagementService {
   public async resetDailyTokens(userId: string): Promise<TokenUsage> {
     const startTime = Date.now();
     const date = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
-    
+
     try {
       // Obtener plan del usuario
       const userPlan = await this.getUserPlan(userId);
       const limit = this.tokenLimits[userPlan] || this.tokenLimits[UserPlan.BASIC];
-      
+
       // Crear nuevo registro de uso
       const newUsage: TokenUsage = {
         userId,
@@ -296,20 +303,20 @@ export class TokenManagementService {
         overageCount: 0,
         overageTokens: 0
       };
-      
+
       // Actualizar DynamoDB
       await this.dynamoDbClient.send(new PutCommand({
         TableName: this.tableName,
         Item: newUsage
       }));
-      
+
       const today = new Date().toISOString().split('T')[0];
       const cacheKey = `${this.cacheKeyPrefix}${userId}:${today}`;
       await this.cacheService.set(cacheKey, newUsage, { ttl: this.cacheTtl });
-          
+
       this.metrics.incrementCounter('TokensReset');
       this.metrics.recordLatency('TokenResetLatency', Date.now() - startTime);
-      
+
       return newUsage;
     } catch (error) {
       this.logger.error('Error resetting daily tokens', { error, userId });
@@ -327,12 +334,12 @@ export class TokenManagementService {
    * @returns Historial de uso de tokens
    */
   public async getTokenUsageHistory(
-    userId: string, 
-    startDate: string, 
+    userId: string,
+    startDate: string,
     endDate: string
   ): Promise<TokenUsage[]> {
     const startTime = Date.now();
-    
+
     try {
       const result = await this.dynamoDbClient.send(new QueryCommand({
         TableName: this.tableName,
@@ -346,7 +353,7 @@ export class TokenManagementService {
           ':endDate': endDate
         }
       }));
-      
+
       this.metrics.recordLatency('TokenHistoryRetrievalLatency', Date.now() - startTime);
       return (result.Items || []) as TokenUsage[];
     } catch (error) {
@@ -371,29 +378,29 @@ export class TokenManagementService {
         { percentage: 90, type: 'NEAR_LIMIT' },
         { percentage: 100, type: 'LIMIT_REACHED' }
       ];
-      
+
       // Encontrar el umbral más alto que se ha cruzado
       const threshold = thresholds
         .filter(t => usagePercentage >= t.percentage)
         .sort((a, b) => b.percentage - a.percentage)[0];
-      
+
       if (!threshold) {
         return false;
       }
-      
+
       // Verificar si ya se ha enviado una alerta para este umbral hoy
       const alertId = `${threshold.type}_${usage.date}`;
       if (usage.alertsSent && usage.alertsSent.includes(alertId)) {
         return false;
       }
-      
+
       // Enviar alerta via EventBridge
       const success = await this.sendTokenAlert(usage, usagePercentage, threshold.type);
-      
+
       if (success) {
         // Actualizar lista de alertas enviadas
         const updatedAlertsSent = [...(usage.alertsSent || []), alertId];
-        
+
         await this.dynamoDbClient.send(new UpdateCommand({
           TableName: this.tableName,
           Key: {
@@ -405,7 +412,7 @@ export class TokenManagementService {
             ':alertsSent': updatedAlertsSent
           }
         }));
-        
+
         // Actualizar caché
         const cacheKey = `${this.cacheKeyPrefix}${usage.userId}:${usage.date}`;
         await this.cacheService.get<TokenUsage>(cacheKey).then(cachedUsage => {
@@ -414,10 +421,10 @@ export class TokenManagementService {
             this.cacheService.set(cacheKey, cachedUsage, { ttl: this.cacheTtl });
           }
         });
-        
+
         return true;
       }
-      
+
       return false;
     } catch (error) {
       this.logger.error('Error checking token thresholds', { error, userId: usage.userId });
@@ -434,8 +441,8 @@ export class TokenManagementService {
    * @returns true si se ha enviado correctamente
    */
   private async sendTokenAlert(
-    usage: TokenUsage, 
-    usagePercentage: number, 
+    usage: TokenUsage,
+    usagePercentage: number,
     alertType: string
   ): Promise<boolean> {
     try {
@@ -453,17 +460,17 @@ export class TokenManagementService {
         }),
         EventBusName: this.eventBusName
       };
-      
+
       await this.eventBridgeClient.send(new PutEventsCommand({
         Entries: [event]
       }));
-      
-      this.logger.info('Token alert sent', { 
-        userId: usage.userId, 
-        usagePercentage, 
-        alertType 
+
+      this.logger.info('Token alert sent', {
+        userId: usage.userId,
+        usagePercentage,
+        alertType
       });
-      
+
       this.metrics.incrementCounter('TokenAlertsSent');
       return true;
     } catch (error) {
@@ -487,7 +494,7 @@ export class TokenManagementService {
       [UserPlan.BUSINESS]: 1.5,
       [UserPlan.ENTERPRISE]: 1.0
     };
-    
+
     const rate = rates[planType] || rates[UserPlan.BASIC];
     return (overageTokens / 1000) * rate;
   }
@@ -515,7 +522,7 @@ export class TokenManagementService {
         TableName: this.usersTableName,
         Key: { userId }
       }));
-      
+
       if (result.Item && result.Item.userType) {
         // Mapear userType a UserPlan
         switch (result.Item.userType.toLowerCase()) {
@@ -529,7 +536,7 @@ export class TokenManagementService {
             return UserPlan.BASIC;
         }
       }
-      
+
       return UserPlan.BASIC;
     } catch (error) {
       this.logger.error('Error getting user plan', { error, userId });

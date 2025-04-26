@@ -44,7 +44,14 @@ export class ConversationContextService {
 
   private constructor() {
     const client = new DynamoDBClient({});
-    this.dynamoDbClient = DynamoDBDocumentClient.from(client);
+    this.dynamoDbClient = DynamoDBDocumentClient.from(client, {
+      marshallOptions: {
+        // Eliminar valores undefined de los objetos
+        removeUndefinedValues: true,
+        // Convertir valores vacíos (strings, sets, listas) a null
+        convertEmptyValues: true
+      }
+    });
     this.cacheService = CacheService.getInstance();
     this.logger = new Logger('ConversationContextService');
     this.metrics = new MetricsService('ConversationContext');
@@ -65,19 +72,19 @@ export class ConversationContextService {
    */
   public async getContext(conversationId: string): Promise<ConversationContext | null> {
     const startTime = Date.now();
-    
+
     try {
       // Intentar obtener de caché primero
       const cacheKey = `${this.cacheKeyPrefix}${conversationId}`;
       const cachedContext = await this.cacheService.get<ConversationContext>(cacheKey);
-      
+
       if (cachedContext) {
         this.logger.debug('Context retrieved from cache', { conversationId });
         this.metrics.incrementCounter('CacheHit');
         this.metrics.recordLatency('ContextRetrievalLatency', Date.now() - startTime);
         return cachedContext;
       }
-      
+
       this.metrics.incrementCounter('CacheMiss');
 
       // Si no está en caché, obtener de DynamoDB
@@ -92,10 +99,10 @@ export class ConversationContextService {
       }
 
       const context = result.Item as ConversationContext;
-      
+
       // Actualizar el caché para futuras peticiones
       await this.cacheService.set(cacheKey, context, { ttl: 900 }); // 15 minutos TTL
-      
+
       this.metrics.recordLatency('ContextRetrievalLatency', Date.now() - startTime);
       return context;
     } catch (error) {
@@ -113,7 +120,7 @@ export class ConversationContextService {
    */
   public async saveContext(context: ConversationContext): Promise<ConversationContext> {
     const startTime = Date.now();
-    
+
     try {
       const timestamp = Date.now();
       const contextToSave: ConversationContext = {
@@ -134,10 +141,10 @@ export class ConversationContextService {
       // Actualizar caché
       const cacheKey = `${this.cacheKeyPrefix}${context.conversationId}`;
       await this.cacheService.set(cacheKey, contextToSave, { ttl: 900 }); // 15 minutos TTL
-      
+
       this.metrics.incrementCounter('ContextSaved');
       this.metrics.recordLatency('ContextSaveLatency', Date.now() - startTime);
-      
+
       return contextToSave;
     } catch (error) {
       this.logger.error('Error saving conversation context', { error, conversationId: context.conversationId });
@@ -155,20 +162,20 @@ export class ConversationContextService {
    */
   public async updateContext(conversationId: string, updates: Partial<ConversationContext>): Promise<ConversationContext> {
     const startTime = Date.now();
-    
+
     try {
       const timestamp = Date.now();
-      
+
       // Excluir propiedades que no se deben actualizar directamente
-      const { conversationId: id, createdAt, ttl, ...validUpdates } = updates as any;
-      
+      const { conversationId: id, createdAt, ttl, updatedAt, lastActivity, ...validUpdates } = updates as any;
+
       // Construir expresión de actualización dinámicamente
-      const updateExpressionParts: string[] = ['set updatedAt = :updatedAt, lastActivity = :lastActivity'];
+      const updateExpressionParts: string[] = ['#updatedAt = :updatedAt, #lastActivity = :lastActivity'];
       const expressionAttributeValues: Record<string, any> = {
         ':updatedAt': timestamp,
         ':lastActivity': timestamp
       };
-      
+
       const expressionAttributeNames: Record<string, string> = {
         '#updatedAt': 'updatedAt',
         '#lastActivity': 'lastActivity'
@@ -181,9 +188,9 @@ export class ConversationContextService {
           expressionAttributeNames[`#${key}`] = key;
         }
       });
-      
+
       const updateExpression = `set ${updateExpressionParts.join(', ')}`;
-      
+
       const result = await this.dynamoDbClient.send(new UpdateCommand({
         TableName: this.tableName,
         Key: { conversationId },
@@ -192,20 +199,20 @@ export class ConversationContextService {
         ExpressionAttributeNames: expressionAttributeNames,
         ReturnValues: 'ALL_NEW'
       }));
-      
+
       if (!result.Attributes) {
         throw new Error(`Failed to update conversation context: ${conversationId}`);
       }
-      
+
       const updatedContext = result.Attributes as ConversationContext;
-      
+
       // Actualizar caché
       const cacheKey = `${this.cacheKeyPrefix}${conversationId}`;
       await this.cacheService.set(cacheKey, updatedContext, { ttl: 900 }); // 15 minutos TTL
-      
+
       this.metrics.incrementCounter('ContextUpdated');
       this.metrics.recordLatency('ContextUpdateLatency', Date.now() - startTime);
-      
+
       return updatedContext;
     } catch (error) {
       this.logger.error('Error updating conversation context', { error, conversationId });
@@ -222,20 +229,20 @@ export class ConversationContextService {
    */
   public async deleteContext(conversationId: string): Promise<boolean> {
     const startTime = Date.now();
-    
+
     try {
       await this.dynamoDbClient.send(new DeleteCommand({
         TableName: this.tableName,
         Key: { conversationId }
       }));
-      
+
       // Eliminar de caché
       const cacheKey = `${this.cacheKeyPrefix}${conversationId}`;
       await this.cacheService.delete(cacheKey);
-      
+
       this.metrics.incrementCounter('ContextDeleted');
       this.metrics.recordLatency('ContextDeleteLatency', Date.now() - startTime);
-      
+
       return true;
     } catch (error) {
       this.logger.error('Error deleting conversation context', { error, conversationId });
@@ -252,7 +259,7 @@ export class ConversationContextService {
    */
   public async listUserContexts(userId: string): Promise<ConversationContext[]> {
     const startTime = Date.now();
-    
+
     try {
       // Asumir que hay un GSI sobre userId
       const result = await this.dynamoDbClient.send(new QueryCommand({
@@ -263,7 +270,7 @@ export class ConversationContextService {
           ':userId': userId
         }
       }));
-      
+
       this.metrics.recordLatency('ContextListLatency', Date.now() - startTime);
       return (result.Items || []) as ConversationContext[];
     } catch (error) {
@@ -289,7 +296,7 @@ export class ConversationContextService {
     lastEvaluatedKey?: Record<string, any>;
   }): Promise<{ items: ConversationContext[]; lastEvaluatedKey?: Record<string, any> }> {
     const startTime = Date.now();
-    
+
     try {
       // Esta implementación asume que hay GSIs apropiados configurados
       // Para implementaciones avanzadas, considerar escaneos filtrados o múltiples queries
@@ -297,11 +304,11 @@ export class ConversationContextService {
       let filterExpressions: string[] = [];
       const expressionAttributeValues: Record<string, any> = {};
       const expressionAttributeNames: Record<string, string> = {};
-      
+
       // Determinar si usamos GSI o tabla principal basado en criterios
       let indexName: string | undefined;
       let keyConditionExpression: string;
-      
+
       if (criteria.userId) {
         indexName = 'UserIdIndex';
         keyConditionExpression = 'userId = :userId';
@@ -310,7 +317,7 @@ export class ConversationContextService {
         // Fallback a scan si no hay criterios de índice
         throw new Error('At least one key condition is required');
       }
-      
+
       // Añadir filtros adicionales
       if (criteria.status) {
         if (Array.isArray(criteria.status)) {
@@ -326,7 +333,7 @@ export class ConversationContextService {
           expressionAttributeValues[':status'] = criteria.status;
         }
       }
-      
+
       if (criteria.type) {
         if (Array.isArray(criteria.type)) {
           const typeFilters = criteria.type.map((t, i) => `:type${i}`);
@@ -341,7 +348,7 @@ export class ConversationContextService {
           expressionAttributeValues[':type'] = criteria.type;
         }
       }
-      
+
       if (criteria.startDate && criteria.endDate) {
         filterExpressions.push('createdAt BETWEEN :startDate AND :endDate');
         expressionAttributeValues[':startDate'] = criteria.startDate;
@@ -353,7 +360,7 @@ export class ConversationContextService {
         filterExpressions.push('createdAt <= :endDate');
         expressionAttributeValues[':endDate'] = criteria.endDate;
       }
-      
+
       const queryParams: any = {
         TableName: this.tableName,
         IndexName: indexName,
@@ -361,20 +368,20 @@ export class ConversationContextService {
         ExpressionAttributeValues: expressionAttributeValues,
         Limit: criteria.limit || 20
       };
-      
+
       if (filterExpressions.length > 0) {
         queryParams.FilterExpression = filterExpressions.join(' AND ');
         queryParams.ExpressionAttributeNames = expressionAttributeNames;
       }
-      
+
       if (criteria.lastEvaluatedKey) {
         queryParams.ExclusiveStartKey = criteria.lastEvaluatedKey;
       }
-      
+
       const result = await this.dynamoDbClient.send(new QueryCommand(queryParams));
-      
+
       this.metrics.recordLatency('ContextSearchLatency', Date.now() - startTime);
-      
+
       return {
         items: (result.Items || []) as ConversationContext[],
         lastEvaluatedKey: result.LastEvaluatedKey
@@ -404,7 +411,7 @@ export class ConversationContextService {
    * @returns Contexto actualizado
    */
   public async updateHandoffContext(
-    conversationId: string, 
+    conversationId: string,
     handoffContext: ConversationContext['handoffContext']
   ): Promise<ConversationContext> {
     return this.updateContext(conversationId, { handoffContext });
@@ -425,19 +432,19 @@ export class ConversationContextService {
     }
   ): Promise<ConversationContext> {
     const context = await this.getContext(conversationId);
-    
+
     if (!context) {
       throw new Error(`Conversation not found: ${conversationId}`);
     }
-    
+
     const newMessage = {
       ...message,
       timestamp: message.timestamp || Date.now()
     };
-    
+
     const messages = [...context.messages, newMessage];
-    
-    return this.updateContext(conversationId, { 
+
+    return this.updateContext(conversationId, {
       messages,
       lastActivity: newMessage.timestamp
     });
