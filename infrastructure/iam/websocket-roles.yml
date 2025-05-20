@@ -89,13 +89,13 @@ Resources:
                   - cognito-idp:AdminInitiateAuth
                   - cognito-idp:AdminGetUser
                 Resource:
-                  - Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-user-pool-arn
+                  - Fn::ImportValue: ${self:custom.resourcePrefix}-cognito-UserPoolArn
               - Effect: Allow
                 Action:
                   - kms:Decrypt
                   - kms:GenerateDataKey
                 Resource:
-                  - Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-websocket-kms-key-arn
+                  - Fn::ImportValue: ${self:custom.resourcePrefix}-kms-WebsocketKeyArn
               - Effect: Allow
                 Action:
                   - execute-api:Invoke
@@ -106,12 +106,14 @@ Resources:
 Outputs:
   WebSocketLambdaRoleArn:
     Description: ARN of the WebSocket Lambda IAM role
-    Value: !GetAtt WebSocketLambdaRole.Arn
+    Value:
+      Fn::GetAtt: [WebSocketLambdaRole, Arn]
     Export:
-      Name: ${self:custom.service}-${self:provider.stage}-websocket-role-arn
-      
+      Name: espectra-backend-dev-v4-r1-websocket-role-arn
+
   WebSocketAuthorizerRoleArn:
     Description: ARN of the WebSocket Authorizer Lambda IAM role
-    Value: !GetAtt WebSocketAuthorizerRole.Arn
+    Value:
+      Fn::GetAtt: [WebSocketAuthorizerRole, Arn]
     Export:
-      Name: ${self:custom.service}-${self:provider.stage}-websocket-authorizer-role-arn
+      Name: espectra-backend-dev-v4-r1-websocket-authorizer-role-arn

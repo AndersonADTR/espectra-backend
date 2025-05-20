@@ -1,10 +1,4 @@
-# serverless-kms.yml
-# Descripción: Define las claves KMS para encriptación en el sistema
-# Dependencias: Ninguna (este es el primer stack que debe desplegarse)
-# Orden de despliegue: 1
-
 service: espectra-backend-kms-v4r1
-
 provider:
   name: aws
   runtime: nodejs20.x
@@ -13,59 +7,50 @@ provider:
   tags:
     Project: espectra-backend
     Environment: dev
-    Component: KMS
-    Purpose: Encryption
+    Component: Kms
     ManagedBy: serverless
     Company: technoapes
-
 custom:
   projectName: espectra-backend
   stage: dev
-  deploymentId: v4-r1
-  resourcePrefix: espectra-backend-dev-v4-r1
-
+  deploymentId: v4r1
+  resourcePrefix: espectra-backend-dev-v4r1
 resources:
   - ${file(infrastructure/security/kms.yml)}
-
 outputs:
   SystemKeyId:
-    Description: ID of the system KMS key
     Value:
       Ref: SystemKMSKey
     Export:
       Name: ${self:custom.resourcePrefix}-kms-SystemKeyId
-
   SystemKeyArn:
-    Description: ARN of the system KMS key
     Value:
-      Fn::GetAtt: [SystemKMSKey, Arn]
+      Fn::GetAtt:
+        - SystemKMSKey
+        - Arn
     Export:
       Name: ${self:custom.resourcePrefix}-kms-SystemKeyArn
-
   SecretsKeyId:
-    Description: ID of the secrets KMS key
     Value:
       Ref: SecretsKMSKey
     Export:
       Name: ${self:custom.resourcePrefix}-kms-SecretsKeyId
-
   SecretsKeyArn:
-    Description: ARN of the secrets KMS key
     Value:
-      Fn::GetAtt: [SecretsKMSKey, Arn]
+      Fn::GetAtt:
+        - SecretsKMSKey
+        - Arn
     Export:
       Name: ${self:custom.resourcePrefix}-kms-SecretsKeyArn
-
   WebsocketKeyId:
-    Description: ID of the WebSocket KMS key
     Value:
       Ref: WebSocketKMSKey
     Export:
       Name: ${self:custom.resourcePrefix}-kms-WebsocketKeyId
-
   WebsocketKeyArn:
-    Description: ARN of the WebSocket KMS key
     Value:
-      Fn::GetAtt: [WebSocketKMSKey, Arn]
+      Fn::GetAtt:
+        - WebSocketKMSKey
+        - Arn
     Export:
       Name: ${self:custom.resourcePrefix}-kms-WebsocketKeyArn

@@ -1,50 +1,56 @@
-service: espectra-backend-phase2
+service: espectra-backend-phase2-v4r1
 
 provider:
   name: aws
   runtime: nodejs20.x
-  stage: ${opt:stage, 'dev'}
-  region: ${opt:region, 'us-east-1'}
+  stage: dev
+  region: us-east-1
   memorySize: 1024
   timeout: 29
   logRetentionInDays: 14
   tracing:
     lambda: true
   tags:
-    Environment: ${self:provider.stage}
-    Service: ${self:custom.service}
+    Project: espectra-backend
+    Environment: dev
+    Component: Storage
+    Purpose: Infrastructure
+    ManagedBy: serverless
+    Company: technoapes
     Owner: espectra
-    Project: concierge
 
 custom:
+  projectName: espectra-backend
+  stage: dev
+  deploymentId: v4-r1
+  resourcePrefix: espectra-backend-dev-v4-r1
   service: espectra-backend
-
+  company: technoapes
   floor: 1
-
   logRetentionInDays: 14
-  
+
   # Configuración de Table Names
   tableNames:
-    connections: ${self:custom.service}-${self:provider.stage}-connection-table
-    context: ${self:custom.service}-${self:provider.stage}-conversation-context-table
-    tokens: ${self:custom.service}-${self:provider.stage}-token-usage-table
-    handoff: ${self:custom.service}-${self:provider.stage}-handoff-table
-    metrics: ${self:custom.service}-${self:provider.stage}-botpress-metrics-table
+    connections: espectra-backend-dev-v4-r1-connection-table
+    context: espectra-backend-dev-v4-r1-conversation-context-table
+    tokens: espectra-backend-dev-v4-r1-token-usage-table
+    handoff: espectra-backend-dev-v4-r1-handoff-table
+    metrics: espectra-backend-dev-v4-r1-botpress-metrics-table
 
   # KMS Keys (importados del deploy previo)
   kms:
-    systemKeyId: ${cf:${self:custom.service}-kms-${self:provider.stage}.SystemKMSKeyId}
-    systemKeyArn: ${cf:${self:custom.service}-kms-${self:provider.stage}.SystemKMSKeyArn}
-    secretsKeyId: ${cf:${self:custom.service}-kms-${self:provider.stage}.SecretsKMSKeyId}
-    secretsKeyArn: ${cf:${self:custom.service}-kms-${self:provider.stage}.SecretsKMSKeyArn}
-    websocketKeyId: ${cf:${self:custom.service}-kms-${self:provider.stage}.WebSocketKMSKeyId}
-    websocketKeyArn: ${cf:${self:custom.service}-kms-${self:provider.stage}.WebSocketKMSKeyArn}
-  
+    systemKeyId: ${ssm:/espectra/dev/kms/system-key-id, 'espectra-backend-dev-v4-r1-kms-SystemKeyId'}
+    systemKeyArn: ${ssm:/espectra/dev/kms/system-key-arn, 'espectra-backend-dev-v4-r1-kms-SystemKeyArn'}
+    secretsKeyId: ${ssm:/espectra/dev/kms/secrets-key-id, 'espectra-backend-dev-v4-r1-kms-SecretsKeyId'}
+    secretsKeyArn: ${ssm:/espectra/dev/kms/secrets-key-arn, 'espectra-backend-dev-v4-r1-kms-SecretsKeyArn'}
+    websocketKeyId: ${ssm:/espectra/dev/kms/websocket-key-id, 'espectra-backend-dev-v4-r1-kms-WebsocketKeyId'}
+    websocketKeyArn: ${ssm:/espectra/dev/kms/websocket-key-arn, 'espectra-backend-dev-v4-r1-kms-WebsocketKeyArn'}
+
   # SNS Topics for different priority levels
-  snsHighPriorityTopic: ${ssm:/espectra/${self:provider.stage}/sns/high-priority-topic}
-  snsMediumPriorityTopic: ${ssm:/espectra/${self:provider.stage}/sns/medium-priority-topic}
-  snsLowPriorityTopic: ${ssm:/espectra/${self:provider.stage}/sns/low-priority-topic}
-    
+  snsHighPriorityTopic: ${ssm:/espectra/dev/sns/high-priority-topic, 'espectra-backend-dev-v4-r1-sns-HighPriorityTopicArn'}
+  snsMediumPriorityTopic: ${ssm:/espectra/dev/sns/medium-priority-topic, 'espectra-backend-dev-v4-r1-sns-MediumPriorityTopicArn'}
+  snsLowPriorityTopic: ${ssm:/espectra/dev/sns/low-priority-topic, 'espectra-backend-dev-v4-r1-sns-LowPriorityTopicArn'}
+
   # Configuración de handoff
   handoff:
     maxQueueSize: 100
@@ -56,15 +62,17 @@ custom:
 functions:
   botpressMetricsCollector:
     handler: services/metrics/handlers/metrics-collector.handler
-    name: ${self:custom.service}-${self:provider.stage}-botpress-metrics
+    name: espectra-backend-dev-v4-r1-botpress-metrics
     description: Processes Botpress metrics events
     memorySize: 256
     timeout: 30
     environment:
-      METRICS_TABLE: !Ref BotpressMetricsTable
+      METRICS_TABLE:
+        Ref: BotpressMetricsTable
       KMS_KEY_ARN:
-        Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-system-kms-key-arn
-    role: !GetAtt MetricsCollectorRole.Arn
+        Fn::ImportValue: ${self:custom.resourcePrefix}-kms-SystemKeyArn
+    role:
+      Fn::GetAtt: [MetricsCollectorRole, Arn]
     events:
       - eventBridge:
           pattern:
@@ -73,22 +81,24 @@ functions:
             detail-type:
               - Metric
     tags:
-      Service: ${self:custom.service}
-      Environment: ${self:provider.stage}
+      Service: espectra-backend
+      Environment: dev
       Component: Metrics
+      ManagedBy: serverless
+      Company: technoapes
     tracing: Active
     vpc:
       securityGroupIds:
-        - Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-lambda-sg-id
+        - Fn::ImportValue: espectra-backend-dev-v4-r1-phase1-LambdaSecurityGroupId
       subnetIds:
-        - Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-public-subnet-1-id
-        - Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-public-subnet-2-id
+        - Fn::ImportValue: espectra-backend-dev-v4-r1-phase1-PublicSubnet1Id
+        - Fn::ImportValue: espectra-backend-dev-v4-r1-phase1-PublicSubnet2Id
 
 resources:
   - ${file(infrastructure/dynamodb/botpress-tables.yml)}
 
   - ${file(infrastructure/queues/message-queues.yml)}
-  
+
   - ${file(infrastructure/elasticache/redis.yml)}
 
   - ${file(infrastructure/eventbridge/botpress-event-bus.yml)}
@@ -99,151 +109,172 @@ resources:
 outputs:
   BotpressMetricsCollectorArn:
     Description: ARN of the Botpress Metrics Collector function
-    Value: !GetAtt BotpressMetricsCollectorLambdaFunction.Arn
+    Value:
+      Fn::GetAtt: [BotpressMetricsCollectorLambdaFunction, Arn]
     Export:
-      Name: ${self:custom.service}-${self:provider.stage}-metrics-collector-arn
+      Name: espectra-backend-dev-v4-r1-metrics-collector-arn
 
   MessageQueueUrl:
     Description: URL of the message queue
-    Value: !Ref MessageQueue
+    Value:
+      Ref: MessageQueue
     Export:
-      Name: ${self:custom.service}-${self:provider.stage}-message-queue-url
+      Name: espectra-backend-dev-v4-r1-message-queue-url
 
   MessageQueueArn:
     Description: ARN of the message queue
-    Value: !GetAtt MessageQueue.Arn
+    Value:
+      Fn::GetAtt: [MessageQueue, Arn]
     Export:
-      Name: ${self:custom.service}-${self:provider.stage}-message-queue-arn
+      Name: espectra-backend-dev-v4-r1-message-queue-arn
 
   HandoffQueueUrl:
     Description: URL of the handoff queue
-    Value: !Ref HandoffQueue
+    Value:
+      Ref: HandoffQueue
     Export:
-      Name: ${self:custom.service}-${self:provider.stage}-handoff-queue-url
+      Name: espectra-backend-dev-v4-r1-handoff-queue-url
 
   HandoffQueueArn:
     Description: ARN of the handoff queue
-    Value: !GetAtt HandoffQueue.Arn
+    Value:
+      Fn::GetAtt: [HandoffQueue, Arn]
     Export:
-      Name: ${self:custom.service}-${self:provider.stage}-handoff-queue-arn
+      Name: espectra-backend-dev-v4-r1-handoff-queue-arn
 
   MessageDLQUrl:
     Description: URL of the message DLQ
-    Value: !Ref MessageDLQ
+    Value:
+      Ref: MessageDLQ
     Export:
-      Name: ${self:custom.service}-${self:provider.stage}-message-dlq-url
+      Name: espectra-backend-dev-v4-r1-message-dlq-url
 
   HandoffDLQUrl:
     Description: URL of the handoff DLQ
-    Value: !Ref HandoffDLQ
+    Value:
+      Ref: HandoffDLQ
     Export:
-      Name: ${self:custom.service}-${self:provider.stage}-handoff-dlq-url
+      Name: espectra-backend-dev-v4-r1-handoff-dlq-url
 
   LambdaRoleArn:
     Description: ARN of the Lambda execution IAM role
-    Value: !GetAtt IamRoleLambdaExecution.Arn
+    Value:
+      Fn::GetAtt: [IamRoleLambdaExecution, Arn]
     Export:
-      Name: ${self:custom.service}-${self:provider.stage}-lambda-role-arn
+      Name: espectra-backend-dev-v4-r1-lambda-role-arn
 
   WafAssociationLambdaRoleArn:
     Description: ARN of the WAF Association Lambda IAM role
-    Value: !GetAtt WafAssociationLambdaRole.Arn
+    Value:
+      Fn::GetAtt: [WafAssociationLambdaRole, Arn]
     Export:
-      Name: ${self:custom.service}-${self:provider.stage}-waf-association-lambda-role-arn
+      Name: espectra-backend-dev-v4-r1-waf-association-lambda-role-arn
 
   MetricsCollectorRoleArn:
     Description: ARN of the Metrics Collector IAM role
-    Value: !GetAtt MetricsCollectorRole.Arn
+    Value:
+      Fn::GetAtt: [MetricsCollectorRole, Arn]
     Export:
-      Name: ${self:custom.service}-${self:provider.stage}-metrics-collector-role-arn
-      
+      Name: espectra-backend-dev-v4-r1-metrics-collector-role-arn
+
   WebSocketLambdaRoleArn:
     Description: ARN of the WebSocket Lambda IAM role
-    Value: !GetAtt WebSocketLambdaRole.Arn
+    Value:
+      Fn::GetAtt: [WebSocketLambdaRole, Arn]
     Export:
-      Name: ${self:custom.service}-${self:provider.stage}-websocket-role-arn
-      
+      Name: espectra-backend-dev-v4-r1-websocket-role-arn
+
   WebSocketAuthorizerRoleArn:
     Description: ARN of the WebSocket Authorizer Lambda IAM role
-    Value: !GetAtt WebSocketAuthorizerRole.Arn
+    Value:
+      Fn::GetAtt: [WebSocketAuthorizerRole, Arn]
     Export:
-      Name: ${self:custom.service}-${self:provider.stage}-websocket-authorizer-role-arn
-      
+      Name: espectra-backend-dev-v4-r1-websocket-authorizer-role-arn
+
   EventBusArn:
     Description: ARN of the Botpress Event Bus
-    Value: !GetAtt BotpressEventBus.Arn
+    Value:
+      Fn::GetAtt: [BotpressEventBus, Arn]
     Export:
-      Name: ${self:custom.service}-${self:provider.stage}-eventbus-arn
+      Name: espectra-backend-dev-v4-r1-eventbus-arn
 
   EventBusName:
     Description: Name of the Botpress Event Bus
-    Value: !Ref BotpressEventBus
+    Value:
+      Ref: BotpressEventBus
     Export:
-      Name: ${self:custom.service}-${self:provider.stage}-eventbus-name
-      
+      Name: espectra-backend-dev-v4-r1-eventbus-name
+
   RedisEndpoint:
     Description: Redis primary endpoint
-    Value: !GetAtt RedisCluster.PrimaryEndPoint.Address
+    Value:
+      Fn::GetAtt: [RedisCluster, PrimaryEndPoint.Address]
     Export:
-      Name: ${self:custom.service}-${self:provider.stage}-redis-endpoint
+      Name: espectra-backend-dev-v4-r1-redis-endpoint
 
   RedisPort:
     Description: Redis port
-    Value: !GetAtt RedisCluster.PrimaryEndPoint.Port
+    Value:
+      Fn::GetAtt: [RedisCluster, PrimaryEndPoint.Port]
     Export:
-      Name: ${self:custom.service}-${self:provider.stage}-redis-port
+      Name: espectra-backend-dev-v4-r1-redis-port
 
-  
   RedisConnectionString:
     Description: Redis connection string with protocol
-    Value: !Sub "redis://${RedisCluster.PrimaryEndPoint.Address}:${RedisCluster.PrimaryEndPoint.Port}"
+    Value:
+      Fn::Sub: "redis://${RedisCluster.PrimaryEndPoint.Address}:${RedisCluster.PrimaryEndPoint.Port}"
     Export:
-      Name: ${self:custom.service}-${self:provider.stage}-redis-connection-string
-      
+      Name: espectra-backend-dev-v4-r1-redis-connection-string
+
   RedisClusterId:
     Description: ID of the Redis cluster
-    Value: !Ref RedisCluster
+    Value:
+      Ref: RedisCluster
     Export:
-      Name: ${self:custom.service}-${self:provider.stage}-redis-cluster-id
-      
+      Name: espectra-backend-dev-v4-r1-redis-cluster-id
+
   RedisParameterGroupName:
     Description: Name of the Redis parameter group
-    Value: !Ref RedisParameterGroup
+    Value:
+      Ref: RedisParameterGroup
     Export:
-      Name: ${self:custom.service}-${self:provider.stage}-redis-parameter-group
-      
+      Name: espectra-backend-dev-v4-r1-redis-parameter-group
+
   ConversationContextTableName:
     Description: Name of the Conversation Context table
     Value: ${self:custom.tableNames.context}
     Export:
-      Name: ${self:custom.service}-${self:provider.stage}-context-table-name
+      Name: espectra-backend-dev-v4-r1-context-table-name
 
   ConversationContextTableArn:
     Description: ARN of the Conversation Context table
-    Value: !GetAtt ConversationContextTable.Arn
+    Value:
+      Fn::GetAtt: [ConversationContextTable, Arn]
     Export:
-      Name: ${self:custom.service}-${self:provider.stage}-context-table-arn
+      Name: espectra-backend-dev-v4-r1-context-table-arn
 
   BotpressMetricsTableName:
     Description: Name of the Botpress Metrics table
     Value: ${self:custom.tableNames.metrics}
     Export:
-      Name: ${self:custom.service}-${self:provider.stage}-metrics-table-name
+      Name: espectra-backend-dev-v4-r1-metrics-table-name
 
   BotpressMetricsTableArn:
     Description: ARN of the Botpress Metrics table
-    Value: !GetAtt BotpressMetricsTable.Arn
+    Value:
+      Fn::GetAtt: [BotpressMetricsTable, Arn]
     Export:
-      Name: ${self:custom.service}-${self:provider.stage}-metrics-table-arn
+      Name: espectra-backend-dev-v4-r1-metrics-table-arn
 
   TokenUsageTableName:
     Description: Name of the Token Usage table
     Value: ${self:custom.tableNames.tokens}
     Export:
-      Name: ${self:custom.service}-${self:provider.stage}-tokens-table-name
+      Name: espectra-backend-dev-v4-r1-tokens-table-name
 
   TokenUsageTableArn:
     Description: ARN of the Token Usage table
-    Value: !GetAtt TokenUsageTable.Arn
+    Value:
+      Fn::GetAtt: [TokenUsageTable, Arn]
     Export:
-      Name: ${self:custom.service}-${self:provider.stage}-tokens-table-arn
+      Name: espectra-backend-dev-v4-r1-tokens-table-arn

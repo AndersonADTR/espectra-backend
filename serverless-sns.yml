@@ -1,18 +1,39 @@
-service: espectra-backend-sns
+# serverless-sns.yml
+# Descripción: Define los tópicos SNS para notificaciones y alertas del sistema
+# Dependencias: serverless-kms.yml (para encriptación de tópicos)
+# Orden de despliegue: 2
+
+service: espectra-backend-sns-v4r1
 
 provider:
   name: aws
   runtime: nodejs20.x
-  stage: ${opt:stage, 'dev'}
-  region: ${opt:region, 'us-east-1'}
+  stage: dev
+  region: us-east-1
   tags:
-    Environment: ${self:provider.stage}
-    Service: ${self:custom.service}
-    Owner: espectra
-    Project: concierge
+    Project: espectra-backend
+    Environment: dev
+    Component: SNS
+    Purpose: Notifications
+    ManagedBy: serverless
+    Company: technoapes
 
 custom:
-  service: espectra-backend
+  projectName: espectra-backend
+  stage: dev
+  deploymentId: v4-r1
+  resourcePrefix: espectra-backend-dev-v4-r1
+  # Configuraciones específicas para SNS
+  sns:
+    subscriptions:
+      highPriorityEmail: soporte@spectrumai.com.co
+      mediumPriorityEmail: soporte@spectrumai.com.co
+      lowPriorityEmail: soporte@spectrumai.com.co
+    alarms:
+      deliveryErrorThreshold: 1
+      throttlingThreshold: 1
+      evaluationPeriods: 1
+      period: 300
 
 resources:
   - ${file(infrastructure/sns/sns.yml)}
@@ -20,18 +41,21 @@ resources:
 outputs:
   HighPriorityTopicArn:
     Description: ARN of the high priority SNS topic
-    Value: !Ref HighPriorityTopic
+    Value:
+      Ref: HighPriorityTopic
     Export:
-      Name: ${self:custom.service}-${self:provider.stage}-high-priority-topic-arn
+      Name: ${self:custom.resourcePrefix}-sns-HighPriorityTopicArn
 
   MediumPriorityTopicArn:
     Description: ARN of the medium priority SNS topic
-    Value: !Ref MediumPriorityTopic
+    Value:
+      Ref: MediumPriorityTopic
     Export:
-      Name: ${self:custom.service}-${self:provider.stage}-medium-priority-topic-arn
+      Name: ${self:custom.resourcePrefix}-sns-MediumPriorityTopicArn
 
   LowPriorityTopicArn:
     Description: ARN of the low priority SNS topic
-    Value: !Ref LowPriorityTopic
+    Value:
+      Ref: LowPriorityTopic
     Export:
-      Name: ${self:custom.service}-${self:provider.stage}-low-priority-topic-arn
+      Name: ${self:custom.resourcePrefix}-sns-LowPriorityTopicArn

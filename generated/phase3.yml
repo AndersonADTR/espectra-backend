@@ -1,0 +1,20 @@
+service: espectra-backend-phase3-v4r1
+provider:
+  name: aws
+  runtime: nodejs20.x
+  stage: dev
+  region: us-east-1
+  tags:
+    Project: espectra-backend
+    Environment: dev
+    Component: Phase3
+    ManagedBy: serverless
+    Company: technoapes
+custom:
+  projectName: espectra-backend
+  stage: dev
+  deploymentId: v4r1
+  resourcePrefix: espectra-backend-dev-v4r1
+resources:
+  - ${file(infrastructure/phase3.yml)}
+outputs: {}

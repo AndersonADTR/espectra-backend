@@ -1,26 +1,29 @@
 Resources:
-  # High Priority Topic
+  # Tópico de alta prioridad para alertas críticas
   HighPriorityTopic:
     Type: AWS::SNS::Topic
     Properties:
-      TopicName: ${self:custom.service}-${self:provider.stage}-high-priority
-      KmsMasterKeyId: 
-        Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-system-kms-key-arn
+      TopicName: ${self:custom.resourcePrefix}-high-priority
+      KmsMasterKeyId:
+        Fn::ImportValue: ${self:custom.resourcePrefix}-kms-SystemKeyArn
       Tags:
-        - Key: Service
-          Value: ${self:custom.service}
+        - Key: Project
+          Value: ${file(./serverless-common.yml):custom.projectName}
         - Key: Environment
-          Value: ${self:provider.stage}
+          Value: ${file(./serverless-common.yml):custom.stage}
+        - Key: ManagedBy
+          Value: serverless
+        - Key: Company
+          Value: ${file(./serverless-common.yml):custom.company}
         - Key: Priority
           Value: High
-        - Key: ManagedBy
-          Value: CloudFormation
 
   HighPriorityTopicPolicy:
     Type: AWS::SNS::TopicPolicy
     Properties:
       Topics:
-        - !Ref HighPriorityTopic
+        -
+            Ref: HighPriorityTopic
       PolicyDocument:
         Version: '2012-10-17'
         Statement:
@@ -31,30 +34,34 @@ Resources:
                 - events.amazonaws.com
                 - lambda.amazonaws.com
             Action: sns:Publish
-            Resource: !Ref HighPriorityTopic
+            Resource:
+              Ref: HighPriorityTopic
 
-  # Medium Priority Topic
+  # Tópico de prioridad media para alertas operacionales
   MediumPriorityTopic:
     Type: AWS::SNS::Topic
     Properties:
-      TopicName: ${self:custom.service}-${self:provider.stage}-medium-priority
-      KmsMasterKeyId: 
-        Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-system-kms-key-arn
+      TopicName: ${self:custom.resourcePrefix}-medium-priority
+      KmsMasterKeyId:
+        Fn::ImportValue: ${self:custom.resourcePrefix}-kms-SystemKeyArn
       Tags:
-        - Key: Service
-          Value: ${self:custom.service}
+        - Key: Project
+          Value: ${file(./serverless-common.yml):custom.projectName}
         - Key: Environment
-          Value: ${self:provider.stage}
+          Value: ${file(./serverless-common.yml):custom.stage}
+        - Key: ManagedBy
+          Value: serverless
+        - Key: Company
+          Value: ${file(./serverless-common.yml):custom.company}
         - Key: Priority
           Value: Medium
-        - Key: ManagedBy
-          Value: CloudFormation
 
   MediumPriorityTopicPolicy:
     Type: AWS::SNS::TopicPolicy
     Properties:
       Topics:
-        - !Ref MediumPriorityTopic
+        -
+            Ref: MediumPriorityTopic
       PolicyDocument:
         Version: '2012-10-17'
         Statement:
@@ -63,31 +70,36 @@ Resources:
               Service:
                 - cloudwatch.amazonaws.com
                 - events.amazonaws.com
+                - lambda.amazonaws.com
             Action: sns:Publish
-            Resource: !Ref MediumPriorityTopic
+            Resource:
+              Ref: MediumPriorityTopic
 
-  # Low Priority Topic
+  # Tópico de baja prioridad para notificaciones informativas
   LowPriorityTopic:
     Type: AWS::SNS::Topic
     Properties:
-      TopicName: ${self:custom.service}-${self:provider.stage}-low-priority
-      KmsMasterKeyId: 
-        Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-system-kms-key-arn
+      TopicName: ${self:custom.resourcePrefix}-low-priority
+      KmsMasterKeyId:
+        Fn::ImportValue: ${self:custom.resourcePrefix}-kms-SystemKeyArn
       Tags:
-        - Key: Service
-          Value: ${self:custom.service}
+        - Key: Project
+          Value: ${file(./serverless-common.yml):custom.projectName}
         - Key: Environment
-          Value: ${self:provider.stage}
+          Value: ${file(./serverless-common.yml):custom.stage}
+        - Key: ManagedBy
+          Value: serverless
+        - Key: Company
+          Value: ${file(./serverless-common.yml):custom.company}
         - Key: Priority
           Value: Low
-        - Key: ManagedBy
-          Value: CloudFormation
 
   LowPriorityTopicPolicy:
     Type: AWS::SNS::TopicPolicy
     Properties:
       Topics:
-        - !Ref LowPriorityTopic
+        -
+            Ref: LowPriorityTopic
       PolicyDocument:
         Version: '2012-10-17'
         Statement:
@@ -96,90 +108,113 @@ Resources:
               Service:
                 - cloudwatch.amazonaws.com
                 - events.amazonaws.com
+                - lambda.amazonaws.com
             Action: sns:Publish
-            Resource: !Ref LowPriorityTopic
+            Resource:
+              Ref: LowPriorityTopic
 
-  # Email Subscriptions (Optional, based on SSM parameters)
+  # Suscripciones por email para cada nivel de prioridad
   HighPriorityEmailSubscription:
     Type: AWS::SNS::Subscription
     Properties:
-      TopicArn: !Ref HighPriorityTopic
+      TopicArn:
+        Ref: HighPriorityTopic
       Protocol: email
-      Endpoint: ${ssm:/espectra/${self:provider.stage}/alerts-email}
+      Endpoint: ${self:custom.sns.subscriptions.highPriorityEmail}
 
   MediumPriorityEmailSubscription:
     Type: AWS::SNS::Subscription
     Properties:
-      TopicArn: !Ref MediumPriorityTopic
+      TopicArn:
+        Ref: MediumPriorityTopic
       Protocol: email
-      Endpoint: ${ssm:/espectra/${self:provider.stage}/operations-email}
+      Endpoint: ${self:custom.sns.subscriptions.mediumPriorityEmail}
 
   LowPriorityEmailSubscription:
     Type: AWS::SNS::Subscription
     Properties:
-      TopicArn: !Ref LowPriorityTopic
+      TopicArn:
+        Ref: LowPriorityTopic
       Protocol: email
-      Endpoint: ${ssm:/espectra/${self:provider.stage}/support-email}
+      Endpoint: ${self:custom.sns.subscriptions.lowPriorityEmail}
 
-  # CloudWatch Alarms
+  # Alarmas para monitorear el estado de los tópicos SNS
   TopicDeliveryErrorAlarm:
     Type: AWS::CloudWatch::Alarm
     Properties:
-      AlarmName: ${self:custom.service}-${self:provider.stage}-sns-delivery-errors
+      AlarmName: ${self:custom.resourcePrefix}-sns-delivery-errors
       AlarmDescription: Alert on SNS message delivery failures
       MetricName: NumberOfNotificationsFailed
       Namespace: AWS/SNS
       Statistic: Sum
-      Period: 300
-      EvaluationPeriods: 1
-      Threshold: 1
+      Period: ${self:custom.sns.alarms.period}
+      EvaluationPeriods: ${self:custom.sns.alarms.evaluationPeriods}
+      Threshold: ${self:custom.sns.alarms.deliveryErrorThreshold}
       ComparisonOperator: GreaterThanThreshold
       Dimensions:
         - Name: TopicName
-          Value: !GetAtt HighPriorityTopic.TopicName
+          Value:
+            Fn::GetAtt: [HighPriorityTopic, TopicName]
       AlarmActions:
-        - !Ref HighPriorityTopic
+        -
+            Ref: HighPriorityTopic
       Tags:
-        - Key: Service
-          Value: ${self:custom.service}
+        - Key: Project
+          Value: ${file(./serverless-common.yml):custom.projectName}
         - Key: Environment
-          Value: ${self:provider.stage}
+          Value: ${file(./serverless-common.yml):custom.stage}
+        - Key: ManagedBy
+          Value: serverless
+        - Key: Company
+          Value: ${file(./serverless-common.yml):custom.company}
+        - Key: Component
+          Value: Alarm
 
   TopicThrottlingAlarm:
     Type: AWS::CloudWatch::Alarm
     Properties:
-      AlarmName: ${self:custom.service}-${self:provider.stage}-sns-throttling
+      AlarmName: ${self:custom.resourcePrefix}-sns-throttling
       AlarmDescription: Alert on SNS throttling
       MetricName: NumberOfNotificationsFilteredOut-InvalidAttributes
       Namespace: AWS/SNS
       Statistic: Sum
-      Period: 300
-      EvaluationPeriods: 1
-      Threshold: 1
+      Period: ${self:custom.sns.alarms.period}
+      EvaluationPeriods: ${self:custom.sns.alarms.evaluationPeriods}
+      Threshold: ${self:custom.sns.alarms.throttlingThreshold}
       ComparisonOperator: GreaterThanThreshold
       AlarmActions:
-        - !Ref HighPriorityTopic
+        -
+            Ref: HighPriorityTopic
       Tags:
-        - Key: Service
-          Value: ${self:custom.service}
+        - Key: Project
+          Value: ${file(./serverless-common.yml):custom.projectName}
         - Key: Environment
-          Value: ${self:provider.stage}
+          Value: ${file(./serverless-common.yml):custom.stage}
+        - Key: ManagedBy
+          Value: serverless
+        - Key: Company
+          Value: ${file(./serverless-common.yml):custom.company}
+        - Key: Component
+          Value: Alarm
 
 Outputs:
   HighPriorityTopicArn:
     Description: ARN of the high priority SNS topic
-    Value: !Ref HighPriorityTopic
+    Value:
+      Ref: HighPriorityTopic
     Export:
-      Name: ${self:custom.service}-${self:provider.stage}-high-priority-topic-arn
+      Name: ${self:custom.resourcePrefix}-sns-HighPriorityTopicArn
 
   MediumPriorityTopicArn:
     Description: ARN of the medium priority SNS topic
-    Value: !Ref MediumPriorityTopic
+    Value:
+      Ref: MediumPriorityTopic
     Export:
-      Name: ${self:custom.service}-${self:provider.stage}-medium-priority-topic-arn
+      Name: ${self:custom.resourcePrefix}-sns-MediumPriorityTopicArn
 
   LowPriorityTopicArn:
     Description: ARN of the low priority SNS topic
-    Value: !Ref LowPriorityTopic
+    Value:
+      Ref: LowPriorityTopic
     Export:
-      Name: ${self:custom.service}-${self:provider.stage}-low-priority-topic-arn
+      Name: ${self:custom.resourcePrefix}-sns-LowPriorityTopicArn

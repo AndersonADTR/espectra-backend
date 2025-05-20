@@ -10,7 +10,7 @@ const uniqueSubject = `Prueba de Diagnóstico SES - ${new Date().toISOString()} 
 
 // Parámetros del correo
 const params = {
-  Source: "anderson.montilva@technoapes.co",
+  Source: "soporte@spectrumai.com.co",
   Destination: {
     ToAddresses: ["andersonmontilva@gmail.com"]
   },

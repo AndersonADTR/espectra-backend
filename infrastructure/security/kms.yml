@@ -1,10 +1,11 @@
 Resources:
+  # Sistema principal de encriptación para recursos generales
   SystemKMSKey:
     Type: AWS::KMS::Key
     DeletionPolicy: Retain
     UpdateReplacePolicy: Retain
     Properties:
-      Description: !Sub "${self:custom.service}-${self:provider.stage} main system encryption key"
+      Description: "${file(./serverless-common.yml):custom.resourcePrefix} main system encryption key"
       EnableKeyRotation: true
       PendingWindowInDays: 30
       MultiRegion: false
@@ -14,16 +15,18 @@ Resources:
           - Sid: EnableIAMUserPermissions
             Effect: Allow
             Principal:
-              AWS: !Sub arn:aws:iam::${AWS::AccountId}:root
+              AWS:
+                Fn::Sub: "arn:aws:iam::${AWS::AccountId}:root"
             Action: kms:*
             Resource: '*'
             Condition:
               StringEquals:
-                'aws:RequestedRegion': !Ref AWS::Region
+                'aws:RequestedRegion':
+                  Ref: AWS::Region
           - Sid: AllowLambdaService
             Effect: Allow
             Principal:
-              Service: 
+              Service:
                 - lambda.amazonaws.com
                 - sqs.amazonaws.com
                 - events.amazonaws.com
@@ -44,27 +47,31 @@ Resources:
               - kms:DescribeKey
             Resource: '*'
       Tags:
-        - Key: Service
-          Value: ${self:custom.service}
+        - Key: Project
+          Value: ${file(./serverless-common.yml):custom.projectName}
         - Key: Environment
-          Value: ${self:provider.stage}
+          Value: ${file(./serverless-common.yml):custom.stage}
+        - Key: ManagedBy
+          Value: serverless
+        - Key: Company
+          Value: ${file(./serverless-common.yml):custom.company}
         - Key: Purpose
           Value: SystemEncryption
-        - Key: ManagedBy
-          Value: Serverless
 
   SystemKMSAlias:
     Type: AWS::KMS::Alias
     Properties:
-      AliasName: !Sub alias/${self:custom.service}-${self:provider.stage}-system
-      TargetKeyId: !Ref SystemKMSKey
+      AliasName: alias/${file(./serverless-common.yml):custom.resourcePrefix}-system
+      TargetKeyId:
+        Ref: SystemKMSKey
 
+  # Clave para encriptar secretos en Secrets Manager
   SecretsKMSKey:
     Type: AWS::KMS::Key
     DeletionPolicy: Retain
     UpdateReplacePolicy: Retain
     Properties:
-      Description: !Sub "${self:custom.service}-${self:provider.stage} secrets encryption key"
+      Description: "${file(./serverless-common.yml):custom.resourcePrefix} secrets encryption key"
       EnableKeyRotation: true
       PendingWindowInDays: 30
       MultiRegion: false
@@ -74,12 +81,14 @@ Resources:
           - Sid: EnableIAMUserPermissions
             Effect: Allow
             Principal:
-              AWS: !Sub arn:aws:iam::${AWS::AccountId}:root
+              AWS:
+                Fn::Sub: "arn:aws:iam::${AWS::AccountId}:root"
             Action: kms:*
             Resource: '*'
             Condition:
               StringEquals:
-                'aws:RequestedRegion': !Ref AWS::Region
+                'aws:RequestedRegion':
+                  Ref: AWS::Region
           - Sid: AllowSecretsManager
             Effect: Allow
             Principal:
@@ -90,21 +99,31 @@ Resources:
               - kms:CreateGrant
             Resource: '*'
       Tags:
-        - Key: Service
-          Value: ${self:custom.service}
+        - Key: Project
+          Value: ${file(./serverless-common.yml):custom.projectName}
         - Key: Environment
-          Value: ${self:provider.stage}
+          Value: ${file(./serverless-common.yml):custom.stage}
+        - Key: ManagedBy
+          Value: serverless
+        - Key: Company
+          Value: ${file(./serverless-common.yml):custom.company}
         - Key: Purpose
           Value: SecretsEncryption
-        - Key: ManagedBy
-          Value: Serverless
 
+  SecretsKMSAlias:
+    Type: AWS::KMS::Alias
+    Properties:
+      AliasName: alias/${file(./serverless-common.yml):custom.resourcePrefix}-secrets
+      TargetKeyId:
+        Ref: SecretsKMSKey
+
+  # Clave para encriptar comunicaciones WebSocket
   WebSocketKMSKey:
     Type: AWS::KMS::Key
     DeletionPolicy: Retain
     UpdateReplacePolicy: Retain
     Properties:
-      Description: !Sub "${self:custom.service}-${self:provider.stage} websocket encryption key"
+      Description: "${file(./serverless-common.yml):custom.resourcePrefix} websocket encryption key"
       EnableKeyRotation: true
       PendingWindowInDays: 30
       MultiRegion: false
@@ -114,16 +133,18 @@ Resources:
           - Sid: EnableIAMUserPermissions
             Effect: Allow
             Principal:
-              AWS: !Sub arn:aws:iam::${AWS::AccountId}:root
+              AWS:
+                Fn::Sub: "arn:aws:iam::${AWS::AccountId}:root"
             Action: kms:*
             Resource: '*'
             Condition:
               StringEquals:
-                'aws:RequestedRegion': !Ref AWS::Region
+                'aws:RequestedRegion':
+                  Ref: AWS::Region
           - Sid: AllowWebSocketService
             Effect: Allow
             Principal:
-              Service: 
+              Service:
                 - apigateway.amazonaws.com
             Action:
               - kms:Decrypt
@@ -131,48 +152,63 @@ Resources:
               - kms:CreateGrant
             Resource: '*'
       Tags:
-        - Key: Service
-          Value: ${self:custom.service}
+        - Key: Project
+          Value: ${file(./serverless-common.yml):custom.projectName}
         - Key: Environment
-          Value: ${self:provider.stage}
+          Value: ${file(./serverless-common.yml):custom.stage}
+        - Key: ManagedBy
+          Value: serverless
+        - Key: Company
+          Value: ${file(./serverless-common.yml):custom.company}
         - Key: Purpose
           Value: WebSocketEncryption
-        - Key: ManagedBy
-          Value: Serverless
+
+  WebSocketKMSAlias:
+    Type: AWS::KMS::Alias
+    Properties:
+      AliasName: alias/${file(./serverless-common.yml):custom.resourcePrefix}-websocket
+      TargetKeyId:
+        Ref: WebSocketKMSKey
 
 Outputs:
-  SystemKMSKeyId:
+  SystemKeyId:
     Description: ID of the system KMS key
-    Value: !Ref SystemKMSKey
+    Value:
+      Ref: SystemKMSKey
     Export:
-      Name: ${self:custom.service}-${self:provider.stage}-system-kms-key-id
+      Name: ${self:custom.resourcePrefix}-kms-SystemKeyId
 
-  SystemKMSKeyArn:
+  SystemKeyArn:
     Description: ARN of the system KMS key
-    Value: !GetAtt SystemKMSKey.Arn
+    Value:
+      Fn::GetAtt: [SystemKMSKey, Arn]
     Export:
-      Name: ${self:custom.service}-${self:provider.stage}-system-kms-key-arn
+      Name: ${self:custom.resourcePrefix}-kms-SystemKeyArn
 
-  SecretsKMSKeyId:
+  SecretsKeyId:
     Description: ID of the secrets KMS key
-    Value: !Ref SecretsKMSKey
+    Value:
+      Ref: SecretsKMSKey
     Export:
-      Name: ${self:custom.service}-${self:provider.stage}-secrets-kms-key-id
+      Name: ${self:custom.resourcePrefix}-kms-SecretsKeyId
 
-  SecretsKMSKeyArn:
+  SecretsKeyArn:
     Description: ARN of the secrets KMS key
-    Value: !GetAtt SecretsKMSKey.Arn
+    Value:
+      Fn::GetAtt: [SecretsKMSKey, Arn]
     Export:
-      Name: ${self:custom.service}-${self:provider.stage}-secrets-kms-key-arn
+      Name: ${self:custom.resourcePrefix}-kms-SecretsKeyArn
 
-  WebSocketKMSKeyId:
+  WebsocketKeyId:
     Description: ID of the WebSocket KMS key
-    Value: !Ref WebSocketKMSKey
+    Value:
+      Ref: WebSocketKMSKey
     Export:
-      Name: ${self:custom.service}-${self:provider.stage}-websocket-kms-key-id
+      Name: ${self:custom.resourcePrefix}-kms-WebsocketKeyId
 
-  WebSocketKMSKeyArn:
+  WebsocketKeyArn:
     Description: ARN of the WebSocket KMS key
-    Value: !GetAtt WebSocketKMSKey.Arn
+    Value:
+      Fn::GetAtt: [WebSocketKMSKey, Arn]
     Export:
-      Name: ${self:custom.service}-${self:provider.stage}-websocket-kms-key-arn
+      Name: ${self:custom.resourcePrefix}-kms-WebsocketKeyArn

@@ -7,7 +7,7 @@ const sesClient = new SESClient({ region: "us-east-1" });
 
 // Parámetros del correo
 const params = {
-  Source: "anderson.montilva@technoapes.co",
+  Source: "soporte@spectrumai.com.co",
   Destination: {
     ToAddresses: ["andersonmontilva@gmail.com"]
   },

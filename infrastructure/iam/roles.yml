@@ -127,9 +127,9 @@ Resources:
                   - kms:GenerateDataKey
                   - kms:DescribeKey
                 Resource:
-                  - Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-system-kms-key-arn
-                  - Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-secrets-kms-key-arn
-                  - Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-websocket-kms-key-arn
+                  - Fn::ImportValue: ${self:custom.resourcePrefix}-kms-SystemKeyArn
+                  - Fn::ImportValue: ${self:custom.resourcePrefix}-kms-SecretsKeyArn
+                  - Fn::ImportValue: ${self:custom.resourcePrefix}-kms-WebsocketKeyArn
 
   WafAssociationLambdaRole:
     Type: AWS::IAM::Role
@@ -239,7 +239,7 @@ Resources:
                   - cognito-idp:AdminGetUser
                   - cognito-idp:ListUsers
                 Resource:
-                  - Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-user-pool-arn
+                  - Fn::ImportValue: ${self:custom.resourcePrefix}-cognito-UserPoolArn
               - Effect: Allow
                 Action:
                   - execute-api:ManageConnections
@@ -251,9 +251,9 @@ Resources:
                   - kms:GenerateDataKey
                   - kms:DescribeKey
                 Resource:
-                  - Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-system-kms-key-arn
-                  - Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-secrets-kms-key-arn
-                  - Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-websocket-kms-key-arn
+                  - Fn::ImportValue: ${self:custom.resourcePrefix}-kms-SystemKeyArn
+                  - Fn::ImportValue: ${self:custom.resourcePrefix}-kms-SecretsKeyArn
+                  - Fn::ImportValue: ${self:custom.resourcePrefix}-kms-WebsocketKeyArn
               - Effect: Allow
                 Action:
                   - secretsmanager:GetSecretValue
@@ -330,18 +330,21 @@ Resources:
 Outputs:
   LambdaRoleArn:
     Description: ARN of the Lambda execution IAM role
-    Value: !GetAtt IamRoleLambdaExecution.Arn
+    Value:
+      Fn::GetAtt: [IamRoleLambdaExecution, Arn]
     Export:
-      Name: ${self:custom.service}-${self:provider.stage}-lambda-role-arn
+      Name: espectra-backend-dev-v4-r1-lambda-role-arn
 
   WafAssociationLambdaRoleArn:
     Description: ARN of the WAF Association Lambda IAM role
-    Value: !GetAtt WafAssociationLambdaRole.Arn
+    Value:
+      Fn::GetAtt: [WafAssociationLambdaRole, Arn]
     Export:
-      Name: ${self:custom.service}-${self:provider.stage}-waf-association-lambda-role-arn
+      Name: espectra-backend-dev-v4-r1-waf-association-lambda-role-arn
 
   MetricsCollectorRoleArn:
     Description: ARN of the Metrics Collector IAM role
-    Value: !GetAtt MetricsCollectorRole.Arn
+    Value:
+      Fn::GetAtt: [MetricsCollectorRole, Arn]
     Export:
-      Name: ${self:custom.service}-${self:provider.stage}-metrics-collector-role-arn
+      Name: espectra-backend-dev-v4-r1-metrics-collector-role-arn

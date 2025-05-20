@@ -205,36 +205,42 @@ Resources:
 Outputs:
   MessageQueueUrl:
     Description: URL of the message queue
-    Value: !Ref MessageQueue
+    Value:
+      Ref: MessageQueue
     Export:
-      Name: ${self:custom.service}-${self:provider.stage}-message-queue-url
+      Name: espectra-backend-dev-v4-r1-message-queue-url
 
   MessageQueueArn:
     Description: ARN of the message queue
-    Value: !GetAtt MessageQueue.Arn
+    Value:
+      Fn::GetAtt: [MessageQueue, Arn]
     Export:
-      Name: ${self:custom.service}-${self:provider.stage}-message-queue-arn
+      Name: espectra-backend-dev-v4-r1-message-queue-arn
 
   HandoffQueueUrl:
     Description: URL of the handoff queue
-    Value: !Ref HandoffQueue
+    Value:
+      Ref: HandoffQueue
     Export:
-      Name: ${self:custom.service}-${self:provider.stage}-handoff-queue-url
+      Name: espectra-backend-dev-v4-r1-handoff-queue-url
 
   HandoffQueueArn:
     Description: ARN of the handoff queue
-    Value: !GetAtt HandoffQueue.Arn
+    Value:
+      Fn::GetAtt: [HandoffQueue, Arn]
     Export:
-      Name: ${self:custom.service}-${self:provider.stage}-handoff-queue-arn
+      Name: espectra-backend-dev-v4-r1-handoff-queue-arn
 
   MessageDLQUrl:
     Description: URL of the message DLQ
-    Value: !Ref MessageDLQ
+    Value:
+      Ref: MessageDLQ
     Export:
-      Name: ${self:custom.service}-${self:provider.stage}-message-dlq-url
+      Name: espectra-backend-dev-v4-r1-message-dlq-url
 
   HandoffDLQUrl:
     Description: URL of the handoff DLQ
-    Value: !Ref HandoffDLQ
+    Value:
+      Ref: HandoffDLQ
     Export:
-      Name: ${self:custom.service}-${self:provider.stage}-handoff-dlq-url
+      Name: espectra-backend-dev-v4-r1-handoff-dlq-url

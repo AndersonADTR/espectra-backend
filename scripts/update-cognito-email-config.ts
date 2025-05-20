@@ -80,7 +80,7 @@ async function updateCognitoEmailConfig(
 
 // Usar valores específicos para la configuración
 const userPoolId = process.argv[2] || 'us-east-1_wY0TSEhHl'; // User Pool ID por defecto
-const fromEmail = 'anderson.montilva@technoapes.co'; // Correo de origen
+const fromEmail = 'soporte@spectrumai.com.co'; // Correo de origen
 const region = process.argv[3] || 'us-east-1';
 
 // Ejecutar actualización

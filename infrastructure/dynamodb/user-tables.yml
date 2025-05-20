@@ -2,7 +2,7 @@ Resources:
   UsersTable:
     Type: AWS::DynamoDB::Table
     Properties:
-      TableName: ${self:custom.service}-${self:provider.stage}-users
+      TableName: espectra-backend-dev-v4-r1-users
       BillingMode: PAY_PER_REQUEST
       AttributeDefinitions:
         - AttributeName: userId
@@ -46,26 +46,30 @@ Resources:
       SSESpecification:
         SSEEnabled: true
         SSEType: KMS
-        KMSMasterKeyId: 
-          Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-system-kms-key-arn
+        KMSMasterKeyId:
+          Fn::ImportValue: ${self:custom.resourcePrefix}-kms-SystemKeyArn
       TimeToLiveSpecification:
         AttributeName: ttl
         Enabled: true
       Tags:
         - Key: Service
-          Value: ${self:custom.service}
+          Value: espectra-backend
         - Key: Environment
-          Value: ${self:provider.stage}
+          Value: dev
         - Key: ManagedBy
           Value: CloudFormation
         - Key: Purpose
           Value: UserManagement
+        - Key: Project
+          Value: espectra-backend
+        - Key: Company
+          Value: technoapes
 
   # CloudWatch Alarms
   UsersTableReadThrottleAlarm:
     Type: AWS::CloudWatch::Alarm
     Properties:
-      AlarmName: ${self:custom.service}-${self:provider.stage}-users-read-throttle
+      AlarmName: espectra-backend-dev-v4-r1-users-read-throttle
       AlarmDescription: Users table read capacity throttling
       MetricName: ReadThrottleEvents
       Namespace: AWS/DynamoDB
@@ -77,14 +81,21 @@ Resources:
       TreatMissingData: notBreaching
       Dimensions:
         - Name: TableName
-          Value: !Ref UsersTable
+          Value:
+            Ref: UsersTable
       AlarmActions:
         - ${self:custom.snsMediumPriorityTopic}
       Tags:
         - Key: Service
-          Value: ${self:custom.service}
+          Value: espectra-backend
         - Key: Environment
-          Value: ${self:provider.stage}
+          Value: dev
+        - Key: Project
+          Value: espectra-backend
+        - Key: Company
+          Value: technoapes
+        - Key: ManagedBy
+          Value: CloudFormation
 
   UsersTableWriteThrottleAlarm:
     Type: AWS::CloudWatch::Alarm

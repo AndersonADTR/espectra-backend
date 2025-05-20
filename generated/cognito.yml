@@ -1,10 +1,4 @@
-# serverless-cognito.yml
-# Descripción: Define los recursos de autenticación con Amazon Cognito
-# Dependencias: serverless-kms.yml, serverless-sns.yml (para alarmas)
-# Orden de despliegue: 3
-
 service: espectra-backend-cognito-v4r1
-
 provider:
   name: aws
   runtime: nodejs20.x
@@ -14,19 +8,16 @@ provider:
     Project: espectra-backend
     Environment: dev
     Component: Cognito
-    Purpose: Authentication
     ManagedBy: serverless
     Company: technoapes
-
 custom:
   projectName: espectra-backend
   stage: dev
-  deploymentId: v4-r1
-  resourcePrefix: espectra-backend-dev-v4-r1
-  # Configuraciones específicas para Cognito
+  deploymentId: v4r1
+  resourcePrefix: espectra-backend-dev-v4r1
   cognito:
     userPool:
-      emailSender: "soporte@spectrumai.com.co"
+      emailSender: soporte@spectrumai.com.co
       mfaConfiguration: OPTIONAL
       passwordPolicy:
         minLength: 8
@@ -45,31 +36,28 @@ custom:
       signInErrorsEvaluationPeriods: 2
       compromisedCredentialsThreshold: 1
       period: 300
-
 resources:
   - ${file(infrastructure/cognito/cognito.yml)}
-
 outputs:
   UserPoolId:
     Value:
       Ref: SpectraUserPool
     Export:
-      Name: ${self:custom.resourcePrefix}-cognito-UserPoolId
-
+      Name: ${self:custom.resourcePrefix}-cognito.UserPoolId
   UserPoolClientId:
     Value:
       Ref: SpectraUserPoolClient
     Export:
-      Name: ${self:custom.resourcePrefix}-cognito-UserPoolClientId
-
+      Name: ${self:custom.resourcePrefix}-cognito.UserPoolClientId
   UserPoolArn:
     Value:
-      Fn::GetAtt: [SpectraUserPool, Arn]
+      Fn::GetAtt:
+        - SpectraUserPool
+        - Arn
     Export:
-      Name: ${self:custom.resourcePrefix}-cognito-UserPoolArn
-
+      Name: ${self:custom.resourcePrefix}-cognito.UserPoolArn
   UserPoolDomain:
     Value:
-      Fn::Sub: "${self:custom.resourcePrefix}-auth.auth.${AWS::Region}.amazoncognito.com"
+      Fn::Sub: ${self:custom.resourcePrefix}-auth.auth.${AWS::Region}.amazoncognito.com
     Export:
-      Name: ${self:custom.resourcePrefix}-cognito-UserPoolDomain
+      Name: ${self:custom.resourcePrefix}-cognito.UserPoolDomain

@@ -2,7 +2,7 @@
 
 import { SESClient, SendEmailCommand } from "@aws-sdk/client-ses";
 
-async function testSesEmail(toEmail: string, fromEmail: string = 'anderson.montilva@technoapes.co', region: string = 'us-east-1') {
+async function testSesEmail(toEmail: string, fromEmail: string = 'soporte@spectrumai.com.co', region: string = 'us-east-1') {
   try {
     console.log('Starting SES email test');
 
@@ -69,7 +69,7 @@ async function testSesEmail(toEmail: string, fromEmail: string = 'anderson.monti
 
 // Usar correos específicos para la prueba
 const email = 'andersonmontilva@gmail.com'; // Correo de destino
-const fromEmail = 'anderson.montilva@technoapes.co'; // Correo de origen
+const fromEmail = 'soporte@spectrumai.com.co'; // Correo de origen
 const region = process.argv[2] || 'us-east-1';
 
 // Ejecutar prueba

@@ -2,24 +2,28 @@ Resources:
   RedisSubnetGroup:
     Type: AWS::ElastiCache::SubnetGroup
     Properties:
-      CacheSubnetGroupName: !Sub "${self:custom.service}-${self:provider.stage}-redis-subnet-group"
-      Description: !Sub "${self:custom.service}-${self:provider.stage} subnet group for Redis cluster"
+      CacheSubnetGroupName: espectra-backend-dev-v4-r1-redis-sg
+      Description: espectra-backend-dev-v4-r1 subnet group for Redis cluster
       SubnetIds:
-        - Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-private-subnet-1-id
-        - Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-private-subnet-2-id
+        - Fn::ImportValue: espectra-backend-dev-v4-r1-phase1-PrivateSubnet1Id
+        - Fn::ImportValue: espectra-backend-dev-v4-r1-phase1-PrivateSubnet2Id
       Tags:
         - Key: Environment
-          Value: ${self:provider.stage}
+          Value: dev
         - Key: Service
-          Value: ${self:custom.service}
+          Value: espectra-backend
         - Key: ManagedBy
           Value: CloudFormation
+        - Key: Project
+          Value: espectra-backend
+        - Key: Company
+          Value: technoapes
 
   RedisParameterGroup:
     Type: AWS::ElastiCache::ParameterGroup
     Properties:
       CacheParameterGroupFamily: redis6.x
-      Description: !Sub "${self:custom.service}-${self:provider.stage} parameter group for Redis cluster"
+      Description: espectra-backend-dev-v4-r1 parameter group for Redis cluster
       Properties:
         timeout: 30000
         notify-keyspace-events: "Ex"
@@ -29,15 +33,21 @@ Resources:
         # maxmemory-samples: 10
       Tags:
         - Key: Environment
-          Value: ${self:provider.stage}
+          Value: dev
         - Key: Service
-          Value: ${self:custom.service}
+          Value: espectra-backend
+        - Key: Project
+          Value: espectra-backend
+        - Key: Company
+          Value: technoapes
+        - Key: ManagedBy
+          Value: CloudFormation
 
-  RedisBackupBucket:
+  RedisBucket:
     Type: AWS::S3::Bucket
     DeletionPolicy: Retain
     Properties:
-      BucketName: !Sub "${self:custom.service}-${self:provider.stage}-redis-backups-bucket"
+      BucketName: !Sub "${self:custom.service}-${self:provider.stage}-redis-cache-backups-bucket"
       VersioningConfiguration:
         Status: Enabled
       LifecycleConfiguration:
@@ -50,7 +60,7 @@ Resources:
           - ServerSideEncryptionByDefault:
               SSEAlgorithm: aws:kms
               KMSMasterKeyID:
-                Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-system-kms-key-arn
+                Fn::ImportValue: ${self:custom.resourcePrefix}-kms-SystemKeyArn
       Tags:
         - Key: Environment
           Value: ${self:provider.stage}
@@ -59,7 +69,7 @@ Resources:
 
   RedisCluster:
     Type: AWS::ElastiCache::ReplicationGroup
-    DependsOn: 
+    DependsOn:
       - RedisSubnetGroup
       - RedisParameterGroup
     Properties:
@@ -74,11 +84,11 @@ Resources:
       CacheParameterGroupName: !Ref RedisParameterGroup
       CacheSubnetGroupName: !Ref RedisSubnetGroup
       SecurityGroupIds:
-        - Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-redis-sg-id
+        - Fn::ImportValue: espectra-backend-dev-v4-r1-phase1-RedisSecurityGroupId
       AtRestEncryptionEnabled: true
       TransitEncryptionEnabled: true
-      KmsKeyId: 
-        Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-system-kms-key-arn
+      KmsKeyId:
+        Fn::ImportValue: ${self:custom.resourcePrefix}-kms-SystemKeyArn
       SnapshotRetentionLimit: 7
       SnapshotWindow: "00:00-01:00"
       Port: 6379
@@ -111,7 +121,7 @@ Resources:
         - Name: CacheClusterId
           Value: !Ref RedisCluster
       AlarmActions:
-        - Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-high-priority-topic-arn
+        - Fn::ImportValue: ${self:custom.resourcePrefix}-sns-HighPriorityTopicArn
 
   RedisMemoryAlarm:
     Type: AWS::CloudWatch::Alarm
@@ -130,7 +140,7 @@ Resources:
         - Name: CacheClusterId
           Value: !Ref RedisCluster
       AlarmActions:
-        - Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-high-priority-topic-arn
+        - Fn::ImportValue: ${self:custom.resourcePrefix}-sns-HighPriorityTopicArn
 
   RedisConnectionsAlarm:
     Type: AWS::CloudWatch::Alarm
@@ -149,7 +159,7 @@ Resources:
         - Name: CacheClusterId
           Value: !Ref RedisCluster
       AlarmActions:
-        - Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-high-priority-topic-arn
+        - Fn::ImportValue: ${self:custom.resourcePrefix}-sns-HighPriorityTopicArn
 
   RedisReplicationLagAlarm:
     Type: AWS::CloudWatch::Alarm
@@ -168,8 +178,8 @@ Resources:
         - Name: CacheClusterId
           Value: !Ref RedisCluster
       AlarmActions:
-        - Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-high-priority-topic-arn
-        
+        - Fn::ImportValue: ${self:custom.resourcePrefix}-sns-HighPriorityTopicArn
+
   # Nueva alarma para conexiones fallidas
   RedisConnectionFailuresAlarm:
     Type: AWS::CloudWatch::Alarm
@@ -188,35 +198,40 @@ Resources:
         - Name: CacheClusterId
           Value: !Ref RedisCluster
       AlarmActions:
-        - Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-high-priority-topic-arn
+        - Fn::ImportValue: ${self:custom.resourcePrefix}-sns-HighPriorityTopicArn
 
 Outputs:
   RedisEndpoint:
     Description: Redis primary endpoint
-    Value: !GetAtt RedisCluster.PrimaryEndPoint.Address
+    Value:
+      Fn::GetAtt: [RedisCluster, PrimaryEndPoint.Address]
     Export:
-      Name: ${self:custom.service}-${self:provider.stage}-redis-endpoint
+      Name: espectra-backend-dev-v4-r1-redis-endpoint
 
   RedisPort:
     Description: Redis port
-    Value: !GetAtt RedisCluster.PrimaryEndPoint.Port
+    Value:
+      Fn::GetAtt: [RedisCluster, PrimaryEndPoint.Port]
     Export:
-      Name: ${self:custom.service}-${self:provider.stage}-redis-port
+      Name: espectra-backend-dev-v4-r1-redis-port
 
   RedisConnectionString:
     Description: Redis connection string with protocol
-    Value: !Sub "redis://${RedisCluster.PrimaryEndPoint.Address}:${RedisCluster.PrimaryEndPoint.Port}"
+    Value:
+      Fn::Sub: "redis://${RedisCluster.PrimaryEndPoint.Address}:${RedisCluster.PrimaryEndPoint.Port}"
     Export:
-      Name: ${self:custom.service}-${self:provider.stage}-redis-connection-string
-      
+      Name: espectra-backend-dev-v4-r1-redis-connection-string
+
   RedisClusterId:
     Description: ID of the Redis cluster
-    Value: !Ref RedisCluster
+    Value:
+      Ref: RedisCluster
     Export:
-      Name: ${self:custom.service}-${self:provider.stage}-redis-cluster-id
-      
+      Name: espectra-backend-dev-v4-r1-redis-cluster-id
+
   RedisParameterGroupName:
     Description: Name of the Redis parameter group
-    Value: !Ref RedisParameterGroup
+    Value:
+      Ref: RedisParameterGroup
     Export:
-      Name: ${self:custom.service}-${self:provider.stage}-redis-parameter-group
+      Name: espectra-backend-dev-v4-r1-redis-parameter-group

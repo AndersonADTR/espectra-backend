@@ -1,0 +1,149 @@
+# serverless-common.yml
+# Configuraciones comunes para todos los servicios Serverless
+# Este archivo centraliza variables y configuraciones compartidas
+
+# Variables globales
+custom:
+  # Información del proyecto
+  projectName: espectra-backend
+  company: technoapes
+
+  # Entornos
+  stage: ${opt:stage, 'dev'}
+  region: ${opt:region, 'us-east-1'}
+
+  # Configuración de esbuild para Serverless v4
+  esbuild:
+    config: ./serverless.esbuild.js
+    external:
+      - aws-sdk
+      - '@aws-sdk/*'
+    packager: npm
+    minify: ${env:SLS_MINIFY, false}
+    sourcemap: true
+    keepNames: true
+    exclude:
+      - aws-sdk
+      - '@aws-sdk/*'
+
+  # Prefijos para recursos
+  deploymentId: v4-${env:DEPLOYMENT_ID, 'r1'}
+  resourcePrefix: ${self:custom.projectName}-${self:custom.stage}-${self:custom.deploymentId}
+
+  # Configuración de logs
+  logRetentionInDays: 30
+
+  # Configuración de etiquetas comunes
+  commonTags:
+    Project: ${self:custom.projectName}
+    Environment: ${self:custom.stage}
+    ManagedBy: serverless
+    Company: ${self:custom.company}
+
+  # Configuración de VPC (referencia)
+  vpc:
+    securityGroupIds:
+      - ${cf:${self:custom.resourcePrefix}-phase1-LambdaSecurityGroupId}
+    subnetIds:
+      - ${cf:${self:custom.resourcePrefix}-phase1-PrivateSubnet1Id}
+      - ${cf:${self:custom.resourcePrefix}-phase1-PrivateSubnet2Id}
+
+  # Configuración de KMS (referencia)
+  kms:
+    systemKeyId: ${cf:${self:custom.resourcePrefix}-kms-SystemKeyId}
+    secretsKeyId: ${cf:${self:custom.resourcePrefix}-kms-SecretsKeyId}
+    websocketKeyId: ${cf:${self:custom.resourcePrefix}-kms-WebsocketKeyId}
+
+  # Configuración de SNS (referencia)
+  sns:
+    highPriorityTopicArn: ${cf:${self:custom.resourcePrefix}-sns-HighPriorityTopicArn}
+    mediumPriorityTopicArn: ${cf:${self:custom.resourcePrefix}-sns-MediumPriorityTopicArn}
+    lowPriorityTopicArn: ${cf:${self:custom.resourcePrefix}-sns-LowPriorityTopicArn}
+
+  # Configuración de Cognito (referencia)
+  cognito:
+    userPoolId: ${cf:${self:custom.resourcePrefix}-cognito-UserPoolId}
+    userPoolClientId: ${cf:${self:custom.resourcePrefix}-cognito-UserPoolClientId}
+    userPoolDomain: ${cf:${self:custom.resourcePrefix}-cognito-UserPoolDomain}
+
+  # Configuración de DynamoDB (referencia)
+  dynamodb:
+    # Tablas de Botpress
+    botpressConversationsTable: ${cf:${self:custom.resourcePrefix}-phase2-BotpressConversationsTableName}
+    botpressMessagesTable: ${cf:${self:custom.resourcePrefix}-phase2-BotpressMessagesTableName}
+
+    # Tablas de Chat
+    chatHistoryTable: ${cf:${self:custom.resourcePrefix}-phase3-ChatHistoryTableName}
+    chatMetadataTable: ${cf:${self:custom.resourcePrefix}-phase3-ChatMetadataTableName}
+
+    # Tablas de Usuario
+    userProfileTable: ${cf:${self:custom.resourcePrefix}-phase3-UserProfileTableName}
+    userPreferencesTable: ${cf:${self:custom.resourcePrefix}-phase3-UserPreferencesTableName}
+
+    # Tablas de Conexiones
+    connectionsTable: ${cf:${self:custom.resourcePrefix}-phase3-ConnectionsTableName}
+
+  # Configuración de Redis (referencia)
+  redis:
+    endpoint: ${cf:${self:custom.resourcePrefix}-phase2-RedisEndpoint}
+    port: ${cf:${self:custom.resourcePrefix}-phase2-RedisPort}
+
+  # Configuración de API Gateway (referencia)
+  apiGateway:
+    restApiId: ${cf:${self:custom.resourcePrefix}-phase4-ApiGatewayRestApiId}
+    restApiRootResourceId: ${cf:${self:custom.resourcePrefix}-phase4-ApiGatewayRestApiRootResourceId}
+    websocketApiId: ${cf:${self:custom.resourcePrefix}-phase4-WebsocketApiId}
+
+  # Configuración de IAM
+  iamRoleStatements:
+    # Permisos para KMS
+    - Effect: Allow
+      Action:
+        - kms:Decrypt
+        - kms:Encrypt
+        - kms:GenerateDataKey
+      Resource:
+        - arn:aws:kms:${self:custom.region}:#{AWS::AccountId}:key/${self:custom.kms.systemKeyId}
+        - arn:aws:kms:${self:custom.region}:#{AWS::AccountId}:key/${self:custom.kms.secretsKeyId}
+
+    # Permisos para SNS
+    - Effect: Allow
+      Action:
+        - sns:Publish
+      Resource:
+        - ${self:custom.sns.highPriorityTopicArn}
+        - ${self:custom.sns.mediumPriorityTopicArn}
+        - ${self:custom.sns.lowPriorityTopicArn}
+
+    # Permisos para CloudWatch
+    - Effect: Allow
+      Action:
+        - logs:CreateLogGroup
+        - logs:CreateLogStream
+        - logs:PutLogEvents
+      Resource: arn:aws:logs:${self:custom.region}:#{AWS::AccountId}:log-group:/aws/lambda/*
+
+    # Permisos para SSM
+    - Effect: Allow
+      Action:
+        - ssm:GetParameter
+        - ssm:GetParameters
+      Resource: arn:aws:ssm:${self:custom.region}:#{AWS::AccountId}:parameter/espectra/${self:custom.stage}/*
+
+# Configuración de proveedor común
+provider:
+  name: aws
+  runtime: nodejs20.x
+  region: ${self:custom.region}
+  stage: ${self:custom.stage}
+  memorySize: 256
+  timeout: 30
+  logRetentionInDays: ${self:custom.logRetentionInDays}
+  tracing:
+    lambda: true
+    apiGateway: true
+  environment:
+    STAGE: ${self:custom.stage}
+    REGION: ${self:custom.region}
+    NODE_OPTIONS: --enable-source-maps
+  tags: ${self:custom.commonTags}

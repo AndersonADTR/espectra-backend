@@ -23,7 +23,7 @@ async function verifyAndTestEmail() {
     console.log('Starting email verification and testing');
 
     // Correos específicos
-    const senderEmail = 'anderson.montilva@technoapes.co';
+    const senderEmail = 'soporte@spectrumai.com.co';
     const recipientEmail = 'andersonmontilva@gmail.com';
     const region = process.env.AWS_REGION || 'us-east-1';
 

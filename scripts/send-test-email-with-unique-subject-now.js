@@ -10,7 +10,7 @@ const uniqueSubject = `IMPORTANTE: Prueba de Correo SPECTRUM - ${new Date().toIS
 
 // Parámetros del correo
 const params = {
-  Source: "anderson.montilva@technoapes.co",
+  Source: "soporte@spectrumai.com.co",
   Destination: {
     ToAddresses: ["andersonmontilva@gmail.com"]
   },
@@ -36,7 +36,7 @@ const params = {
               <ol>
                 <li>Verifica la carpeta de spam</li>
                 <li>Verifica la carpeta de "Promociones" o "Social" en Gmail</li>
-                <li>Agrega anderson.montilva@technoapes.co a tu lista de contactos</li>
+                <li>Agrega soporte@spectrumai.com.co a tu lista de contactos</li>
                 <li>Marca este correo como "No es spam" si lo encuentras en la carpeta de spam</li>
               </ol>
             </body>

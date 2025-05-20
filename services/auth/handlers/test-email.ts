@@ -34,7 +34,7 @@ const testEmailHandler: APIGatewayProxyHandler = async (event) => {
       email,
       environment: process.env.NODE_ENV,
       region: process.env.REGION,
-      sesFromEmail: process.env.SES_FROM_EMAIL || 'anderson.montilva@technoapes.co'
+      sesFromEmail: process.env.SES_FROM_EMAIL || 'soporte@spectrumai.com.co'
     });
     
     try {

@@ -99,7 +99,7 @@ async function configureSES(email: string, userPoolId: string, region: string = 
 }
 
 // Usar correos específicos para la configuración
-const senderEmail = 'anderson.montilva@technoapes.co'; // Correo de origen
+const senderEmail = 'soporte@spectrumai.com.co'; // Correo de origen
 const recipientEmail = 'andersonmontilva@gmail.com'; // Correo de destino
 const userPoolId = process.argv[2] || 'us-east-1_wY0TSEhHl'; // User Pool ID por defecto
 const region = process.argv[3] || 'us-east-1';

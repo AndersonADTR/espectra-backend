@@ -22,7 +22,7 @@ export class EmailService {
   private constructor() {
     this.logger = new Logger('EmailService');
     this.region = process.env.REGION || 'us-east-1';
-    this.defaultSender = process.env.SES_FROM_EMAIL || 'anderson.montilva@technoapes.co';
+    this.defaultSender = process.env.SES_FROM_EMAIL || 'soporte@spectrumai.com.co';
 
     console.log('Initializing EmailService', {
       region: this.region,

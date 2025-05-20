@@ -49,7 +49,7 @@ Resources:
         SSEEnabled: true
         SSEType: KMS
         KMSMasterKeyId: 
-          Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-system-kms-key-arn
+          Fn::ImportValue: ${self:custom.resourcePrefix}-kms-SystemKeyArn
       TimeToLiveSpecification:
         AttributeName: ttl
         Enabled: true

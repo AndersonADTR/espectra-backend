@@ -35,8 +35,6 @@ Resources:
             MaximumEventAgeInSeconds: 3600
           SqsParameters:
             MessageGroupId: botpress-events
-          # KmsKeyArn: 
-          #   Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-system-kms-key-arn
 
   BotpressMetricsRule:
     Type: AWS::Events::Rule
@@ -65,38 +63,12 @@ Resources:
       QueueName: ${self:custom.service}-${self:provider.stage}-botpress-metrics-dlq
       MessageRetentionPeriod: 1209600 # 14 days
       KmsMasterKeyId: 
-        Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-system-kms-key-arn
+        Fn::ImportValue: ${self:custom.resourcePrefix}-kms-SystemKeyArn
       Tags:
         - Key: Service
           Value: ${self:custom.service}
         - Key: Environment
           Value: ${self:provider.stage}
-
-  # BotpressMetricsFunction:
-  #   Type: AWS::Lambda::Function
-  #   Properties:
-  #     FunctionName: ${self:custom.service}-${self:provider.stage}-botpress-metrics
-  #     Handler: index.handler
-  #     Runtime: nodejs20.x
-  #     MemorySize: 256
-  #     Timeout: 30
-  #     Environment:
-  #       Variables:
-  #         METRICS_TABLE: !Ref BotpressMetricsTable
-  #         SERVICE_NAME: ${self:custom.service}
-  #         STAGE: ${self:provider.stage}
-  #         KMS_KEY_ARN:
-  #           Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-system-kms-key-arn
-  #     KmsKeyArn:
-  #       Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-system-kms-key-arn
-  #     TracingConfig:
-  #       Mode: Active
-  #     Role: !GetAtt BotpressMetricsRole.Arn
-  #     Tags:
-  #       - Key: Service
-  #         Value: ${self:custom.service}
-  #       - Key: Environment
-  #         Value: ${self:provider.stage}
 
   BotpressMetricsRole:
     Type: AWS::IAM::Role
@@ -128,7 +100,7 @@ Resources:
                   - kms:Decrypt
                   - kms:GenerateDataKey
                 Resource:
-                  Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-system-kms-key-arn
+                  Fn::ImportValue: ${self:custom.resourcePrefix}-kms-SystemKeyArn
 
   # CloudWatch Alarms
   BotpressEventFailureAlarm:
@@ -148,7 +120,7 @@ Resources:
         - Name: RuleName
           Value: !Ref BotpressEventRule
       AlarmActions:
-        - Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-high-priority-topic-arn
+        - Fn::ImportValue: ${self:custom.resourcePrefix}-sns-HighPriorityTopicArn
 
   BotpressMetricsDLQAlarm:
     Type: AWS::CloudWatch::Alarm
@@ -167,17 +139,19 @@ Resources:
         - Name: QueueName
           Value: !GetAtt BotpressMetricsDLQ.QueueName
       AlarmActions:
-        - Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-high-priority-topic-arn
+        - Fn::ImportValue: ${self:custom.resourcePrefix}-sns-HighPriorityTopicArn
 
 Outputs:
   EventBusArn:
     Description: ARN of the Botpress Event Bus
-    Value: !GetAtt BotpressEventBus.Arn
+    Value:
+      Fn::GetAtt: [BotpressEventBus, Arn]
     Export:
-      Name: ${self:custom.service}-${self:provider.stage}-eventbus-arn
+      Name: espectra-backend-dev-v4-r1-eventbus-arn
 
   EventBusName:
     Description: Name of the Botpress Event Bus
-    Value: !Ref BotpressEventBus
+    Value:
+      Ref: BotpressEventBus
     Export:
-      Name: ${self:custom.service}-${self:provider.stage}-eventbus-name
+      Name: espectra-backend-dev-v4-r1-eventbus-name

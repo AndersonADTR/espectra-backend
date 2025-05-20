@@ -3,7 +3,8 @@ Resources:
     Type: AWS::EC2::SecurityGroup
     Properties:
       GroupDescription: Security group for Lambda functions
-      VpcId: !Ref SpectraVPC
+      VpcId:
+        Ref: SpectraVPC
       SecurityGroupEgress:
         # Redis
         - IpProtocol: tcp
@@ -30,11 +31,11 @@ Resources:
           Description: DNS (UDP)
       Tags:
         - Key: Name
-          Value: ${self:custom.service}-${self:provider.stage}-lambda-sg
+          Value: espectra-backend-dev-v4-r1-lambda-sg
         - Key: Service
-          Value: ${self:custom.service}
+          Value: espectra-backend
         - Key: Environment
-          Value: ${self:provider.stage}
+          Value: dev
         - Key: Component
           Value: Lambda
         - Key: ManagedBy
@@ -44,20 +45,22 @@ Resources:
     Type: AWS::EC2::SecurityGroup
     Properties:
       GroupDescription: Security group for Redis cluster
-      VpcId: !Ref SpectraVPC
+      VpcId:
+        Ref: SpectraVPC
       SecurityGroupIngress:
         - IpProtocol: tcp
           FromPort: 6379
           ToPort: 6379
-          SourceSecurityGroupId: !Ref LambdaSecurityGroup
+          SourceSecurityGroupId:
+            Ref: LambdaSecurityGroup
           Description: Redis access from Lambda functions
       Tags:
         - Key: Name
-          Value: ${self:custom.service}-${self:provider.stage}-redis-sg
+          Value: espectra-backend-dev-v4-r1-redis-sg
         - Key: Service
-          Value: ${self:custom.service}
+          Value: espectra-backend
         - Key: Environment
-          Value: ${self:provider.stage}
+          Value: dev
         - Key: Component
           Value: Redis
         - Key: ManagedBy
@@ -67,7 +70,8 @@ Resources:
     Type: AWS::EC2::SecurityGroup
     Properties:
       GroupDescription: Security group for internal API endpoints
-      VpcId: !Ref SpectraVPC
+      VpcId:
+        Ref: SpectraVPC
       SecurityGroupIngress:
         - IpProtocol: tcp
           FromPort: 443
@@ -82,11 +86,11 @@ Resources:
           Description: HTTPS outbound
       Tags:
         - Key: Name
-          Value: ${self:custom.service}-${self:provider.stage}-internal-api-sg
+          Value: espectra-backend-dev-v4-r1-internal-api-sg
         - Key: Service
-          Value: ${self:custom.service}
+          Value: espectra-backend
         - Key: Environment
-          Value: ${self:provider.stage}
+          Value: dev
         - Key: Component
           Value: InternalAPI
         - Key: ManagedBy
@@ -96,7 +100,8 @@ Resources:
     Type: AWS::EC2::SecurityGroup
     Properties:
       GroupDescription: Security group for VPC Endpoints
-      VpcId: !Ref SpectraVPC
+      VpcId:
+        Ref: SpectraVPC
       SecurityGroupIngress:
         - IpProtocol: tcp
           FromPort: 443
@@ -111,11 +116,11 @@ Resources:
           Description: All outbound traffic
       Tags:
         - Key: Name
-          Value: ${self:custom.service}-${self:provider.stage}-vpce-sg
+          Value: espectra-backend-dev-v4-r1-vpce-sg
         - Key: Service
-          Value: ${self:custom.service}
+          Value: espectra-backend
         - Key: Environment
-          Value: ${self:provider.stage}
+          Value: dev
         - Key: Component
           Value: VPCEndpoints
         - Key: ManagedBy
@@ -126,7 +131,7 @@ Resources:
   SGMetricsAlarm:
     Type: AWS::CloudWatch::Alarm
     Properties:
-      AlarmName: ${self:custom.service}-${self:provider.stage}-sg-blocked-requests
+      AlarmName: espectra-backend-dev-v4-r1-sg-blocked-requests
       MetricName: BlockedRequests
       Namespace: AWS/EC2
       Statistic: Sum
@@ -135,29 +140,34 @@ Resources:
       Threshold: 100
       ComparisonOperator: GreaterThanThreshold
       AlarmActions:
-        - Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-high-priority-topic-arn
+        - Fn::ImportValue: espectra-backend-dev-v4-r1-sns-HighPriorityTopicArn
 
 Outputs:
+  # Security Group Outputs
   LambdaSecurityGroupId:
     Description: ID of the Lambda Security Group
-    Value: !Ref LambdaSecurityGroup
+    Value:
+      Ref: LambdaSecurityGroup
     Export:
-      Name: ${self:custom.service}-${self:provider.stage}-lambda-sg-id
+      Name: espectra-backend-dev-v4-r1-phase1-LambdaSecurityGroupId
 
   RedisSecurityGroupId:
     Description: ID of the Redis Security Group
-    Value: !Ref RedisSecurityGroup
+    Value:
+      Ref: RedisSecurityGroup
     Export:
-      Name: ${self:custom.service}-${self:provider.stage}-redis-sg-id
+      Name: espectra-backend-dev-v4-r1-phase1-RedisSecurityGroupId
 
   InternalApiSecurityGroupId:
     Description: ID of the Internal API Security Group
-    Value: !Ref InternalApiSecurityGroup
+    Value:
+      Ref: InternalApiSecurityGroup
     Export:
-      Name: ${self:custom.service}-${self:provider.stage}-internal-api-sg-id
+      Name: espectra-backend-dev-v4-r1-phase1-InternalApiSecurityGroupId
 
   VPCEndpointSecurityGroupId:
     Description: ID of the VPC Endpoint Security Group
-    Value: !Ref VPCEndpointSecurityGroup
+    Value:
+      Ref: VPCEndpointSecurityGroup
     Export:
-      Name: ${self:custom.service}-${self:provider.stage}-vpce-sg-id
+      Name: espectra-backend-dev-v4-r1-phase1-VPCEndpointSecurityGroupId

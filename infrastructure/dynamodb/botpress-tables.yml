@@ -40,7 +40,7 @@ Resources:
         SSEEnabled: true
         SSEType: KMS
         KMSMasterKeyId: 
-          Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-system-kms-key-arn
+          Fn::ImportValue: ${self:custom.resourcePrefix}-kms-SystemKeyArn
       PointInTimeRecoverySpecification:
         PointInTimeRecoveryEnabled: true
       StreamSpecification:
@@ -108,7 +108,7 @@ Resources:
         SSEEnabled: true
         SSEType: KMS
         KMSMasterKeyId: 
-          Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-system-kms-key-arn
+          Fn::ImportValue: ${self:custom.resourcePrefix}-kms-SystemKeyArn
       PointInTimeRecoverySpecification:
         PointInTimeRecoveryEnabled: true
       StreamSpecification:
@@ -142,7 +142,7 @@ Resources:
         SSEEnabled: true
         SSEType: KMS
         KMSMasterKeyId: 
-          Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-system-kms-key-arn
+          Fn::ImportValue: ${self:custom.resourcePrefix}-kms-SystemKeyArn
       PointInTimeRecoverySpecification:
         PointInTimeRecoveryEnabled: true
       StreamSpecification:
@@ -235,34 +235,37 @@ Outputs:
     Description: Name of the Conversation Context table
     Value: ${self:custom.tableNames.context}
     Export:
-      Name: ${self:custom.service}-${self:provider.stage}-context-table-name
+      Name: espectra-backend-dev-v4-r1-context-table-name
 
   ConversationContextTableArn:
     Description: ARN of the Conversation Context table
-    Value: !GetAtt ConversationContextTable.Arn
+    Value:
+      Fn::GetAtt: [ConversationContextTable, Arn]
     Export:
-      Name: ${self:custom.service}-${self:provider.stage}-context-table-arn
+      Name: espectra-backend-dev-v4-r1-context-table-arn
 
   BotpressMetricsTableName:
     Description: Name of the Botpress Metrics table
     Value: ${self:custom.tableNames.metrics}
     Export:
-      Name: ${self:custom.service}-${self:provider.stage}-metrics-table-name
+      Name: espectra-backend-dev-v4-r1-metrics-table-name
 
   BotpressMetricsTableArn:
     Description: ARN of the Botpress Metrics table
-    Value: !GetAtt BotpressMetricsTable.Arn
+    Value:
+      Fn::GetAtt: [BotpressMetricsTable, Arn]
     Export:
-      Name: ${self:custom.service}-${self:provider.stage}-metrics-table-arn
+      Name: espectra-backend-dev-v4-r1-metrics-table-arn
 
   TokenUsageTableName:
     Description: Name of the Token Usage table
     Value: ${self:custom.tableNames.tokens}
     Export:
-      Name: ${self:custom.service}-${self:provider.stage}-tokens-table-name
+      Name: espectra-backend-dev-v4-r1-tokens-table-name
 
   TokenUsageTableArn:
     Description: ARN of the Token Usage table
-    Value: !GetAtt TokenUsageTable.Arn
+    Value:
+      Fn::GetAtt: [TokenUsageTable, Arn]
     Export:
-      Name: ${self:custom.service}-${self:provider.stage}-tokens-table-arn
+      Name: espectra-backend-dev-v4-r1-tokens-table-arn

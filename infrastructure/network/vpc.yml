@@ -2,17 +2,17 @@ Resources:
   SpectraVPC:
     Type: AWS::EC2::VPC
     Properties:
-      CidrBlock: ${ssm:/espectra/${self:provider.stage}/vpc-cidr}
+      CidrBlock: ${ssm:/espectra/${self:provider.stage}/vpc-cidr, '10.0.0.0/16'}
       EnableDnsSupport: true
       EnableDnsHostnames: true
       InstanceTenancy: default
       Tags:
         - Key: Name
-          Value: !Sub ${self:custom.service}-${self:provider.stage}-vpc
+          Value: espectra-backend-dev-v4-r1-vpc
         - Key: Service
-          Value: ${self:custom.service}
+          Value: espectra-backend
         - Key: Environment
-          Value: ${self:provider.stage}
+          Value: dev
         - Key: CreatedBy
           Value: CloudFormation
         - Key: SecurityZone
@@ -22,31 +22,34 @@ Resources:
   VPCFlowLogGroup:
     Type: AWS::Logs::LogGroup
     Properties:
-      LogGroupName: !Sub /aws/vpc/${self:custom.service}-${self:provider.stage}-flow-logs
-      RetentionInDays: ${self:custom.logRetentionInDays}
-      KmsKeyId: 
-        Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-system-kms-key-arn
+      LogGroupName: /aws/vpc/espectra-backend-dev-v4-r1-flow-logs
+      RetentionInDays: 14
+      KmsKeyId:
+        Fn::ImportValue: espectra-backend-dev-v4-r1-kms-SystemKeyArn
 
   VPCFlowLog:
     Type: AWS::EC2::FlowLog
     Properties:
       ResourceType: VPC
-      ResourceId: !Ref SpectraVPC
+      ResourceId:
+        Ref: SpectraVPC
       TrafficType: ALL
-      LogGroupName: !Ref VPCFlowLogGroup
+      LogGroupName:
+        Ref: VPCFlowLogGroup
       MaxAggregationInterval: 60
-      DeliverLogsPermissionArn: !GetAtt VPCFlowLogRole.Arn
+      DeliverLogsPermissionArn:
+        Fn::GetAtt: [VPCFlowLogRole, Arn]
       LogDestinationType: cloud-watch-logs
       Tags:
         - Key: Service
-          Value: ${self:custom.service}
+          Value: espectra-backend
         - Key: Environment
-          Value: ${self:provider.stage}
+          Value: dev
 
   VPCFlowLogRole:
     Type: AWS::IAM::Role
     Properties:
-      RoleName: ${self:custom.service}-${self:provider.stage}-vpc-flow-log-role
+      RoleName: espectra-backend-dev-v4-r1-vpc-flow-log-role
       AssumeRolePolicyDocument:
         Version: '2012-10-17'
         Statement:
@@ -64,14 +67,15 @@ Resources:
                 - logs:PutLogEvents
                 - logs:DescribeLogGroups
                 - logs:DescribeLogStreams
-              Resource: !Sub arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/vpc/${self:custom.service}-${self:provider.stage}-flow-logs:*
+              Resource:
+                Fn::Sub: "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/vpc/espectra-backend-dev-v4-r1-flow-logs:*"
             - Effect: Allow
               Action:
                 - kms:Encrypt
                 - kms:Decrypt
                 - kms:GenerateDataKey
               Resource:
-                Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-system-kms-key-arn
+                Fn::ImportValue: espectra-backend-dev-v4-r1-kms-SystemKeyArn
 
   # Internet Gateway
   SpectraIGW:
@@ -79,17 +83,19 @@ Resources:
     Properties:
       Tags:
         - Key: Name
-          Value: ${self:custom.service}-${self:provider.stage}-igw
+          Value: espectra-backend-dev-v4-r1-igw
         - Key: Service
-          Value: ${self:custom.service}
+          Value: espectra-backend
         - Key: Environment
-          Value: ${self:provider.stage}
+          Value: dev
 
   AttachGateway:
     Type: AWS::EC2::VPCGatewayAttachment
     Properties:
-      VpcId: !Ref SpectraVPC
-      InternetGatewayId: !Ref SpectraIGW
+      VpcId:
+        Ref: SpectraVPC
+      InternetGatewayId:
+        Ref: SpectraIGW
 
   # NAT Gateway para acceso a internet desde subnets privadas
   NatGatewayEIP:
@@ -99,57 +105,67 @@ Resources:
       Domain: vpc
       Tags:
         - Key: Name
-          Value: ${self:custom.service}-${self:provider.stage}-nat-eip
+          Value: espectra-backend-dev-v4-r1-nat-eip
         - Key: Service
-          Value: ${self:custom.service}
+          Value: espectra-backend
         - Key: Environment
-          Value: ${self:provider.stage}
+          Value: dev
 
   NatGateway:
     Type: AWS::EC2::NatGateway
     Properties:
-      AllocationId: !GetAtt NatGatewayEIP.AllocationId
-      SubnetId: !Ref PublicSubnet1
+      AllocationId:
+        Fn::GetAtt: [NatGatewayEIP, AllocationId]
+      SubnetId:
+        Ref: PublicSubnet1
       Tags:
         - Key: Name
-          Value: ${self:custom.service}-${self:provider.stage}-nat
+          Value: espectra-backend-dev-v4-r1-nat
         - Key: Service
-          Value: ${self:custom.service}
+          Value: espectra-backend
         - Key: Environment
-          Value: ${self:provider.stage}
+          Value: dev
 
   # Public Subnets
   PublicSubnet1:
     Type: AWS::EC2::Subnet
     Properties:
-      VpcId: !Ref SpectraVPC
+      VpcId:
+        Ref: SpectraVPC
       CidrBlock: ${ssm:/espectra/${self:provider.stage}/public-subnet-cidrs}
-      AvailabilityZone: !Select [0, !GetAZs '']
+      AvailabilityZone:
+        Fn::Select:
+          - 0
+          - Fn::GetAZs: ''
       MapPublicIpOnLaunch: true
       Tags:
         - Key: Name
-          Value: ${self:custom.service}-${self:provider.stage}-public-1
+          Value: espectra-backend-dev-v4-r1-public-1
         - Key: Service
-          Value: ${self:custom.service}
+          Value: espectra-backend
         - Key: Environment
-          Value: ${self:provider.stage}
+          Value: dev
         - Key: Type
           Value: Public
 
   PublicSubnet2:
     Type: AWS::EC2::Subnet
     Properties:
-      VpcId: !Ref SpectraVPC
+      VpcId:
+        Ref: SpectraVPC
       CidrBlock: ${ssm:/espectra/${self:provider.stage}/public-subnet-2-cidrs}
-      AvailabilityZone: !Select [1, !GetAZs '']
+      AvailabilityZone:
+        Fn::Select:
+          - 1
+          - Fn::GetAZs: ''
       MapPublicIpOnLaunch: true
       Tags:
         - Key: Name
-          Value: ${self:custom.service}-${self:provider.stage}-public-2
+          Value: espectra-backend-dev-v4-r1-public-2
         - Key: Service
-          Value: ${self:custom.service}
+          Value: espectra-backend
         - Key: Environment
-          Value: ${self:provider.stage}
+          Value: dev
         - Key: Type
           Value: Public
 
@@ -357,7 +373,7 @@ Resources:
               - dynamodb:*
             Resource: '*'
       VpcId: !Ref SpectraVPC
-      RouteTableIds: 
+      RouteTableIds:
         - !Ref PrivateRouteTable
       Tags:
         - Key: Name
@@ -461,62 +477,61 @@ Resources:
           Value: ${self:provider.stage}
 
 Outputs:
+  # VPC Outputs
   VpcId:
     Description: VPC ID
-    Value: !Ref SpectraVPC
+    Value:
+      Ref: SpectraVPC
     Export:
-      Name: ${self:custom.service}-${self:provider.stage}-vpc-id
+      Name: espectra-backend-dev-v4-r1-phase1-VpcId
 
   VpcCidr:
     Description: VPC CIDR Block
-    Value: !GetAtt SpectraVPC.CidrBlock
+    Value:
+      Fn::GetAtt: [SpectraVPC, CidrBlock]
     Export:
-      Name: ${self:custom.service}-${self:provider.stage}-vpc-cidr
+      Name: espectra-backend-dev-v4-r1-phase1-VpcCidr
 
+  # Subnet Outputs
   PublicSubnet1Id:
     Description: Public Subnet 1 ID
-    Value: !Ref PublicSubnet1
+    Value:
+      Ref: PublicSubnet1
     Export:
-      Name: ${self:custom.service}-${self:provider.stage}-public-subnet-1-id
-
-  PublicSubnet1Cidr:
-    Description: Public Subnet 1 CIDR Block
-    Value: !GetAtt PublicSubnet1.CidrBlock
-    Export:
-      Name: ${self:custom.service}-${self:provider.stage}-public-subnet-1-cidr
+      Name: espectra-backend-dev-v4-r1-phase1-PublicSubnet1Id
 
   PublicSubnet2Id:
     Description: Public Subnet 2 ID
-    Value: !Ref PublicSubnet2
+    Value:
+      Ref: PublicSubnet2
     Export:
-      Name: ${self:custom.service}-${self:provider.stage}-public-subnet-2-id
-
-  PublicSubnet2Cidr:
-    Description: Public Subnet 2 CIDR Block
-    Value: !GetAtt PublicSubnet2.CidrBlock
-    Export:
-      Name: ${self:custom.service}-${self:provider.stage}-public-subnet-2-cidr
+      Name: espectra-backend-dev-v4-r1-phase1-PublicSubnet2Id
 
   PrivateSubnet1Id:
     Description: Private Subnet 1 ID
-    Value: !Ref PrivateSubnet1
+    Value:
+      Ref: PrivateSubnet1
     Export:
-      Name: ${self:custom.service}-${self:provider.stage}-private-subnet-1-id
+      Name: espectra-backend-dev-v4-r1-phase1-PrivateSubnet1Id
 
   PrivateSubnet2Id:
     Description: Private Subnet 2 ID
-    Value: !Ref PrivateSubnet2
+    Value:
+      Ref: PrivateSubnet2
     Export:
-      Name: ${self:custom.service}-${self:provider.stage}-private-subnet-2-id
+      Name: espectra-backend-dev-v4-r1-phase1-PrivateSubnet2Id
 
+  # Route Table Outputs
   PublicRouteTableId:
     Description: Public Route Table ID
-    Value: !Ref PublicRouteTable
+    Value:
+      Ref: PublicRouteTable
     Export:
-      Name: ${self:custom.service}-${self:provider.stage}-public-route-table-id
+      Name: espectra-backend-dev-v4-r1-phase1-PublicRouteTableId
 
   PrivateRouteTableId:
     Description: Private Route Table ID
-    Value: !Ref PrivateRouteTable
+    Value:
+      Ref: PrivateRouteTable
     Export:
-      Name: ${self:custom.service}-${self:provider.stage}-private-route-table-id
+      Name: espectra-backend-dev-v4-r1-phase1-PrivateRouteTableId

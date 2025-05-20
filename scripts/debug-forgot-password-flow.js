@@ -143,7 +143,7 @@ async function testDirectSESEmail() {
 
     // Parámetros del correo
     const params = {
-      Source: 'anderson.montilva@technoapes.co',
+      Source: 'soporte@spectrumai.com.co',
       Destination: {
         ToAddresses: [email]
       },

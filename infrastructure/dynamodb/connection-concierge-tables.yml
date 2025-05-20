@@ -40,7 +40,7 @@ Resources:
         SSEEnabled: true
         SSEType: KMS
         KMSMasterKeyId: 
-          Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-websocket-kms-key-id
+          Fn::ImportValue: ${self:custom.resourcePrefix}-kms-SystemKeyArn
       PointInTimeRecoverySpecification:
         PointInTimeRecoveryEnabled: true
       StreamSpecification:

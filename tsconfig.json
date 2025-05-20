@@ -1,10 +1,10 @@
 {
   "compilerOptions": {
-    "target": "ES2020",                       // Versión de ECMAScript objetivo
-    "module": "commonjs",                     // Sistema de módulos
-    "lib": ["ES2020"],                        // Librerías a incluir
+    "target": "ES2022",                       // Versión de ECMAScript objetivo (compatible con Node.js 20)
+    "module": "NodeNext",                     // Sistema de módulos para Node.js 20
+    "lib": ["ES2022"],                        // Librerías a incluir (compatible con Node.js 20)
     "allowJs": true,                          // Permitir archivos JavaScript
-    "moduleResolution": "node",               // Resolución de módulos para Node.js
+    "moduleResolution": "NodeNext",           // Resolución de módulos para Node.js 20
     "esModuleInterop": true,                  // Habilitar interoperabilidad de módulos ES
     "resolveJsonModule": true,                // Permitir importar archivos JSON
     "strict": true,                           // Habilitar todas las comprobaciones estrictas
@@ -12,7 +12,7 @@
     "strictNullChecks": true,                 // Comprobaciones estrictas de null
     "strictFunctionTypes": true,              // Comprobación estricta de tipos de funciones
     "strictBindCallApply": true,              // Comprobaciones estrictas para bind, call y apply
-    "strictPropertyInitialization": true,      // Comprobación estricta de inicialización de propiedades
+    "strictPropertyInitialization": true,     // Comprobación estricta de inicialización de propiedades
     "noImplicitThis": true,                   // No permitir 'this' implícito
     "alwaysStrict": true,                     // Analizar en modo estricto
     "noUnusedLocals": true,                   // Reportar variables locales no usadas
@@ -35,8 +35,9 @@
     "declarationMap": true,                   // Generar source maps para archivos .d.ts
     "incremental": true,                      // Habilitar compilación incremental
     "tsBuildInfoFile": "./.tsbuildinfo",      // Archivo para compilación incremental
-    "experimentalDecorators": true,
-    "emitDecoratorMetadata": true,
+    "experimentalDecorators": true,           // Habilitar decoradores experimentales
+    "emitDecoratorMetadata": true,            // Emitir metadatos de decoradores
+    "useDefineForClassFields": true,          // Usar 'define' para campos de clase
   },
   "include": [
     "src/**/*.ts",                            // Incluir todos los archivos en src

@@ -1,8 +1,9 @@
 Resources:
+  # User Pool principal para autenticación de usuarios
   SpectraUserPool:
     Type: AWS::Cognito::UserPool
     Properties:
-      UserPoolName: ${self:custom.service}-${self:provider.stage}-user-pool
+      UserPoolName: ${self:custom.resourcePrefix}-user-pool
       AdminCreateUserConfig:
         AllowAdminCreateUserOnly: false
         InviteMessageTemplate:
@@ -11,14 +12,14 @@ Resources:
           SMSMessage: "Your username is {username} and temporary password is {####}"
       SmsConfiguration:
         SnsCallerArn: !GetAtt CognitoSMSRole.Arn
-        ExternalId: ${self:custom.service}-${self:provider.stage}-external
+        ExternalId: ${self:custom.resourcePrefix}-external
       AutoVerifiedAttributes:
         - email
         - phone_number
       UsernameAttributes:
         - email
         - phone_number
-      MfaConfiguration: OPTIONAL
+      MfaConfiguration: ${self:custom.cognito.userPool.mfaConfiguration}
       EnabledMfas:
         - SMS_MFA
         - SOFTWARE_TOKEN_MFA
@@ -30,21 +31,21 @@ Resources:
             Priority: 2
       EmailConfiguration:
         EmailSendingAccount: DEVELOPER
-        From: "anderson.montilva@technoapes.co"
-        SourceArn: !Sub "arn:aws:ses:${AWS::Region}:${AWS::AccountId}:identity/anderson.montilva@technoapes.co"
+        From: ${self:custom.cognito.userPool.emailSender}
+        SourceArn: !Sub "arn:aws:ses:${AWS::Region}:${AWS::AccountId}:identity/${self:custom.cognito.userPool.emailSender}"
       Policies:
         PasswordPolicy:
-          MinimumLength: 8
-          RequireLowercase: true
-          RequireNumbers: true
-          RequireSymbols: true
-          RequireUppercase: true
-          TemporaryPasswordValidityDays: 7
+          MinimumLength: ${self:custom.cognito.userPool.passwordPolicy.minLength}
+          RequireLowercase: ${self:custom.cognito.userPool.passwordPolicy.requireLowercase}
+          RequireNumbers: ${self:custom.cognito.userPool.passwordPolicy.requireNumbers}
+          RequireSymbols: ${self:custom.cognito.userPool.passwordPolicy.requireSymbols}
+          RequireUppercase: ${self:custom.cognito.userPool.passwordPolicy.requireUppercase}
+          TemporaryPasswordValidityDays: ${self:custom.cognito.userPool.passwordPolicy.temporaryPasswordValidityDays}
       Schema:
         - Name: email
           AttributeDataType: String
           Mutable: true
-          Required: true
+          Required: false
           StringAttributeConstraints:
             MinLength: "3"
             MaxLength: "254"
@@ -55,18 +56,18 @@ Resources:
           StringAttributeConstraints:
             MinLength: "1"
             MaxLength: "256"
-        - Name: phoneNumber
+        - Name: phone_number
           AttributeDataType: String
           Mutable: true
           Required: false
-        - Name: userType
+        - Name: custom:userType
           AttributeDataType: String
           Mutable: true
           Required: false
           StringAttributeConstraints:
             MaxLength: "20"
             MinLength: "1"
-        - Name: language
+        - Name: custom:language
           AttributeDataType: String
           Mutable: true
           Required: false
@@ -74,17 +75,21 @@ Resources:
             MaxLength: "10"
             MinLength: "2"
       UserPoolTags:
-        Service: ${self:custom.service}
-        Environment: ${self:provider.stage}
-        ManagedBy: CloudFormation
+          Project: espectra-backend
+          Environment: dev
+          ManagedBy: serverless
+          Company: technoapes
+          Component: UserPool
       UserPoolAddOns:
         AdvancedSecurityMode: ENFORCED
 
+  # Cliente para interactuar con el User Pool
   SpectraUserPoolClient:
     Type: AWS::Cognito::UserPoolClient
     Properties:
-      ClientName: ${self:custom.service}-${self:provider.stage}-user-pool-client
-      UserPoolId: !Ref SpectraUserPool
+      ClientName: espectra-backend-dev-v4-r1-user-pool-client
+      UserPoolId:
+        Ref: SpectraUserPool
       ExplicitAuthFlows:
         - ALLOW_USER_PASSWORD_AUTH
         - ALLOW_REFRESH_TOKEN_AUTH
@@ -105,22 +110,23 @@ Resources:
         - email
         - name
         - phone_number
-        - custom:userType
-        - custom:language
+        #- custom:userType
+        #- custom:language
       WriteAttributes:
         - email
         - name
         - phone_number
-        - custom:userType
-        - custom:language
+        #- custom:userType
+        #- custom:language
 
-  # Resource Server for API Scopes
+  # Servidor de recursos para definir scopes de API
   SpectraUserPoolResourceServer:
     Type: AWS::Cognito::UserPoolResourceServer
     Properties:
       Identifier: espectra-api
       Name: Espectra API
-      UserPoolId: !Ref SpectraUserPool
+      UserPoolId:
+        Ref: SpectraUserPool
       Scopes:
         - ScopeName: read
           ScopeDescription: Read access to API
@@ -131,18 +137,19 @@ Resources:
         - ScopeName: concierge
           ScopeDescription: Access to concierge services
 
-  # Domain Configuration
+  # Dominio personalizado para el User Pool
   SpectraUserPoolDomain:
     Type: AWS::Cognito::UserPoolDomain
     Properties:
-      Domain: !Sub ${self:custom.service}-${self:provider.stage}-auth
-      UserPoolId: !Ref SpectraUserPool
+      Domain: espectra-backend-dev-v4-r1-auth
+      UserPoolId:
+        Ref: SpectraUserPool
 
-  # CloudWatch Alarms
+  # Alarma para monitorear errores de inicio de sesión
   CognitoSignInErrorsAlarm:
     Type: AWS::CloudWatch::Alarm
     Properties:
-      AlarmName: ${self:custom.service}-${self:provider.stage}-cognito-sign-in-errors
+      AlarmName: espectra-backend-dev-v4-r1-cognito-sign-in-errors
       AlarmDescription: Alert on high number of sign-in failures
       MetricName: SignInErrors
       Namespace: AWS/Cognito
@@ -153,19 +160,27 @@ Resources:
       ComparisonOperator: GreaterThanThreshold
       Dimensions:
         - Name: UserPool
-          Value: !Ref SpectraUserPool
-      AlarmActions:
-        - Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-high-priority-topic-arn
+          Value:
+            Ref: SpectraUserPool
+      # AlarmActions:
+      #   - Fn::ImportValue: ${self:custom.resourcePrefix}-kms-SystemKeyId
       Tags:
-        - Key: Service
-          Value: ${self:custom.service}
+        - Key: Project
+          Value: espectra-backend
         - Key: Environment
-          Value: ${self:provider.stage}
+          Value: dev
+        - Key: ManagedBy
+          Value: serverless
+        - Key: Company
+          Value: technoapes
+        - Key: Component
+          Value: Alarm
 
+  # Alarma para detectar credenciales comprometidas
   CognitoCompromisedCredentialsAlarm:
     Type: AWS::CloudWatch::Alarm
     Properties:
-      AlarmName: ${self:custom.service}-${self:provider.stage}-cognito-compromised-credentials
+      AlarmName: espectra-backend-dev-v4-r1-cognito-compromised-credentials
       AlarmDescription: Alert on compromised credentials detection
       MetricName: CompromisedCredentialsRisk
       Namespace: AWS/Cognito
@@ -176,19 +191,27 @@ Resources:
       ComparisonOperator: GreaterThanThreshold
       Dimensions:
         - Name: UserPool
-          Value: !Ref SpectraUserPool
-      AlarmActions:
-        - Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-high-priority-topic-arn
+          Value:
+            Ref: SpectraUserPool
+      # AlarmActions:
+      #   - Fn::ImportValue: ${self:custom.resourcePrefix}-kms-SystemKeyId
       Tags:
-        - Key: Service
-          Value: ${self:custom.service}
+        - Key: Project
+          Value: espectra-backend
         - Key: Environment
-          Value: ${self:provider.stage}
+          Value: dev
+        - Key: ManagedBy
+          Value: serverless
+        - Key: Company
+          Value: technoapes
+        - Key: Component
+          Value: Alarm
 
-  # Rol para envío de SMS
+  # Rol para permitir a Cognito enviar SMS
   CognitoSMSRole:
     Type: AWS::IAM::Role
     Properties:
+      RoleName: espectra-backend-dev-v4-r1-cognito-sms-role
       AssumeRolePolicyDocument:
         Version: '2012-10-17'
         Statement:
@@ -196,6 +219,10 @@ Resources:
             Principal:
               Service: cognito-idp.amazonaws.com
             Action: sts:AssumeRole
+            Condition:
+              StringEquals:
+                'aws:SourceAccount':
+                  Ref: AWS::AccountId
       Policies:
         - PolicyName: cognito-sms-policy
           PolicyDocument:
@@ -205,24 +232,39 @@ Resources:
                 Action:
                   - sns:Publish
                 Resource: '*'
+      Tags:
+        - Key: Project
+          Value: espectra-backend
+        - Key: Environment
+          Value: dev
+        - Key: ManagedBy
+          Value: serverless
+        - Key: Company
+          Value: technoapes
+        - Key: Component
+          Value: IAMRole
 
 Outputs:
   UserPoolId:
-    Value: !Ref SpectraUserPool
+    Value:
+      Ref: SpectraUserPool
     Export:
-      Name: ${self:custom.service}-${self:provider.stage}-user-pool-id
+      Name: ${self:custom.resourcePrefix}-cognito-UserPoolId
 
   UserPoolClientId:
-    Value: !Ref SpectraUserPoolClient
+    Value:
+      Ref: SpectraUserPoolClient
     Export:
-      Name: ${self:custom.service}-${self:provider.stage}-user-pool-client-id
+      Name: ${self:custom.resourcePrefix}-cognito-UserPoolClientId
 
   UserPoolArn:
-    Value: !GetAtt SpectraUserPool.Arn
+    Value:
+      Fn::GetAtt: [SpectraUserPool, Arn]
     Export:
-      Name: ${self:custom.service}-${self:provider.stage}-user-pool-arn
+      Name: ${self:custom.resourcePrefix}-cognito-UserPoolArn
 
-  # UserPoolDomain:
-  #   Value: !Sub ${self:custom.service}-${self:provider.stage}-auth.auth.${AWS::Region}.amazoncognito.com
-  #   Export:
-  #     Name: ${self:custom.service}-${self:provider.stage}-user-pool-domain
+  UserPoolDomain:
+    Value:
+      Fn::Sub: "${self:custom.resourcePrefix}-auth.auth.${AWS::Region}.amazoncognito.com"
+    Export:
+      Name: ${self:custom.resourcePrefix}-cognito-UserPoolDomain

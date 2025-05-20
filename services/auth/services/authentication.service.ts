@@ -139,7 +139,7 @@ export class AuthenticationService {
           try {
             const emailService = EmailService.getInstance();
             console.log('EmailService instance created', {
-              defaultSender: process.env.SES_FROM_EMAIL || 'anderson.montilva@technoapes.co',
+              defaultSender: process.env.SES_FROM_EMAIL || 'soporte@spectrumai.com.co',
               region: process.env.REGION || 'us-east-1'
             });
 
@@ -180,7 +180,7 @@ export class AuthenticationService {
           try {
             const emailService = EmailService.getInstance();
             console.log('EmailService instance created', {
-              defaultSender: process.env.SES_FROM_EMAIL || 'anderson.montilva@technoapes.co',
+              defaultSender: process.env.SES_FROM_EMAIL || 'soporte@spectrumai.com.co',
               region: process.env.REGION || 'us-east-1'
             });
 
@@ -467,7 +467,7 @@ export class AuthenticationService {
         try {
           const emailService = EmailService.getInstance();
           console.log('EmailService instance created', {
-            defaultSender: process.env.SES_FROM_EMAIL || 'anderson.montilva@technoapes.co',
+            defaultSender: process.env.SES_FROM_EMAIL || 'soporte@spectrumai.com.co',
             region: process.env.REGION || 'us-east-1'
           });
 
@@ -508,7 +508,7 @@ export class AuthenticationService {
         try {
           const emailService = EmailService.getInstance();
           console.log('EmailService instance created', {
-            defaultSender: process.env.SES_FROM_EMAIL || 'anderson.montilva@technoapes.co',
+            defaultSender: process.env.SES_FROM_EMAIL || 'soporte@spectrumai.com.co',
             region: process.env.REGION || 'us-east-1'
           });
 

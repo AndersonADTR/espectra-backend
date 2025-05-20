@@ -342,7 +342,7 @@ functions:
       COGNITO_CLIENT_ID:
         Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-user-pool-client-id
       COGNITO_CLIENT_SECRET: ${ssm:/espectra/${self:provider.stage}/cognito/client-secret}
-      SES_FROM_EMAIL: 'anderson.montilva@technoapes.co'
+      SES_FROM_EMAIL: 'soporte@spectrumai.com.co'
 
   resetPassword:
     handler: services/auth/handlers/reset-password.handler
@@ -414,7 +414,7 @@ functions:
           restApi:
             id: !Ref RestApiId
     environment:
-      SES_FROM_EMAIL: 'anderson.montilva@technoapes.co'
+      SES_FROM_EMAIL: 'soporte@spectrumai.com.co'
 
   # WebSocket Functions
   wsAuthorizer:

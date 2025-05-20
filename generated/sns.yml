@@ -1,0 +1,45 @@
+service: espectra-backend-sns-v4r1
+provider:
+  name: aws
+  runtime: nodejs20.x
+  stage: dev
+  region: us-east-1
+  tags:
+    Project: espectra-backend
+    Environment: dev
+    Component: Sns
+    ManagedBy: serverless
+    Company: technoapes
+custom:
+  projectName: espectra-backend
+  stage: dev
+  deploymentId: v4r1
+  resourcePrefix: espectra-backend-dev-v4r1
+  sns:
+    subscriptions:
+      highPriorityEmail: alerts@technoapes.co
+      mediumPriorityEmail: operations@technoapes.co
+      lowPriorityEmail: support@technoapes.co
+    alarms:
+      deliveryErrorThreshold: 1
+      throttlingThreshold: 1
+      evaluationPeriods: 1
+      period: 300
+resources:
+  - ${file(infrastructure/sns/sns.yml)}
+outputs:
+  HighPriorityTopicArn:
+    Value:
+      Ref: HighPriorityTopic
+    Export:
+      Name: ${self:custom.resourcePrefix}-sns.HighPriorityTopicArn
+  MediumPriorityTopicArn:
+    Value:
+      Ref: MediumPriorityTopic
+    Export:
+      Name: ${self:custom.resourcePrefix}-sns.MediumPriorityTopicArn
+  LowPriorityTopicArn:
+    Value:
+      Ref: LowPriorityTopic
+    Export:
+      Name: ${self:custom.resourcePrefix}-sns.LowPriorityTopicArn
