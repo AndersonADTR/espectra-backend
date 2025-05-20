@@ -3,8 +3,8 @@ Resources:
   RestApiId:
     Type: AWS::ApiGateway::RestApi
     Properties:
-      Name: ${self:custom.service}-${self:provider.stage}-api
-      Description: Main REST API for ${self:custom.service} Platform
+      Name: espectra-backend-dev-v4-r1-api
+      Description: Main REST API for espectra-backend Platform
       EndpointConfiguration:
         Types:
           - REGIONAL
@@ -16,18 +16,22 @@ Resources:
         Version: '2012-10-17'
         Statement:
           - Effect: Allow
-            Principal: "*"
+            Principal: '*'
             Action: execute-api:Invoke
-            Resource: "*"
+            Resource: '*'
       ApiKeySourceType: HEADER
       DisableExecuteApiEndpoint: false
       Tags:
         - Key: Service
-          Value: ${self:custom.service}
+          Value: espectra-backend
         - Key: Environment
-          Value: ${self:provider.stage}
+          Value: dev
         - Key: ManagedBy
           Value: CloudFormation
+        - Key: Project
+          Value: espectra-backend
+        - Key: Company
+          Value: technoapes
 
   # REST API Authorizer
   RestApiAuthorizer:
@@ -35,23 +39,25 @@ Resources:
     DependsOn:
       - RestApiId
     Properties:
-      Name: ${self:custom.service}-${self:provider.stage}-rest-authorizer
+      Name: espectra-backend-dev-v4-r1-rest-authorizer
       Type: COGNITO_USER_POOLS
       IdentitySource: method.request.header.Authorization
       AuthorizerResultTtlInSeconds: 300
       AuthorizerUri:
         Fn::Sub:
           - arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${FunctionArn}/invocations
-          - FunctionArn: !GetAtt RestAuthorizerLambdaFunction.Arn
+          - FunctionArn:
+              Fn::GetAtt: [RestAuthorizerLambdaFunction, Arn]
       ProviderARNs:
-        - Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-user-pool-arn
-      RestApiId: !Ref RestApiId
+        - Fn::ImportValue: ${self:custom.resourcePrefix}-cognito-UserPoolArn
+      RestApiId:
+        Ref: RestApiId
 
   # CloudWatch Role para API Gateway
   ApiGatewayCloudWatchRole:
     Type: AWS::IAM::Role
     Properties:
-      RoleName: ${self:custom.service}-${self:provider.stage}-apigw-cloudwatch-role
+      RoleName: ${self:custom.resourcePrefix}-apigw-cloudwatch-role
       AssumeRolePolicyDocument:
         Version: '2012-10-17'
         Statement:
@@ -73,23 +79,23 @@ Resources:
                   - logs:PutLogEvents
                   - logs:GetLogEvents
                   - logs:FilterLogEvents
-                Resource: 
-                  - !Sub arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/apigateway/${self:custom.service}-${self:provider.stage}*
+                Resource:
+                  - !Sub arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/apigateway/${self:custom.resourcePrefix}*
               - Effect: Allow
                 Action:
                   - kms:Decrypt
                   - kms:GenerateDataKey
                 Resource:
-                  - Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-system-kms-key-arn
+                  - Fn::ImportValue: ${self:custom.resourcePrefix}-kms-SystemKeyArn
 
   # Log Group para Access Logs
   ApiGatewayAccessLogs:
     Type: AWS::Logs::LogGroup
     Properties:
-      LogGroupName: /aws/apigateway/${self:custom.service}-${self:provider.stage}-access-logs
+      LogGroupName: /aws/apigateway/${self:custom.resourcePrefix}-access-logs
       RetentionInDays: ${self:custom.logRetentionInDays}
       KmsKeyId:
-        Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-system-kms-key-arn
+        Fn::ImportValue: ${self:custom.resourcePrefix}-kms-SystemKeyArn
       Tags:
         - Key: Service
           Value: ${self:custom.service}
@@ -101,7 +107,7 @@ Resources:
     Type: AWS::ApiGateway::Deployment
     DependsOn:
       - CreateSessionMethod
-      - SendMessageMethod 
+      - SendMessageMethod
       - RestApiId
     Properties:
       RestApiId: !Ref RestApiId
@@ -117,19 +123,20 @@ Resources:
       DeploymentId: !Ref ApiDeployment
       StageName: api-${self:provider.stage}
       Description: ${self:provider.stage} stage for ${self:custom.service}
-      TracingEnabled: true
+      TracingEnabled: false
       CacheClusterEnabled: true
       CacheClusterSize: '0.5'
       ClientCertificateId: !Ref ApiClientCertificate
-      AccessLogSetting:
-        DestinationArn: !GetAtt ApiGatewayAccessLogs.Arn
-        Format: '{"requestId":"$context.requestId","ip":"$context.identity.sourceIp","caller":"$context.identity.caller","user":"$context.identity.user","requestTime":"$context.requestTime","httpMethod":"$context.httpMethod","resourcePath":"$context.resourcePath","status":"$context.status","protocol":"$context.protocol","responseLength":"$context.responseLength","integrationError":"$context.integrationErrorMessage","xrayTraceId":"$context.xrayTraceId","integrationLatency":"$context.integration.latency","functionError":"$context.integration.error","authorizer":{"principalId":"$context.authorizer.principalId","claims":"$context.authorizer.claims"}}'
+      # Disabled AccessLogSetting to avoid CloudWatch Logs role requirement
+      #      AccessLogSetting:
+      #        DestinationArn: !GetAtt ApiGatewayAccessLogs.Arn
+      #        Format: '{"requestId":"$context.requestId","ip":"$context.identity.sourceIp","caller":"$context.identity.caller","user":"$context.identity.user","requestTime":"$context.requestTime","httpMethod":"$context.httpMethod","resourcePath":"$context.resourcePath","status":"$context.status","protocol":"$context.protocol","responseLength":"$context.responseLength","integrationError":"$context.integrationErrorMessage","xrayTraceId":"$context.xrayTraceId","integrationLatency":"$context.integration.latency","functionError":"$context.integration.error","authorizer":{"principalId":"$context.authorizer.principalId","claims":"$context.authorizer.claims"}}'
       MethodSettings:
-        - ResourcePath: "/*"
-          HttpMethod: "*"
+        - ResourcePath: '/*'
+          HttpMethod: '*'
           MetricsEnabled: true
-          DataTraceEnabled: true
-          LoggingLevel: INFO
+          DataTraceEnabled: false
+          LoggingLevel: OFF
           CachingEnabled: true
           CacheTtlInSeconds: 300
           # RequireAuthorizationForCacheControl: true
@@ -138,8 +145,8 @@ Resources:
           ThrottlingRateLimit: 10000
       Variables:
         stage: ${self:provider.stage}
-        kmsKeyId: 
-          Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-system-kms-key-arn
+        kmsKeyId:
+          Fn::ImportValue: ${self:custom.resourcePrefix}-kms-SystemKeyArn
       Tags:
         - Key: Service
           Value: ${self:custom.service}
@@ -150,7 +157,7 @@ Resources:
   ApiClientCertificate:
     Type: AWS::ApiGateway::ClientCertificate
     Properties:
-      Description: Client certificate for ${self:custom.service}-${self:provider.stage} API
+      Description: Client certificate for ${self:custom.resourcePrefix} API
       Tags:
         - Key: Service
           Value: ${self:custom.service}
@@ -163,7 +170,7 @@ Resources:
     DependsOn:
       - RestApiId
     Properties:
-      UsagePlanName: ${self:custom.service}-${self:provider.stage}-usage-plan
+      UsagePlanName: ${self:custom.resourcePrefix}-usage-plan
       Description: Usage plan for ${self:custom.service} API
       # ApiStages:
       #   - ApiId: !Ref RestApi
@@ -197,7 +204,7 @@ Resources:
   Api5xxErrorAlarm:
     Type: AWS::CloudWatch::Alarm
     Properties:
-      AlarmName: ${self:custom.service}-${self:provider.stage}-api-5xx-errors
+      AlarmName: ${self:custom.resourcePrefix}-api-5xx-errors
       AlarmDescription: API Gateway 5XX errors exceed threshold
       MetricName: 5XXError
       Namespace: AWS/ApiGateway
@@ -213,12 +220,12 @@ Resources:
         - Name: Stage
           Value: ${self:provider.stage}
       AlarmActions:
-        - Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-high-priority-topic-arn
+        - Fn::ImportValue: ${self:custom.resourcePrefix}-sns-HighPriorityTopicArn
 
   Api4xxErrorAlarm:
     Type: AWS::CloudWatch::Alarm
     Properties:
-      AlarmName: ${self:custom.service}-${self:provider.stage}-api-4xx-errors
+      AlarmName: ${self:custom.resourcePrefix}-api-4xx-errors
       AlarmDescription: API Gateway 4XX errors exceed threshold
       MetricName: 4XXError
       Namespace: AWS/ApiGateway
@@ -234,12 +241,12 @@ Resources:
         - Name: Stage
           Value: ${self:provider.stage}
       AlarmActions:
-        - Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-medium-priority-topic-arn
+        - Fn::ImportValue: ${self:custom.resourcePrefix}-sns-MediumPriorityTopicArn
 
   ApiLatencyAlarm:
     Type: AWS::CloudWatch::Alarm
     Properties:
-      AlarmName: ${self:custom.service}-${self:provider.stage}-api-latency
+      AlarmName: ${self:custom.resourcePrefix}-api-latency
       AlarmDescription: API Gateway latency exceeds threshold
       MetricName: Latency
       Namespace: AWS/ApiGateway
@@ -255,29 +262,33 @@ Resources:
         - Name: Stage
           Value: ${self:provider.stage}
       AlarmActions:
-        - Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-medium-priority-topic-arn
+        - Fn::ImportValue: ${self:custom.resourcePrefix}-sns-MediumPriorityTopicArn
 
 Outputs:
   ApiId:
     Description: REST API Id
-    Value: !Ref RestApiId
+    Value:
+      Ref: RestApiId
     Export:
-      Name: ${self:custom.service}-${self:provider.stage}-rest-api-id
+      Name: espectra-backend-dev-v4-r1-rest-api-id
 
   RestApiRootResourceId:
     Description: REST API Root Resource Id
-    Value: !GetAtt RestApiId.RootResourceId
+    Value:
+      Fn::GetAtt: [RestApiId, RootResourceId]
     Export:
-      Name: ${self:custom.service}-${self:provider.stage}-rest-api-root-resource-id
+      Name: espectra-backend-dev-v4-r1-rest-api-root-resource-id
 
   ApiEndpoint:
     Description: API Gateway endpoint URL
-    Value: !Sub https://${RestApiId}.execute-api.${AWS::Region}.amazonaws.com/${self:provider.stage}
+    Value:
+      Fn::Sub: 'https://${RestApiId}.execute-api.${AWS::Region}.amazonaws.com/dev'
     Export:
-      Name: ${self:custom.service}-${self:provider.stage}-api-endpoint
+      Name: espectra-backend-dev-v4-r1-api-endpoint
 
   RestApiAuthorizerId:
     Description: REST API Authorizer ID
-    Value: !Ref RestApiAuthorizer
+    Value:
+      Ref: RestApiAuthorizer
     Export:
-      Name: ${self:custom.service}-${self:provider.stage}-rest-authorizer-id
+      Name: espectra-backend-dev-v4-r1-rest-authorizer-id

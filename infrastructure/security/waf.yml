@@ -2,7 +2,7 @@ Resources:
   SpectraWebACL:
     Type: AWS::WAFv2::WebACL
     Properties:
-      Name: ${self:custom.service}-${self:provider.stage}-waf
+      Name: ${self:custom.resourcePrefix}-waf
       Description: WAF Web ACL for Spectra APIs with enhanced security rules
       Scope: REGIONAL
       DefaultAction:
@@ -10,7 +10,7 @@ Resources:
       VisibilityConfig:
         SampledRequestsEnabled: true
         CloudWatchMetricsEnabled: true
-        MetricName: ${self:custom.service}-${self:provider.stage}-waf-metrics
+        MetricName: ${self:custom.resourcePrefix}-waf-metrics
       Rules:
         # Common Rule Set
         - Name: AWSCommonRules
@@ -66,7 +66,7 @@ Resources:
           Statement:
             SizeConstraintStatement:
               ComparisonOperator: GT
-              Size: 5242880  # 5MB
+              Size: 5242880 # 5MB
               FieldToMatch:
                 Body: {}
               TextTransformations:
@@ -81,7 +81,7 @@ Resources:
   IPSet:
     Type: AWS::WAFv2::IPSet
     Properties:
-      Name: ${self:custom.service}-${self:provider.stage}-ipset
+      Name: ${self:custom.resourcePrefix}-ipset
       Description: IP set for dynamic blocking
       Scope: REGIONAL
       IPAddressVersion: IPV4
@@ -96,10 +96,10 @@ Resources:
   WafLogGroup:
     Type: AWS::Logs::LogGroup
     Properties:
-      LogGroupName: /aws/waf/${self:custom.service}-${self:provider.stage}-logs
+      LogGroupName: /aws/waf/${self:custom.resourcePrefix}-logs
       RetentionInDays: ${self:custom.logRetentionInDays}
       KmsKeyId:
-        Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-system-kms-key-arn
+        Fn::ImportValue: ${self:custom.resourcePrefix}-kms-SystemKeyArn
       Tags:
         - Key: Service
           Value: ${self:custom.service}
@@ -146,7 +146,7 @@ Resources:
   WafBlockedRequestsAlarm:
     Type: AWS::CloudWatch::Alarm
     Properties:
-      AlarmName: ${self:custom.service}-${self:provider.stage}-waf-blocked-requests
+      AlarmName: ${self:custom.resourcePrefix}-waf-blocked-requests
       AlarmDescription: WAF blocked request rate is significantly high
       MetricName: BlockedRequests
       Namespace: AWS/WAFV2
@@ -157,16 +157,16 @@ Resources:
       ComparisonOperator: GreaterThanThreshold
       Dimensions:
         - Name: WebACL
-          Value: ${self:custom.service}-${self:provider.stage}-waf
+          Value: ${self:custom.resourcePrefix}-waf
         - Name: Region
           Value: ${self:provider.region}
       AlarmActions:
-        - Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-high-priority-topic-arn
+        - Fn::ImportValue: ${self:custom.resourcePrefix}-sns-HighPriorityTopicArn
 
   WafRuleGroupMatchesAlarm:
     Type: AWS::CloudWatch::Alarm
     Properties:
-      AlarmName: ${self:custom.service}-${self:provider.stage}-waf-rule-matches
+      AlarmName: ${self:custom.resourcePrefix}-waf-rule-matches
       AlarmDescription: High number of WAF rule matches detected
       MetricName: RuleGroupMatch
       Namespace: AWS/WAFV2
@@ -177,11 +177,11 @@ Resources:
       ComparisonOperator: GreaterThanThreshold
       Dimensions:
         - Name: WebACL
-          Value: ${self:custom.service}-${self:provider.stage}-waf
+          Value: ${self:custom.resourcePrefix}-waf
         - Name: Region
           Value: ${self:provider.region}
       AlarmActions:
-        - Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-medium-priority-topic-arn
+        - Fn::ImportValue: ${self:custom.resourcePrefix}-sns-MediumPriorityTopicArn
 
   # WafFailoverConfig:
   #   Type: AWS::WAFv2::WebACLAssociation
@@ -194,24 +194,28 @@ Resources:
 Outputs:
   WebACLId:
     Description: ID of the Web ACL
-    Value: !GetAtt SpectraWebACL.Id
+    Value:
+      Fn::GetAtt: [SpectraWebACL, Id]
     Export:
-      Name: ${self:custom.service}-${self:provider.stage}-waf-id
+      Name: espectra-backend-dev-v4-r1-waf-id
 
   WebACLArn:
     Description: ARN of the Web ACL
-    Value: !GetAtt SpectraWebACL.Arn
+    Value:
+      Fn::GetAtt: [SpectraWebACL, Arn]
     Export:
-      Name: ${self:custom.service}-${self:provider.stage}-waf-arn
+      Name: espectra-backend-dev-v4-r1-waf-arn
 
   IPSetId:
     Description: ID of the IP Set
-    Value: !Ref IPSet
+    Value:
+      Ref: IPSet
     Export:
-      Name: ${self:custom.service}-${self:provider.stage}-ipset-id
+      Name: espectra-backend-dev-v4-r1-ipset-id
 
   WafLogGroupName:
     Description: Name of the WAF Log Group
-    Value: !Ref WafLogGroup
+    Value:
+      Ref: WafLogGroup
     Export:
-      Name: ${self:custom.service}-${self:provider.stage}-waf-log-group
+      Name: espectra-backend-dev-v4-r1-waf-log-group

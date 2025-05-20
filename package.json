@@ -22,7 +22,7 @@
     "format": "prettier --write '**/*.{ts,js,json,md}'",
     "type-check": "tsc --noEmit",
     "clean": "rimraf node_modules package-lock.json .build .serverless",
-    "prepare": "husky install",
+    "prepare": "exit 0",
     "test": "jest",
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage"
@@ -54,6 +54,7 @@
     "@aws-sdk/client-ssm": "^3.465.0",
     "@aws-sdk/client-wafv2": "^3.465.0",
     "@aws-sdk/lib-dynamodb": "^3.465.0",
+    "@aws-sdk/node-http-handler": "^3.370.0",
     "@aws-sdk/util-dynamodb": "^3.465.0",
     "@botpress/sdk": "^1.6.2",
     "@middy/core": "^4.6.5",

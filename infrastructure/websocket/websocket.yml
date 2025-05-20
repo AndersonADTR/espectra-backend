@@ -5,26 +5,31 @@ Resources:
     DependsOn:
       - WsAuthorizerLambdaFunction
     Properties:
-      Name: ${self:custom.service}-${self:provider.stage}-websocket
+      Name: espectra-backend-dev-v4-r1-websocket
       ProtocolType: WEBSOCKET
       RouteSelectionExpression: $request.body.action
-      Description: WebSocket API for real-time communications in ${self:custom.service}
+      Description: WebSocket API for real-time communications in espectra-backend
       DisableExecuteApiEndpoint: false
       ApiKeySelectionExpression: $request.header.x-api-key
       Tags:
-        Service: ${self:custom.service}
-        Environment: ${self:provider.stage}
+        Service: espectra-backend
+        Environment: dev
         ManagedBy: CloudFormation
+        Project: espectra-backend
+        Company: technoapes
 
   WebSocketAuthorizerPermission:
     Type: AWS::Lambda::Permission
     Properties:
-      FunctionName: !GetAtt WsAuthorizerLambdaFunction.Arn
+      FunctionName:
+        Fn::GetAtt: [WsAuthorizerLambdaFunction, Arn]
       Action: lambda:InvokeFunction
       Principal: apigateway.amazonaws.com
-      SourceArn: !Sub 
-        - arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${WebSocketApi}/*
-        - WebSocketApi: !Ref WebSocketApi
+      SourceArn:
+        Fn::Sub:
+          - arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${WebSocketApi}/*
+          - WebSocketApi:
+              Ref: WebSocketApi
 
   # Deployment y Stage
   WebSocketStage:
@@ -40,10 +45,11 @@ Resources:
         DetailedMetricsEnabled: true
         ThrottlingBurstLimit: 5000
         ThrottlingRateLimit: 10000
-        DataTraceEnabled: true
-      AccessLogSettings:
-        DestinationArn: !GetAtt WebSocketLogs.Arn
-        Format: '{"requestId": "$context.requestId","ip": "$context.identity.sourceIp","requestTime": "$context.requestTime","routeKey": "$context.routeKey","status": "$context.status","connectionId": "$context.connectionId","error": "$context.error.message","integrationError": "$context.integrationErrorMessage","authorizer": {"principalId": "$context.authorizer.principalId","claims": "$context.authorizer.claims"},"responseLatency": $context.responseLatency,"xrayTraceId": "$context.xrayTraceId"}'
+        DataTraceEnabled: false
+  # Disabled AccessLogSettings to avoid CloudWatch Logs role requirement
+  #      AccessLogSettings:
+  #        DestinationArn: !GetAtt WebSocketLogs.Arn
+  #        Format: '{"requestId": "$context.requestId","ip": "$context.identity.sourceIp","requestTime": "$context.requestTime","routeKey": "$context.routeKey","status": "$context.status","connectionId": "$context.connectionId","error": "$context.error.message","integrationError": "$context.integrationErrorMessage","authorizer": {"principalId": "$context.authorizer.principalId","claims": "$context.authorizer.claims"},"responseLatency": $context.responseLatency,"xrayTraceId": "$context.xrayTraceId"}'
 
   WebSocketDeployment:
     Type: AWS::ApiGatewayV2::Deployment
@@ -55,7 +61,7 @@ Resources:
     Properties:
       ApiId: !Ref WebSocketApi
       Description: WebSocket deployment for ${self:provider.stage}
-      
+
   # Log Group
   WebSocketLogs:
     Type: AWS::Logs::LogGroup
@@ -126,7 +132,7 @@ Resources:
       ApiId: !Ref WebSocketApi
       Description: Connect Integration
       IntegrationType: AWS_PROXY
-      IntegrationUri: !Sub 
+      IntegrationUri: !Sub
         - arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${FunctionArn}/invocations
         - FunctionArn: !GetAtt WebSocketConnectLambdaFunction.Arn
       IntegrationMethod: POST
@@ -141,7 +147,7 @@ Resources:
       ApiId: !Ref WebSocketApi
       Description: Disconnect Integration
       IntegrationType: AWS_PROXY
-      IntegrationUri: !Sub 
+      IntegrationUri: !Sub
         - arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${FunctionArn}/invocations
         - FunctionArn: !GetAtt WebSocketDisconnectLambdaFunction.Arn
       IntegrationMethod: POST
@@ -156,7 +162,7 @@ Resources:
       ApiId: !Ref WebSocketApi
       Description: Default Message Integration
       IntegrationType: AWS_PROXY
-      IntegrationUri: !Sub 
+      IntegrationUri: !Sub
         - arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${FunctionArn}/invocations
         - FunctionArn: !GetAtt WebSocketMessageLambdaFunction.Arn
       IntegrationMethod: POST
@@ -173,7 +179,7 @@ Resources:
   #     ContentType: application/json
   #     Name: ConnectionRequest
   #     Description: 'Modelo de validación para conexiones WebSocket'
-  #     Schema: 
+  #     Schema:
   #       $schema: 'http://json-schema.org/draft-07/schema#'
   #       type: object
   #       properties:
@@ -226,9 +232,9 @@ Resources:
                 Action:
                   - kms:Decrypt
                   - kms:GenerateDataKey
-                Resource: 
+                Resource:
                   #- arn:aws:kms:us-east-1:345594559631:key/2e94db41-6c26-4ea0-9eec-831b14632bac
-                  - Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-websocket-kms-key-arn
+                  - Fn::ImportValue: ${self:custom.resourcePrefix}-kms-WebsocketKeyArn
 
   # CloudWatch Alarms
   WebSocketConnectionsAlarm:
@@ -248,7 +254,7 @@ Resources:
         - Name: ApiId
           Value: !Ref WebSocketApi
       AlarmActions:
-        - Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-high-priority-topic-arn
+        - Fn::ImportValue: ${self:custom.resourcePrefix}-sns-MediumPriorityTopicArn
 
   WebSocketLatencyAlarm:
     Type: AWS::CloudWatch::Alarm
@@ -267,7 +273,7 @@ Resources:
         - Name: ApiId
           Value: !Ref WebSocketApi
       AlarmActions:
-        - Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-medium-priority-topic-arn
+        - Fn::ImportValue: ${self:custom.resourcePrefix}-sns-MediumPriorityTopicArn
 
   ReconnectionConfig:
     Type: AWS::ApiGatewayV2::RouteResponse
@@ -279,18 +285,21 @@ Resources:
 Outputs:
   WebSocketApiId:
     Description: WebSocket API ID
-    Value: !Ref WebSocketApi
+    Value:
+      Ref: WebSocketApi
     Export:
-      Name: ${self:custom.service}-${self:provider.stage}-websocket-api-id
+      Name: espectra-backend-dev-v4-r1-websocket-api-id
 
   WebSocketApiEndpoint:
     Description: WebSocket API Endpoint
-    Value: !Sub https://${WebSocketApi}.execute-api.${AWS::Region}.amazonaws.com/${self:provider.stage}
+    Value:
+      Fn::Sub: 'https://${WebSocketApi}.execute-api.${AWS::Region}.amazonaws.com/dev'
     Export:
-      Name: ${self:custom.service}-${self:provider.stage}-websocket-endpoint
+      Name: espectra-backend-dev-v4-r1-websocket-endpoint
 
   WebSocketStageArn:
     Description: WebSocket Stage ARN
-    Value: !Sub arn:aws:apigateway:${AWS::Region}::/apis/${WebSocketApi}/stages/${self:provider.stage}
+    Value:
+      Fn::Sub: 'arn:aws:apigateway:${AWS::Region}::/apis/${WebSocketApi}/stages/dev'
     Export:
-      Name: ${self:custom.service}-${self:provider.stage}-websocket-stage-arn
+      Name: espectra-backend-dev-v4-r1-websocket-stage-arn

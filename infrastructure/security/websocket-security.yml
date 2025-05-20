@@ -1,5 +1,4 @@
 Resources:
-  
   # WebSocket Lambda Authorizer
   WebSocketLambdaAuthorizer:
     Type: AWS::ApiGatewayV2::Authorizer
@@ -12,8 +11,8 @@ Resources:
       AuthorizerUri: !Sub arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${WsAuthorizerLambdaFunction.Arn}/invocations
       IdentitySource:
         - route.request.querystring.Auth
-      AuthorizerCredentialsArn: 
-        Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-websocket-authorizer-role-arn
+      AuthorizerCredentialsArn:
+        Fn::ImportValue: ${self:custom.resourcePrefix}-websocket-authorizer-role-arn
 
   # WebSocket WAF Rules
   # WebSocketWAFRules:
@@ -78,7 +77,12 @@ Resources:
       LogGroupName: /aws/waf/websocket/${self:custom.service}-${self:provider.stage}-logs
       RetentionInDays: ${self:custom.logRetentionInDays}
       KmsKeyId:
-        Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-system-kms-key-arn
+        Fn::ImportValue: ${self:custom.resourcePrefix}-kms-SystemKeyArn
+      Tags:
+        - Key: Service
+          Value: ${self:custom.service}
+        - Key: Environment
+          Value: ${self:provider.stage}
 
   # WAF Association
   # WebSocketWAFAssociation:
@@ -134,7 +138,7 @@ Resources:
         - Name: FunctionName
           Value: !Ref WsAuthorizerLambdaFunction
       AlarmActions:
-        - Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-high-priority-topic-arn
+        - Fn::ImportValue: ${self:custom.resourcePrefix}-sns-HighPriorityTopicArn
 
   WebSocketWAFBlocksAlarm:
     Type: AWS::CloudWatch::Alarm
@@ -154,7 +158,7 @@ Resources:
         - Name: Region
           Value: ${self:provider.region}
       AlarmActions:
-        - Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-medium-priority-topic-arn
+        - Fn::ImportValue: ${self:custom.resourcePrefix}-sns-MediumPriorityTopicArn
 
   #  AuthorizerRateLimit:
   #   Type: AWS::WAFv2::RateBasedStatement
@@ -163,7 +167,6 @@ Resources:
   #     AggregateKeyType: IP
 
 Outputs:
-
   # WebSocketWAFArn:
   #   Description: WebSocket WAF ARN
   #   Value: !GetAtt WebSocketWAFRules.Arn
@@ -172,6 +175,7 @@ Outputs:
 
   WebSocketIPSetId:
     Description: WebSocket IP Set ID
-    Value: !Ref WebSocketIPSet
+    Value:
+      Ref: WebSocketIPSet
     Export:
-      Name: ${self:custom.service}-${self:provider.stage}-websocket-ipset-id
+      Name: espectra-backend-dev-v4-r1-websocket-ipset-id

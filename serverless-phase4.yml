@@ -1,86 +1,101 @@
-service: espectra-backend-phase4
+service: espectra-backend-phase4-v4r1
 
 provider:
   name: aws
   runtime: nodejs20.x
-  stage: ${opt:stage, 'dev'}
-  region: ${opt:region, 'us-east-1'}
+  stage: dev
+  region: us-east-1
   memorySize: 1024
   timeout: 29
   logRetentionInDays: 14
 
-  websocket:
-    apiId: !Ref WebSocketApi
-    stage: ${self:provider.stage}
+  # Removed websocket configuration as it's not supported in Serverless v4
 
   httpApi:
-    cors: true
-  apiGateway:
-    restApiId: !Ref RestApiId
-    restApiRootResourceId: !GetAtt RestApiId.RootResourceId
-    binaryMediaTypes:
-      - '*/*'
+    cors:
+      allowedOrigins:
+        - '*'
+      allowedHeaders:
+        - Content-Type
+        - Authorization
+      allowedMethods:
+        - GET
+        - POST
+        - PUT
+        - DELETE
+        - OPTIONS
+    authorizers:
+      restAuthorizer:
+        type: request
+        functionName: restAuthorizer
+        identitySource:
+          - $request.header.Authorization
 
   tracing:
-    lambda: true
+    lambda: false
 
   vpc:
     securityGroupIds:
-      - Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-lambda-sg-id
+      - Fn::ImportValue: espectra-backend-dev-v4-r1-phase1-LambdaSecurityGroupId
     subnetIds:
-      - Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-private-subnet-1-id
-      - Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-private-subnet-2-id
+      - Fn::ImportValue: espectra-backend-dev-v4-r1-phase1-PrivateSubnet1Id
+      - Fn::ImportValue: espectra-backend-dev-v4-r1-phase1-PrivateSubnet2Id
 
   environment:
     # System Variables
-    STAGE: ${self:provider.stage}
-    REGION: ${self:provider.region}
-    SERVICE_NAME: ${self:custom.service}
-    NODE_ENV: ${self:provider.stage}
-    LOG_LEVEL: ${self:custom.logLevel.${self:provider.stage}}
-    API_VERSION: "v1"
+    STAGE: dev
+    REGION: us-east-1
+    SERVICE_NAME: espectra-backend
+    NODE_ENV: dev
+    LOG_LEVEL: DEBUG
+    API_VERSION: 'v1'
 
     # Cognito Variables
     COGNITO_USER_POOL_ID:
-      Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-user-pool-id
+      Fn::ImportValue: ${self:custom.resourcePrefix}-cognito-UserPoolId
     COGNITO_CLIENT_ID:
-      Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-user-pool-client-id
+      Fn::ImportValue: ${self:custom.resourcePrefix}-cognito-UserPoolClientId
 
     # Message Queue URLs
     MESSAGE_QUEUE_URL:
-      Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-message-queue-url
+      Fn::ImportValue: ${self:custom.resourcePrefix}-message-queue-url
     MESSAGE_DLQ_URL:
-      Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-message-dlq-url
+      Fn::ImportValue: ${self:custom.resourcePrefix}-message-dlq-url
     HANDOFF_QUEUE_URL:
-      Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-handoff-queue-url
+      Fn::ImportValue: ${self:custom.resourcePrefix}-handoff-queue-url
 
     # DynamoDB Tables
-    CONNECTION_TABLE: ${cf:${self:custom.service_fase3}-${sls:stage}.ConnectionsTableName}
+    CONNECTION_TABLE:
+      Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-connections-table-name
     CHAT_HISTORY_TABLE:
       Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-chat-history-table-name
-    CONTEXT_TABLE: ${cf:${self:custom.service_fase2}-${sls:stage}.ConversationContextTableName}
-    TOKEN_TABLE: ${cf:${self:custom.service_fase2}-${sls:stage}.TokenUsageTableName}
+    CONTEXT_TABLE:
+      Fn::ImportValue: ${self:custom.resourcePrefix}-context-table-name
+    TOKEN_TABLE:
+      Fn::ImportValue: ${self:custom.resourcePrefix}-tokens-table-name
     REGISTRATION_REQUESTS_TABLE:
       Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-registration-requests-table-name
     # HANDOFF_TABLE:
-    #   Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-handoff-table-name
+    #   Fn::ImportValue: espectra-backend-dev-v4-r1-handoff-table-name
 
     # Botpress Configuration
-    BOTPRESS_API_URL: ${ssm:/espectra/${self:provider.stage}/botpress-api-url}
-    BOTPRESS_BOT_ID: ${ssm:/espectra/${self:provider.stage}/botpress-bot-id}
-    BOTPRESS_API_KEY: ${ssm:/espectra/${self:provider.stage}/botpress-api-key}
-    BOTPRESS_WORKSPACE_ID: ${ssm:/espectra/${self:provider.stage}/botpress-workspace-id}
+    BOTPRESS_API_URL: ${ssm:/espectra/dev/botpress-api-url, 'https://api.botpress.cloud/v1'}
+    BOTPRESS_BOT_ID: ${ssm:/espectra/dev/botpress-bot-id, 'your-bot-id'}
+    BOTPRESS_API_KEY: ${ssm:/espectra/dev/botpress-api-key, 'your-api-key'}
+    BOTPRESS_WORKSPACE_ID: ${ssm:/espectra/dev/botpress-workspace-id, 'your-workspace-id'}
     BOTPRESS_EVENT_BUS:
-      Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-eventbus-name
+      Fn::ImportValue: espectra-backend-dev-v4-r1-eventbus-name
 
     # WebSocket
-    WEBSOCKET_API_ENDPOINT: ${cf:${self:service}-${sls:stage}.WebSocketApiEndpoint}
+    WEBSOCKET_API_ENDPOINT:
+      'your-websocket-endpoint'
+      # Fn::ImportValue: espectra-backend-dev-v4-r1-websocket-endpoint
 
     # Redis Configuration
     REDIS_HOST:
-      Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-redis-endpoint
+      Fn::ImportValue: espectra-backend-dev-v4-r1-redis-endpoint
     REDIS_PORT:
-      Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-redis-port
+      Fn::ImportValue: espectra-backend-dev-v4-r1-redis-port
 
     SESSION_TTL: ${self:custom.session.ttl}
     SESSION_EXTEND_DURATION: ${self:custom.session.extendDuration}
@@ -88,12 +103,17 @@ provider:
     SESSION_ALERT_THRESHOLD: ${self:custom.monitoring.sessionAlertThreshold}
     RATE_LIMIT_SESSION_CREATION: ${self:custom.rateLimit.sessionCreation}
 
-    COGNITO_CLIENT_SECRET: ${ssm:/espectra/${self:provider.stage}/cognito/client-secret}
+    COGNITO_CLIENT_SECRET: ${ssm:/espectra/dev/cognito/client-secret, 'your-client-secret'}
 
 custom:
+  projectName: espectra-backend
+  stage: dev
+  deploymentId: v4-r1
+  resourcePrefix: espectra-backend-dev-v4-r1
   service: espectra-backend
-  service_fase2: espectra-backend-phase2
-  service_fase3: espectra-backend-phase3
+  company: technoapes
+  service_fase2: espectra-backend-phase2-v4r1
+  service_fase3: espectra-backend-phase3-v4r1
 
   logRetentionInDays: 14
 
@@ -104,37 +124,37 @@ custom:
 
   # Configuración de Table Names
   tableNames:
-    connections: ${self:custom.service}-${self:provider.stage}-connection-table
-    context: ${self:custom.service}-${self:provider.stage}-conversation-context-table
-    tokens: ${self:custom.service}-${self:provider.stage}-token-usage-table
-    handoff: ${self:custom.service}-${self:provider.stage}-handoff-table
-    metrics: ${self:custom.service}-${self:provider.stage}-botpress-metrics-table
-    requestRegistration: ${self:custom.service}-${self:provider.stage}-registration-requests-table-name
+    connections: espectra-backend-dev-v4-r1-connection-table
+    context: espectra-backend-dev-v4-r1-conversation-context-table
+    tokens: espectra-backend-dev-v4-r1-token-usage-table
+    handoff: espectra-backend-dev-v4-r1-handoff-table
+    metrics: espectra-backend-dev-v4-r1-botpress-metrics-table
+    requestRegistration: espectra-backend-dev-v4-r1-registration-requests-table-name
 
   session:
-    ttl: ${ssm:/espectra/${self:provider.stage}/session/ttl}
-    extendDuration: ${ssm:/espectra/${self:provider.stage}/session/extend-duration}
+    ttl: ${ssm:/espectra/dev/session/ttl, '3600'}
+    extendDuration: ${ssm:/espectra/dev/session/extend-duration, '1800'}
 
   monitoring:
-    metricsRetention: ${ssm:/espectra/${self:provider.stage}/monitoring/metrics-retention}
-    sessionAlertThreshold: ${ssm:/espectra/${self:provider.stage}/monitoring/session-alert-threshold}
+    metricsRetention: ${ssm:/espectra/dev/monitoring/metrics-retention, '30'}
+    sessionAlertThreshold: ${ssm:/espectra/dev/monitoring/session-alert-threshold, '100'}
 
   rateLimit:
-    sessionCreation: ${ssm:/espectra/${self:provider.stage}/rate-limit/session-creation}
+    sessionCreation: ${ssm:/espectra/dev/rate-limit/session-creation, '10'}
 
   # KMS Keys
   kms:
-    systemKeyId: ${cf:${self:custom.service}-kms-${self:provider.stage}.SystemKMSKeyId}
-    systemKeyArn: ${cf:${self:custom.service}-kms-${self:provider.stage}.SystemKMSKeyArn}
-    secretsKeyId: ${cf:${self:custom.service}-kms-${self:provider.stage}.SecretsKMSKeyId}
-    secretsKeyArn: ${cf:${self:custom.service}-kms-${self:provider.stage}.SecretsKMSKeyArn}
-    websocketKeyId: ${cf:${self:custom.service}-kms-${self:provider.stage}.WebSocketKMSKeyId}
-    websocketKeyArn: ${cf:${self:custom.service}-kms-${self:provider.stage}.WebSocketKMSKeyArn}
+    systemKeyId: ${ssm:/espectra/dev/kms/system-key-id, 'espectra-backend-dev-v4-r1-kms.SystemKeyId'}
+    systemKeyArn: ${ssm:/espectra/dev/kms/system-key-arn, 'espectra-backend-dev-v4-r1-kms.SystemKeyArn'}
+    secretsKeyId: ${ssm:/espectra/dev/kms/secrets-key-id, 'espectra-backend-dev-v4-r1-kms.SecretsKeyId'}
+    secretsKeyArn: ${ssm:/espectra/dev/kms/secrets-key-arn, 'espectra-backend-dev-v4-r1-kms.SecretsKeyArn'}
+    websocketKeyId: ${ssm:/espectra/dev/kms/websocket-key-id, 'espectra-backend-dev-v4-r1-kms.WebsocketKeyId'}
+    websocketKeyArn: ${ssm:/espectra/dev/kms/websocket-key-arn, 'espectra-backend-dev-v4-r1-kms.WebsocketKeyArn'}
 
   # SNS Topics
-  snsHighPriorityTopic: ${ssm:/espectra/${self:provider.stage}/sns/high-priority-topic}
-  snsMediumPriorityTopic: ${ssm:/espectra/${self:provider.stage}/sns/medium-priority-topic}
-  snsLowPriorityTopic: ${ssm:/espectra/${self:provider.stage}/sns/low-priority-topic}
+  snsHighPriorityTopic: ${ssm:/espectra/dev/sns/high-priority-topic, 'espectra-backend-dev-v4-r1-sns.HighPriorityTopicArn'}
+  snsMediumPriorityTopic: ${ssm:/espectra/dev/sns/medium-priority-topic, 'espectra-backend-dev-v4-r1-sns.MediumPriorityTopicArn'}
+  snsLowPriorityTopic: ${ssm:/espectra/dev/sns/low-priority-topic, 'espectra-backend-dev-v4-r1-sns.LowPriorityTopicArn'}
 
   # Handoff Configuration
   handoff:
@@ -150,10 +170,7 @@ custom:
     websocket:
       connections: 2000
 
-  apiGatewayWebsocket:
-    minimumCompressionSize: 1024
-    websocketApiId: !Ref WebSocketApi
-    stage: ${self:provider.stage}
+  # Removed apiGatewayWebsocket as it's not supported in Serverless v4
 
   serverless-offline:
     httpPort: 3000
@@ -190,7 +207,7 @@ plugins:
 package:
   individually: false
   patterns:
-    - "src/**"
+    - 'src/**'
     # - "!node_modules/**"
     # - "!dist/**"
     # - "!**/*.spec.ts"
@@ -205,236 +222,196 @@ functions:
   # Auth Functions
   restAuthorizer:
     handler: services/auth/handlers/authorizer.handler
-    name: ${self:custom.service}-${self:provider.stage}-rest-authorizer
+    name: espectra-backend-dev-v4-r1-rest-authorizer
     role:
-      Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-lambda-role-arn
+      Fn::ImportValue: espectra-backend-dev-v4-r1-lambda-role-arn
     memorySize: 256
     environment:
       COGNITO_USER_POOL_ID:
-        Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-user-pool-id
+        Fn::ImportValue: ${self:custom.resourcePrefix}-cognito-UserPoolId
       COGNITO_CLIENT_ID:
-        Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-user-pool-client-id
+        Fn::ImportValue: ${self:custom.resourcePrefix}-cognito-UserPoolClientId
 
   register:
     handler: services/auth/handlers/register.handler
-    name: ${self:custom.service}-${self:provider.stage}-register
+    name: espectra-backend-dev-v4-r1-register
     role:
-      Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-lambda-role-arn
+      Fn::ImportValue: espectra-backend-dev-v4-r1-lambda-role-arn
     events:
-      - http:
-          path: auth/register
+      - httpApi:
+          path: /auth/register
           method: post
-          cors: true
-          restApi:
-            id: !Ref RestApiId
     environment:
       ALLOWED_ORIGINS: '*'
       PASSWORD_MIN_LENGTH: '8'
-      USER_POOL_REGION: ${self:provider.region}
-      USER_POOL_ID:
-        Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-user-pool-id
-      USER_POOL_CLIENT_ID:
-        Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-user-pool-client-id
-      COGNITO_CLIENT_SECRET: ${ssm:/espectra/${self:provider.stage}/cognito/client-secret}
+      USER_POOL_REGION: us-east-1
+      COGNITO_USER_POOL_ID:
+        Fn::ImportValue: ${self:custom.resourcePrefix}-cognito-UserPoolId
+      COGNITO_CLIENT_ID:
+        Fn::ImportValue: ${self:custom.resourcePrefix}-cognito-UserPoolClientId
+      COGNITO_CLIENT_SECRET: ${ssm:/espectra/dev/cognito/client-secret, 'your-client-secret'}
 
   contactRequest:
     handler: services/auth/handlers/contactRequest.handler
-    name: ${self:custom.service}-${self:provider.stage}-contact-request
+    name: ${self:custom.resourcePrefix}-contact-request
     role:
-      Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-lambda-role-arn
+      Fn::ImportValue: ${self:custom.resourcePrefix}-lambda-role-arn
     events:
-      - http:
-          path: auth/contact-request
+      - httpApi:
+          path: /auth/contact-request
           method: post
-          cors: true
-          restApi:
-            id: !Ref RestApiId
     environment:
       GOOGLE_SHEETS_SPREADSHEET_ID: ${ssm:/espectra/${self:provider.stage}/google-sheets-spreadsheet-id}
       GOOGLE_SHEETS_PRIVATE_KEY: ${ssm:/espectra/${self:provider.stage}/google-sheets-private-key}
       GOOGLE_SHEETS_CLIENT_EMAIL: ${ssm:/espectra/${self:provider.stage}/google-sheets-client-email}
       GOOGLE_SHEETS_CONTACT_REQUESTS_SHEET: SpectraContactRequests
-    #tracing: Active
 
   login:
     handler: services/auth/handlers/login.handler
-    name: ${self:custom.service}-${self:provider.stage}-login
+    name: ${self:custom.resourcePrefix}-login
     role:
-      Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-lambda-role-arn
+      Fn::ImportValue: ${self:custom.resourcePrefix}-lambda-role-arn
     events:
-      - http:
-          path: auth/login
+      - httpApi:
+          path: /auth/login
           method: post
-          cors: true
-          restApi:
-            id: !Ref RestApiId
 
   refreshToken:
     handler: services/auth/handlers/refreshToken.handler
-    name: ${self:custom.service}-${self:provider.stage}-refreshToken
+    name: ${self:custom.resourcePrefix}-refreshToken
     role:
-      Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-lambda-role-arn
-    vpc:
-      securityGroupIds:
-        - Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-lambda-sg-id
-      subnetIds:
-        - Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-private-subnet-1-id
-        - Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-private-subnet-2-id
+      Fn::ImportValue: ${self:custom.resourcePrefix}-lambda-role-arn
     events:
-      - http:
-          path: auth/refresh-token
+      - httpApi:
+          path: /auth/refresh-token
           method: post
-          cors: true
-          restApi:
-            id: !Ref RestApiId
     environment:
       COGNITO_USER_POOL_ID:
-        Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-user-pool-id
+        Fn::ImportValue: ${self:custom.resourcePrefix}-cognito-UserPoolId
       COGNITO_CLIENT_ID:
-        Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-user-pool-client-id
+        Fn::ImportValue: ${self:custom.resourcePrefix}-cognito-UserPoolClientId
       COGNITO_CLIENT_SECRET: ${ssm:/espectra/${self:provider.stage}/cognito/client-secret}
 
   logout:
     handler: services/auth/handlers/logout.handler
-    name: ${self:custom.service}-${self:provider.stage}-logout
+    name: ${self:custom.resourcePrefix}-logout
     role:
-      Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-lambda-role-arn
+      Fn::ImportValue: ${self:custom.resourcePrefix}-lambda-role-arn
     events:
-      - http:
-          path: auth/logout
+      - httpApi:
+          path: /auth/logout
           method: post
-          cors: true
           authorizer:
             name: restAuthorizer
-          restApi:
-            id: !Ref RestApiId
 
   me:
     handler: services/auth/handlers/me.handler
-    name: ${self:custom.service}-${self:provider.stage}-me
+    name: ${self:custom.resourcePrefix}-me
     role:
-      Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-lambda-role-arn
+      Fn::ImportValue: ${self:custom.resourcePrefix}-lambda-role-arn
     events:
-      - http:
-          path: auth/me
+      - httpApi:
+          path: /auth/me
           method: get
-          cors: true
           authorizer:
             name: restAuthorizer
-          restApi:
-            id: !Ref RestApiId
 
   forgotPassword:
     handler: services/auth/handlers/forgot-password.handler
-    name: ${self:custom.service}-${self:provider.stage}-forgot-password
+    name: ${self:custom.resourcePrefix}-forgot-password
     role:
-      Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-lambda-role-arn
+      Fn::ImportValue: ${self:custom.resourcePrefix}-lambda-role-arn
     events:
-      - http:
-          path: auth/forgot-password
+      - httpApi:
+          path: /auth/forgot-password
           method: post
-          cors: true
-          restApi:
-            id: !Ref RestApiId
     environment:
       COGNITO_USER_POOL_ID:
-        Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-user-pool-id
+        Fn::ImportValue: ${self:custom.resourcePrefix}-cognito-UserPoolId
       COGNITO_CLIENT_ID:
-        Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-user-pool-client-id
+        Fn::ImportValue: ${self:custom.resourcePrefix}-cognito-UserPoolClientId
       COGNITO_CLIENT_SECRET: ${ssm:/espectra/${self:provider.stage}/cognito/client-secret}
       SES_FROM_EMAIL: 'soporte@spectrumai.com.co'
 
   resetPassword:
     handler: services/auth/handlers/reset-password.handler
-    name: ${self:custom.service}-${self:provider.stage}-reset-password
+    name: ${self:custom.resourcePrefix}-reset-password
     role:
-      Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-lambda-role-arn
+      Fn::ImportValue: ${self:custom.resourcePrefix}-lambda-role-arn
     events:
-      - http:
-          path: auth/reset-password
+      - httpApi:
+          path: /auth/reset-password
           method: post
-          cors: true
-          restApi:
-            id: !Ref RestApiId
     environment:
       COGNITO_USER_POOL_ID:
-        Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-user-pool-id
+        Fn::ImportValue: ${self:custom.resourcePrefix}-cognito-UserPoolId
       COGNITO_CLIENT_ID:
-        Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-user-pool-client-id
+        Fn::ImportValue: ${self:custom.resourcePrefix}-cognito-UserPoolClientId
       COGNITO_CLIENT_SECRET: ${ssm:/espectra/${self:provider.stage}/cognito/client-secret}
 
   verifyEmail:
     handler: services/auth/handlers/verify-email.handler
-    name: ${self:custom.service}-${self:provider.stage}-verify-email
+    name: ${self:custom.resourcePrefix}-verify-email
     role:
-      Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-lambda-role-arn
+      Fn::ImportValue: ${self:custom.resourcePrefix}-lambda-role-arn
     events:
-      - http:
-          path: auth/verify-email
+      - httpApi:
+          path: /auth/verify-email
           method: post
-          cors: true
-          restApi:
-            id: !Ref RestApiId
     environment:
       COGNITO_USER_POOL_ID:
-        Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-user-pool-id
+        Fn::ImportValue: ${self:custom.resourcePrefix}-cognito-UserPoolId
       COGNITO_CLIENT_ID:
-        Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-user-pool-client-id
+        Fn::ImportValue: ${self:custom.resourcePrefix}-cognito-UserPoolClientId
       COGNITO_CLIENT_SECRET: ${ssm:/espectra/${self:provider.stage}/cognito/client-secret}
 
   resendVerificationCode:
     handler: services/auth/handlers/resend-verification-code.handler
-    name: ${self:custom.service}-${self:provider.stage}-resend-verification-code
+    name: ${self:custom.resourcePrefix}-resend-verification-code
     role:
-      Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-lambda-role-arn
+      Fn::ImportValue: ${self:custom.resourcePrefix}-lambda-role-arn
     events:
-      - http:
-          path: auth/resend-verification-code
+      - httpApi:
+          path: /auth/resend-verification-code
           method: post
-          cors: true
-          restApi:
-            id: !Ref RestApiId
     environment:
       COGNITO_USER_POOL_ID:
-        Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-user-pool-id
+        Fn::ImportValue: ${self:custom.resourcePrefix}-cognito-UserPoolId
       COGNITO_CLIENT_ID:
-        Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-user-pool-client-id
+        Fn::ImportValue: ${self:custom.resourcePrefix}-cognito-UserPoolClientId
       COGNITO_CLIENT_SECRET: ${ssm:/espectra/${self:provider.stage}/cognito/client-secret}
 
   testEmail:
     handler: services/auth/handlers/test-email.handler
-    name: ${self:custom.service}-${self:provider.stage}-test-email
+    name: ${self:custom.resourcePrefix}-test-email
     role:
-      Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-lambda-role-arn
+      Fn::ImportValue: ${self:custom.resourcePrefix}-lambda-role-arn
     events:
-      - http:
-          path: auth/test-email
+      - httpApi:
+          path: /auth/test-email
           method: post
-          cors: true
-          restApi:
-            id: !Ref RestApiId
     environment:
       SES_FROM_EMAIL: 'soporte@spectrumai.com.co'
 
   # WebSocket Functions
   wsAuthorizer:
     handler: services/websocket/handlers/authorizer.handler
-    name: ${self:custom.service}-${self:provider.stage}-websocket-authorizer
+    name: ${self:custom.resourcePrefix}-websocket-authorizer
     role:
-      Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-lambda-role-arn
+      Fn::ImportValue: ${self:custom.resourcePrefix}-lambda-role-arn
     memorySize: 256
     timeout: 29
     environment:
       COGNITO_USER_POOL_ID:
-        Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-user-pool-id
+        Fn::ImportValue: ${self:custom.resourcePrefix}-cognito-UserPoolId
       COGNITO_CLIENT_ID:
-        Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-user-pool-client-id
+        Fn::ImportValue: ${self:custom.resourcePrefix}-cognito-UserPoolClientId
 
   webSocketConnect:
     handler: services/websocket/handlers/connect.handler
-    name: ${self:custom.service}-${self:provider.stage}-webSocketConnect
+    name: espectra-backend-dev-v4-r1-webSocketConnect
     role:
-      Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-lambda-role-arn
+      Fn::ImportValue: espectra-backend-dev-v4-r1-lambda-role-arn
     events:
       - websocket:
           route: $connect
@@ -442,205 +419,159 @@ functions:
             name: wsAuthorizer
             identitySource:
               - 'route.request.querystring.Auth'
-          websocketApi:
-            id: !Ref WebSocketApi
 
   webSocketDisconnect:
     handler: services/websocket/handlers/disconnect.handler
-    name: ${self:custom.service}-${self:provider.stage}-webSocketDisconnect
+    name: ${self:custom.resourcePrefix}-webSocketDisconnect
     role:
-      Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-lambda-role-arn
+      Fn::ImportValue: ${self:custom.resourcePrefix}-lambda-role-arn
     events:
       - websocket:
           route: $disconnect
-          websocketApi:
-            id: !Ref WebSocketApi
 
   webSocketMessage:
     handler: services/websocket/handlers/message.handler
-    name: ${self:custom.service}-${self:provider.stage}-webSocketMessage
+    name: ${self:custom.resourcePrefix}-webSocketMessage
     role:
-      Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-lambda-role-arn
+      Fn::ImportValue: ${self:custom.resourcePrefix}-lambda-role-arn
     events:
       - websocket:
           route: $default
-          websocketApi:
-            id: !Ref WebSocketApi
 
   webSocketAgent:
     handler: services/websocket/handlers/agent.handler
-    name: ${self:custom.service}-${self:provider.stage}-webSocketAgent
+    name: ${self:custom.resourcePrefix}-webSocketAgent
     role:
-      Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-lambda-role-arn
+      Fn::ImportValue: ${self:custom.resourcePrefix}-lambda-role-arn
     events:
       - websocket:
           route: agent
-          websocketApi:
-            id: !Ref WebSocketApi
 
   # Botpress Integration Functions
   botpressWebhook:
     handler: services/botpress/handlers/webhook/botpress-webhook.handler
-    name: ${self:custom.service}-${self:provider.stage}-botpress-webhook
+    name: ${self:custom.resourcePrefix}-botpress-webhook
     role:
-      Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-lambda-role-arn
+      Fn::ImportValue: ${self:custom.resourcePrefix}-lambda-role-arn
     vpc: null
     events:
-      - http:
+      - httpApi:
           path: /botpress/webhook
           method: post
-          cors: true
-          restApi:
-            id: !Ref RestApiId
     environment:
       BOTPRESS_API_KEY: ${ssm:/espectra/${self:provider.stage}/botpress-api-key}
-    aliases:
-      - name: webhook-concurrency-${self:provider.stage}
-        provisionedConcurrency: 2
+  # Removed aliases as it's not supported in Serverless v4
 
   processMessage:
     handler: services/botpress/handlers/message/process-message.handler
-    name: ${self:custom.service}-${self:provider.stage}-process-message
+    name: ${self:custom.resourcePrefix}-process-message
     role:
-      Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-lambda-role-arn
+      Fn::ImportValue: ${self:custom.resourcePrefix}-lambda-role-arn
     vpc: null
     events:
       - sqs:
           arn:
-            Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-message-queue-arn
+            Fn::ImportValue: ${self:custom.resourcePrefix}-message-queue-arn
           batchSize: 1
           functionResponseType: ReportBatchItemFailures
 
   # Handoff Functions
   handoffRequest:
     handler: services/botpress/handlers/handoff/request.handler
-    name: ${self:custom.service}-${self:provider.stage}-handoff-request
+    name: ${self:custom.resourcePrefix}-handoff-request
     role:
-      Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-lambda-role-arn
+      Fn::ImportValue: ${self:custom.resourcePrefix}-lambda-role-arn
     vpc: null
     events:
-      - http:
+      - httpApi:
           path: /handoff/request
           method: post
           authorizer:
             name: restAuthorizer
-          cors: true
-          restApi:
-            id: !Ref RestApiId
-    aliases:
-      - name: request-concurrency-${self:provider.stage}
-        provisionedConcurrency: 2
+  # Removed aliases as it's not supported in Serverless v4
 
   handoffAccept:
     handler: services/botpress/handlers/handoff/accept.handler
-    name: ${self:custom.service}-${self:provider.stage}-handoff-accept
+    name: ${self:custom.resourcePrefix}-handoff-accept
     role:
-      Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-lambda-role-arn
-    vpc: null
+      Fn::ImportValue: ${self:custom.resourcePrefix}-lambda-role-arn
     events:
-      - http:
+      - httpApi:
           path: /handoff/accept
           method: post
           authorizer:
             name: restAuthorizer
-          cors: true
-          restApi:
-            id: !Ref RestApiId
-    aliases:
-      - name: accept-concurrency-${self:provider.stage}
-        provisionedConcurrency: 2
+  # Removed aliases as it's not supported in Serverless v4
 
   # Session Management Functions
   startSession:
     handler: services/session/handlers/start.handler
-    name: ${self:custom.service}-${self:provider.stage}-start-session
+    name: ${self:custom.resourcePrefix}-start-session
     role:
-      Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-lambda-role-arn
-    vpc: null
+      Fn::ImportValue: ${self:custom.resourcePrefix}-lambda-role-arn
     events:
-      - http:
+      - httpApi:
           path: /session/start
           method: post
           authorizer:
             name: restAuthorizer
-          cors: true
-          restApi:
-            id: !Ref RestApiId
 
   createSession:
     handler: services/auth/handlers/session.createSession
-    name: ${self:custom.service}-${self:provider.stage}-create-session
+    name: ${self:custom.resourcePrefix}-create-session
     role:
-      Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-lambda-role-arn
-    vpc: null
+      Fn::ImportValue: ${self:custom.resourcePrefix}-lambda-role-arn
     events:
-      - http:
+      - httpApi:
           path: /sessions/create
           method: post
           authorizer:
             name: restAuthorizer
-          cors: true
-          restApi:
-            id: !Ref RestApiId
     environment:
       SESSION_TABLE:
         Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-chat-sessions-table-name
       METRICS_NAMESPACE: ${self:custom.service}/${self:provider.stage}
-    # iamRoleStatements:
-    #   - Effect: Allow
-    #     Action:
-    #       - dynamodb:PutItem
-    #     Resource:
-    #       Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-chat-sessions-table-arn
 
   extendSession:
     handler: services/auth/handlers/session.extendSession
-    name: ${self:custom.service}-${self:provider.stage}-extend-session
+    name: ${self:custom.resourcePrefix}-extend-session
     role:
-      Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-lambda-role-arn
-    vpc: null
+      Fn::ImportValue: ${self:custom.resourcePrefix}-lambda-role-arn
     events:
-      - http:
+      - httpApi:
           path: /sessions/update/{sessionId}
           method: put
           authorizer:
             name: restAuthorizer
-          cors: true
-          restApi:
-            id: !Ref RestApiId
     environment:
       SESSION_TABLE:
         Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-chat-sessions-table-name
 
   endSession:
     handler: services/session/handlers/end.handler
-    name: ${self:custom.service}-${self:provider.stage}-end-session
+    name: ${self:custom.resourcePrefix}-end-session
     role:
-      Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-lambda-role-arn
-    vpc: null
+      Fn::ImportValue: ${self:custom.resourcePrefix}-lambda-role-arn
     events:
-      - http:
+      - httpApi:
           path: /session/end
           method: post
           authorizer:
             name: restAuthorizer
-          cors: true
-          restApi:
-            id: !Ref RestApiId
 
   # Metrics Functions
   # metricsCollector:
   #   handler: services/metrics/handlers/collector.handler
-  #   name: ${self:custom.service}-${self:provider.stage}-metrics-collector
+  #   name: ${self:custom.resourcePrefix}-metrics-collector
   #   role:
-  #     Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-lambda-role-arn
+  #     Fn::ImportValue: ${self:custom.resourcePrefix}-lambda-role-arn
   #   vpc: null
   #   events:
   #     - schedule: rate(1 minute)
   #   environment:
   #     METRICS_NAMESPACE: ${self:custom.service}/${self:provider.stage}
   #     BOTPRESS_METRICS_TABLE:
-  #       Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-metrics-table-name
+  #       Fn::ImportValue: ${self:custom.resourcePrefix}-metrics-table-name
 
 resources:
   - ${file(infrastructure/apigateway/api.yml)}
@@ -654,96 +585,112 @@ resources:
 outputs:
   ApiId:
     Description: REST API Id
-    Value: !Ref RestApiId
+    Value:
+      Ref: RestApiId
     Export:
-      Name: ${self:custom.service}-${self:provider.stage}-rest-api-id
+      Name: espectra-backend-dev-v4-r1-rest-api-id
 
   RestApiRootResourceId:
     Description: REST API Root Resource Id
-    Value: !GetAtt RestApiId.RootResourceId
+    Value:
+      Fn::GetAtt: [RestApiId, RootResourceId]
     Export:
-      Name: ${self:custom.service}-${self:provider.stage}-rest-api-root-resource-id
+      Name: espectra-backend-dev-v4-r1-rest-api-root-resource-id
 
   ApiEndpoint:
     Description: API Gateway endpoint URL
-    Value: !Sub https://${RestApiId}.execute-api.${AWS::Region}.amazonaws.com/${self:provider.stage}
+    Value:
+      Fn::Sub: 'https://${RestApiId}.execute-api.${AWS::Region}.amazonaws.com/dev'
     Export:
-      Name: ${self:custom.service}-${self:provider.stage}-api-endpoint
+      Name: espectra-backend-dev-v4-r1-api-endpoint
 
   RestApiAuthorizerId:
     Description: REST API Authorizer ID
-    Value: !Ref RestApiAuthorizer
+    Value:
+      Ref: RestApiAuthorizer
     Export:
-      Name: ${self:custom.service}-${self:provider.stage}-rest-authorizer-id
+      Name: espectra-backend-dev-v4-r1-rest-authorizer-id
 
   ChatResourceId:
     Description: Chat Resource ID
-    Value: !Ref ChatResource
+    Value:
+      Ref: ChatResource
     Export:
-      Name: ${self:custom.service}-${self:provider.stage}-chat-resource-id
+      Name: espectra-backend-dev-v4-r1-chat-resource-id
 
   SessionsResourceId:
     Description: Sessions Resource ID
-    Value: !Ref SessionsResource
+    Value:
+      Ref: SessionsResource
     Export:
-      Name: ${self:custom.service}-${self:provider.stage}-sessions-resource-id
+      Name: espectra-backend-dev-v4-r1-sessions-resource-id
 
   MessagesResourceId:
     Description: Messages Resource ID
-    Value: !Ref MessagesResource
+    Value:
+      Ref: MessagesResource
     Export:
-      Name: ${self:custom.service}-${self:provider.stage}-messages-resource-id
+      Name: espectra-backend-dev-v4-r1-messages-resource-id
 
   HandoffResourceId:
     Description: Handoff Resource ID
-    Value: !Ref HandoffResource
+    Value:
+      Ref: HandoffResource
     Export:
-      Name: ${self:custom.service}-${self:provider.stage}-handoff-resource-id
+      Name: espectra-backend-dev-v4-r1-handoff-resource-id
 
   WebACLId:
     Description: ID of the Web ACL
-    Value: !GetAtt SpectraWebACL.Id
+    Value:
+      Fn::GetAtt: [SpectraWebACL, Id]
     Export:
-      Name: ${self:custom.service}-${self:provider.stage}-waf-id
+      Name: espectra-backend-dev-v4-r1-waf-id
 
   WebACLArn:
     Description: ARN of the Web ACL
-    Value: !GetAtt SpectraWebACL.Arn
+    Value:
+      Fn::GetAtt: [SpectraWebACL, Arn]
     Export:
-      Name: ${self:custom.service}-${self:provider.stage}-waf-arn
+      Name: espectra-backend-dev-v4-r1-waf-arn
 
   IPSetId:
     Description: ID of the IP Set
-    Value: !Ref IPSet
+    Value:
+      Ref: IPSet
     Export:
-      Name: ${self:custom.service}-${self:provider.stage}-ipset-id
+      Name: espectra-backend-dev-v4-r1-ipset-id
 
   WafLogGroupName:
     Description: Name of the WAF Log Group
-    Value: !Ref WafLogGroup
+    Value:
+      Ref: WafLogGroup
     Export:
-      Name: ${self:custom.service}-${self:provider.stage}-waf-log-group
+      Name: espectra-backend-dev-v4-r1-waf-log-group
 
   WebSocketIPSetId:
     Description: WebSocket IP Set ID
-    Value: !Ref WebSocketIPSet
+    Value:
+      Ref: WebSocketIPSet
     Export:
-      Name: ${self:custom.service}-${self:provider.stage}-websocket-ipset-id
+      Name: espectra-backend-dev-v4-r1-websocket-ipset-id
 
   WebSocketApiId:
     Description: WebSocket API ID
-    Value: !Ref WebSocketApi
+    Value:
+      Ref: WebSocketApi
     Export:
-      Name: ${self:custom.service}-${self:provider.stage}-websocket-api-id
+      Name: espectra-backend-dev-v4-r1-websocket-api-id
 
   WebSocketApiEndpoint:
     Description: WebSocket API Endpoint
-    Value: !Sub https://${WebSocketApi}.execute-api.${AWS::Region}.amazonaws.com/${self:provider.stage}
+    Value:
+      Fn::Sub: 'https://${WebSocketApi}.execute-api.${AWS::Region}.amazonaws.com/dev'
     Export:
-      Name: ${self:custom.service}-${self:provider.stage}-websocket-endpoint
+      Name: espectra-backend-dev-v4-r1-websocket-endpoint
 
   WebSocketStageArn:
     Description: WebSocket Stage ARN
-    Value: !Sub arn:aws:apigateway:${AWS::Region}::/apis/${WebSocketApi}/stages/${self:provider.stage}
+    Value:
+      Fn::Sub: 'arn:aws:apigateway:${AWS::Region}::/apis/${WebSocketApi}/stages/dev'
     Export:
-      Name: ${self:custom.service}-${self:provider.stage}-websocket-stage-arn
+      Name: espectra-backend-dev-v4-r1-websocket-stage-arn

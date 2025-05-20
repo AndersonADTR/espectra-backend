@@ -19,7 +19,7 @@ Resources:
     Properties:
       RestApiId: !Ref RestApiId
       ParentId: !Ref SessionsResource
-      PathPart: "{sessionId}"
+      PathPart: '{sessionId}'
 
   MessagesResource:
     Type: AWS::ApiGateway::Resource
@@ -39,7 +39,7 @@ Resources:
   RequestValidator:
     Type: AWS::ApiGateway::RequestValidator
     Properties:
-      Name: ${self:custom.service}-${self:provider.stage}-validator
+      Name: ${self:custom.resourcePrefix}-validator
       RestApiId: !Ref RestApiId
       ValidateRequestBody: true
       ValidateRequestParameters: true
@@ -66,7 +66,7 @@ Resources:
             pattern: "^[\\S\\s]*\\S[\\S\\s]*$"
           sessionId:
             type: string
-            pattern: "^[a-zA-Z0-9-_]{1,128}$"
+            pattern: '^[a-zA-Z0-9-_]{1,128}$'
           metadata:
             type: object
             additionalProperties: true
@@ -87,7 +87,7 @@ Resources:
         properties:
           userId:
             type: string
-            pattern: "^[a-zA-Z0-9-_]{1,128}$"
+            pattern: '^[a-zA-Z0-9-_]{1,128}$'
           metadata:
             type: object
             additionalProperties: true
@@ -108,7 +108,7 @@ Resources:
         properties:
           sessionId:
             type: string
-            pattern: "^[a-zA-Z0-9-_]{1,128}$"
+            pattern: '^[a-zA-Z0-9-_]{1,128}$'
           status:
             type: string
             enum: ['active', 'inactive']
@@ -161,7 +161,7 @@ Resources:
       Integration:
         Type: AWS_PROXY
         IntegrationHttpMethod: POST
-        Uri: !Sub 
+        Uri: !Sub
           - arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${FunctionArn}/invocations
           - FunctionArn: !GetAtt StartSessionLambdaFunction.Arn
         TimeoutInMillis: 29000
@@ -202,7 +202,7 @@ Resources:
       Integration:
         Type: AWS_PROXY
         IntegrationHttpMethod: POST
-        Uri: !Sub 
+        Uri: !Sub
           - arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${FunctionArn}/invocations
           - FunctionArn: !GetAtt WebSocketMessageLambdaFunction.Arn
         TimeoutInMillis: 29000
@@ -256,24 +256,28 @@ Resources:
 Outputs:
   ChatResourceId:
     Description: Chat Resource ID
-    Value: !Ref ChatResource
+    Value:
+      Ref: ChatResource
     Export:
-      Name: ${self:custom.service}-${self:provider.stage}-chat-resource-id
+      Name: espectra-backend-dev-v4-r1-chat-resource-id
 
   SessionsResourceId:
     Description: Sessions Resource ID
-    Value: !Ref SessionsResource
+    Value:
+      Ref: SessionsResource
     Export:
-      Name: ${self:custom.service}-${self:provider.stage}-sessions-resource-id
+      Name: espectra-backend-dev-v4-r1-sessions-resource-id
 
   MessagesResourceId:
     Description: Messages Resource ID
-    Value: !Ref MessagesResource
+    Value:
+      Ref: MessagesResource
     Export:
-      Name: ${self:custom.service}-${self:provider.stage}-messages-resource-id
+      Name: espectra-backend-dev-v4-r1-messages-resource-id
 
   HandoffResourceId:
     Description: Handoff Resource ID
-    Value: !Ref HandoffResource
+    Value:
+      Ref: HandoffResource
     Export:
-      Name: ${self:custom.service}-${self:provider.stage}-handoff-resource-id
+      Name: espectra-backend-dev-v4-r1-handoff-resource-id
