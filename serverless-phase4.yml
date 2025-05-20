@@ -36,16 +36,17 @@ provider:
 
   vpc:
     securityGroupIds:
-      - Fn::ImportValue: espectra-backend-dev-v4-r1-phase1-LambdaSecurityGroupId
+      - Fn::ImportValue: ${self:custom.resourcePrefix}-phase1-LambdaSecurityGroupId
     subnetIds:
-      - Fn::ImportValue: espectra-backend-dev-v4-r1-phase1-PrivateSubnet1Id
-      - Fn::ImportValue: espectra-backend-dev-v4-r1-phase1-PrivateSubnet2Id
+      - Fn::ImportValue: ${self:custom.resourcePrefix}-phase1-PrivateSubnet1Id
+      - Fn::ImportValue: ${self:custom.resourcePrefix}-phase1-PrivateSubnet2Id
 
   environment:
     # System Variables
     STAGE: dev
     REGION: us-east-1
     SERVICE_NAME: espectra-backend
+    RESOURCE_PREFIX: ${self:custom.resourcePrefix}
     NODE_ENV: dev
     LOG_LEVEL: DEBUG
     API_VERSION: 'v1'
@@ -66,18 +67,19 @@ provider:
 
     # DynamoDB Tables
     CONNECTION_TABLE:
-      Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-connections-table-name
+      Fn::ImportValue: ${self:custom.resourcePrefix}-connections-table-name
     CHAT_HISTORY_TABLE:
-      Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-chat-history-table-name
+      Fn::ImportValue: ${self:custom.resourcePrefix}-chat-history-table-name
     CONTEXT_TABLE:
       Fn::ImportValue: ${self:custom.resourcePrefix}-context-table-name
     TOKEN_TABLE:
       Fn::ImportValue: ${self:custom.resourcePrefix}-tokens-table-name
     REGISTRATION_REQUESTS_TABLE:
-      Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-registration-requests-table-name
-    USERS_TABLE: espectra-backend-dev-v4-r1-users
+      Fn::ImportValue: ${self:custom.resourcePrefix}-registration-requests-table-name
+    USERS_TABLE: 
+      Fn::ImportValue: ${self:custom.resourcePrefix}-users-table-name
     # HANDOFF_TABLE:
-    #   Fn::ImportValue: espectra-backend-dev-v4-r1-handoff-table-name
+    #   Fn::ImportValue: ${self:custom.resourcePrefix}-handoff-table-name
 
     # Botpress Configuration
     BOTPRESS_API_URL: ${ssm:/espectra/dev/botpress-api-url, 'https://api.botpress.cloud/v1'}
@@ -85,18 +87,18 @@ provider:
     BOTPRESS_API_KEY: ${ssm:/espectra/dev/botpress-api-key, 'your-api-key'}
     BOTPRESS_WORKSPACE_ID: ${ssm:/espectra/dev/botpress-workspace-id, 'your-workspace-id'}
     BOTPRESS_EVENT_BUS:
-      Fn::ImportValue: espectra-backend-dev-v4-r1-eventbus-name
+      Fn::ImportValue: ${self:custom.resourcePrefix}-eventbus-name
 
     # WebSocket
     WEBSOCKET_API_ENDPOINT:
       'your-websocket-endpoint'
-      # Fn::ImportValue: espectra-backend-dev-v4-r1-websocket-endpoint
+      # Fn::ImportValue: ${self:custom.resourcePrefix}-websocket-endpoint
 
     # Redis Configuration
     REDIS_HOST:
-      Fn::ImportValue: espectra-backend-dev-v4-r1-redis-endpoint
+      Fn::ImportValue: ${self:custom.resourcePrefix}-redis-endpoint
     REDIS_PORT:
-      Fn::ImportValue: espectra-backend-dev-v4-r1-redis-port
+      Fn::ImportValue: ${self:custom.resourcePrefix}-redis-port
 
     SESSION_TTL: ${self:custom.session.ttl}
     SESSION_EXTEND_DURATION: ${self:custom.session.extendDuration}
@@ -223,9 +225,9 @@ functions:
   # Auth Functions
   restAuthorizer:
     handler: services/auth/handlers/authorizer.handler
-    name: espectra-backend-dev-v4-r1-rest-authorizer
+    name: ${self:custom.resourcePrefix}-rest-authorizer
     role:
-      Fn::ImportValue: espectra-backend-dev-v4-r1-lambda-role-arn
+      Fn::ImportValue: ${self:custom.resourcePrefix}-lambda-role-arn
     memorySize: 256
     environment:
       COGNITO_USER_POOL_ID:
@@ -235,9 +237,9 @@ functions:
 
   register:
     handler: services/auth/handlers/register.handler
-    name: espectra-backend-dev-v4-r1-register
+    name: ${self:custom.resourcePrefix}-register
     role:
-      Fn::ImportValue: espectra-backend-dev-v4-r1-lambda-role-arn
+      Fn::ImportValue: ${self:custom.resourcePrefix}-lambda-role-arn
     events:
       - httpApi:
           path: /auth/register
@@ -410,9 +412,9 @@ functions:
 
   webSocketConnect:
     handler: services/websocket/handlers/connect.handler
-    name: espectra-backend-dev-v4-r1-webSocketConnect
+    name: ${self:custom.resourcePrefix}-webSocketConnect
     role:
-      Fn::ImportValue: espectra-backend-dev-v4-r1-lambda-role-arn
+      Fn::ImportValue: ${self:custom.resourcePrefix}-lambda-role-arn
     events:
       - websocket:
           route: $connect
@@ -530,7 +532,7 @@ functions:
             name: restAuthorizer
     environment:
       SESSION_TABLE:
-        Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-chat-sessions-table-name
+        Fn::ImportValue: ${self:custom.resourcePrefix}-chat-sessions-table-name
       METRICS_NAMESPACE: ${self:custom.service}/${self:provider.stage}
 
   extendSession:
@@ -546,7 +548,7 @@ functions:
             name: restAuthorizer
     environment:
       SESSION_TABLE:
-        Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-chat-sessions-table-name
+        Fn::ImportValue: ${self:custom.resourcePrefix}-chat-sessions-table-name
 
   endSession:
     handler: services/session/handlers/end.handler
@@ -589,109 +591,109 @@ outputs:
     Value:
       Ref: RestApiId
     Export:
-      Name: espectra-backend-dev-v4-r1-rest-api-id
+      Name: ${self:custom.resourcePrefix}-rest-api-id
 
   RestApiRootResourceId:
     Description: REST API Root Resource Id
     Value:
       Fn::GetAtt: [RestApiId, RootResourceId]
     Export:
-      Name: espectra-backend-dev-v4-r1-rest-api-root-resource-id
+      Name: ${self:custom.resourcePrefix}-rest-api-root-resource-id
 
   ApiEndpoint:
     Description: API Gateway endpoint URL
     Value:
       Fn::Sub: 'https://${RestApiId}.execute-api.${AWS::Region}.amazonaws.com/dev'
     Export:
-      Name: espectra-backend-dev-v4-r1-api-endpoint
+      Name: ${self:custom.resourcePrefix}-api-endpoint
 
   RestApiAuthorizerId:
     Description: REST API Authorizer ID
     Value:
       Ref: RestApiAuthorizer
     Export:
-      Name: espectra-backend-dev-v4-r1-rest-authorizer-id
+      Name: ${self:custom.resourcePrefix}-rest-authorizer-id
 
   ChatResourceId:
     Description: Chat Resource ID
     Value:
       Ref: ChatResource
     Export:
-      Name: espectra-backend-dev-v4-r1-chat-resource-id
+      Name: ${self:custom.resourcePrefix}-chat-resource-id
 
   SessionsResourceId:
     Description: Sessions Resource ID
     Value:
       Ref: SessionsResource
     Export:
-      Name: espectra-backend-dev-v4-r1-sessions-resource-id
+      Name: ${self:custom.resourcePrefix}-sessions-resource-id
 
   MessagesResourceId:
     Description: Messages Resource ID
     Value:
       Ref: MessagesResource
     Export:
-      Name: espectra-backend-dev-v4-r1-messages-resource-id
+      Name: ${self:custom.resourcePrefix}-messages-resource-id
 
   HandoffResourceId:
     Description: Handoff Resource ID
     Value:
       Ref: HandoffResource
     Export:
-      Name: espectra-backend-dev-v4-r1-handoff-resource-id
+      Name: ${self:custom.resourcePrefix}-handoff-resource-id
 
   WebACLId:
     Description: ID of the Web ACL
     Value:
       Fn::GetAtt: [SpectraWebACL, Id]
     Export:
-      Name: espectra-backend-dev-v4-r1-waf-id
+      Name: ${self:custom.resourcePrefix}-waf-id
 
   WebACLArn:
     Description: ARN of the Web ACL
     Value:
       Fn::GetAtt: [SpectraWebACL, Arn]
     Export:
-      Name: espectra-backend-dev-v4-r1-waf-arn
+      Name: ${self:custom.resourcePrefix}-waf-arn
 
   IPSetId:
     Description: ID of the IP Set
     Value:
       Ref: IPSet
     Export:
-      Name: espectra-backend-dev-v4-r1-ipset-id
+      Name: ${self:custom.resourcePrefix}-ipset-id
 
   WafLogGroupName:
     Description: Name of the WAF Log Group
     Value:
       Ref: WafLogGroup
     Export:
-      Name: espectra-backend-dev-v4-r1-waf-log-group
+      Name: ${self:custom.resourcePrefix}-waf-log-group
 
   WebSocketIPSetId:
     Description: WebSocket IP Set ID
     Value:
       Ref: WebSocketIPSet
     Export:
-      Name: espectra-backend-dev-v4-r1-websocket-ipset-id
+      Name: ${self:custom.resourcePrefix}-websocket-ipset-id
 
   WebSocketApiId:
     Description: WebSocket API ID
     Value:
       Ref: WebSocketApi
     Export:
-      Name: espectra-backend-dev-v4-r1-websocket-api-id
+      Name: ${self:custom.resourcePrefix}-websocket-api-id
 
   WebSocketApiEndpoint:
     Description: WebSocket API Endpoint
     Value:
       Fn::Sub: 'https://${WebSocketApi}.execute-api.${AWS::Region}.amazonaws.com/dev'
     Export:
-      Name: espectra-backend-dev-v4-r1-websocket-endpoint
+      Name: ${self:custom.resourcePrefix}-websocket-endpoint
 
   WebSocketStageArn:
     Description: WebSocket Stage ARN
     Value:
       Fn::Sub: 'arn:aws:apigateway:${AWS::Region}::/apis/${WebSocketApi}/stages/dev'
     Export:
-      Name: espectra-backend-dev-v4-r1-websocket-stage-arn
+      Name: ${self:custom.resourcePrefix}-websocket-stage-arn

@@ -2,7 +2,7 @@ Resources:
   BotpressEventBus:
     Type: AWS::Events::EventBus
     Properties:
-      Name: ${self:custom.service}-${self:provider.stage}-botpress-events
+      Name: ${self:custom.resourcePrefix}-botpress-events
       Tags:
         - Key: Service
           Value: ${self:custom.service}
@@ -14,7 +14,7 @@ Resources:
   BotpressEventRule:
     Type: AWS::Events::Rule
     Properties:
-      Name: ${self:custom.service}-${self:provider.stage}-botpress-events-rule
+      Name: ${self:custom.resourcePrefix}-botpress-events-rule
       Description: Route Botpress events to appropriate targets
       EventBusName: !Ref BotpressEventBus
       EventPattern:
@@ -39,7 +39,7 @@ Resources:
   BotpressMetricsRule:
     Type: AWS::Events::Rule
     Properties:
-      Name: ${self:custom.service}-${self:provider.stage}-botpress-metrics-rule
+      Name: ${self:custom.resourcePrefix}-botpress-metrics-rule
       Description: Collect Botpress metrics
       EventBusName: !Ref BotpressEventBus
       EventPattern:
@@ -60,7 +60,7 @@ Resources:
   BotpressMetricsDLQ:
     Type: AWS::SQS::Queue
     Properties:
-      QueueName: ${self:custom.service}-${self:provider.stage}-botpress-metrics-dlq
+      QueueName: ${self:custom.resourcePrefix}-botpress-metrics-dlq
       MessageRetentionPeriod: 1209600 # 14 days
       KmsMasterKeyId: 
         Fn::ImportValue: ${self:custom.resourcePrefix}-kms-SystemKeyArn
@@ -73,7 +73,7 @@ Resources:
   BotpressMetricsRole:
     Type: AWS::IAM::Role
     Properties:
-      RoleName: ${self:custom.service}-${self:provider.stage}-botpress-metrics-role
+      RoleName: ${self:custom.resourcePrefix}-botpress-metrics-role
       AssumeRolePolicyDocument:
         Version: '2012-10-17'
         Statement:
@@ -106,7 +106,7 @@ Resources:
   BotpressEventFailureAlarm:
     Type: AWS::CloudWatch::Alarm
     Properties:
-      AlarmName: ${self:custom.service}-${self:provider.stage}-botpress-events-failure
+      AlarmName: ${self:custom.resourcePrefix}-botpress-events-failure
       AlarmDescription: Alert on Botpress event processing failures
       MetricName: FailedInvocations
       Namespace: AWS/Events
@@ -125,7 +125,7 @@ Resources:
   BotpressMetricsDLQAlarm:
     Type: AWS::CloudWatch::Alarm
     Properties:
-      AlarmName: ${self:custom.service}-${self:provider.stage}-botpress-metrics-dlq
+      AlarmName: ${self:custom.resourcePrefix}-botpress-metrics-dlq
       AlarmDescription: Alert on messages in Botpress metrics DLQ
       MetricName: ApproximateNumberOfMessagesVisible
       Namespace: AWS/SQS
@@ -147,11 +147,11 @@ Outputs:
     Value:
       Fn::GetAtt: [BotpressEventBus, Arn]
     Export:
-      Name: espectra-backend-dev-v4-r1-eventbus-arn
+      Name: ${self:custom.resourcePrefix}-eventbus-arn
 
   EventBusName:
     Description: Name of the Botpress Event Bus
     Value:
       Ref: BotpressEventBus
     Export:
-      Name: espectra-backend-dev-v4-r1-eventbus-name
+      Name: ${self:custom.resourcePrefix}-eventbus-name

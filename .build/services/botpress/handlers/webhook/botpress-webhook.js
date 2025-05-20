@@ -96,7 +96,7 @@ async function sendToProcessingQueue(webhookData) {
     const logger = new logger_1.Logger('WebhookQueueSender');
     const sqsClient = new client_sqs_1.SQSClient({});
     const queueUrl = process.env.BOTPRESS_WEBHOOK_QUEUE_URL ||
-        `https://sqs.${process.env.AWS_REGION}.amazonaws.com/${process.env.AWS_ACCOUNT_ID}/${process.env.SERVICE_NAME}-${process.env.STAGE}-botpress-webhook-queue`;
+        `https://sqs.${process.env.AWS_REGION}.amazonaws.com/${process.env.AWS_ACCOUNT_ID}/${process.env.RESOURCE_PREFIX}-botpress-webhook-queue`;
     try {
         await sqsClient.send(new client_sqs_1.SendMessageCommand({
             QueueUrl: queueUrl,

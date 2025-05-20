@@ -35,9 +35,9 @@ class TokenManagementService {
         this.cacheService = cache_service_1.CacheService.getInstance();
         this.logger = new logger_1.Logger('TokenManagementService');
         this.metrics = new metrics_1.MetricsService('TokenManagement');
-        this.tableName = process.env.TOKEN_TABLE || `${process.env.SERVICE_NAME}-${process.env.STAGE}-token-usage-table`;
-        this.usersTableName = process.env.USERS_TABLE || `${process.env.SERVICE_NAME}-${process.env.STAGE}-users`;
-        this.eventBusName = process.env.EVENT_BUS_NAME || `${process.env.SERVICE_NAME}-${process.env.STAGE}-event-bus`;
+        this.tableName = process.env.TOKEN_TABLE || `${process.env.RESOURCE_PREFIX}-token-usage-table`;
+        this.usersTableName = process.env.USERS_TABLE || `${process.env.RESOURCE_PREFIX}-users`;
+        this.eventBusName = process.env.EVENT_BUS_NAME || `${process.env.RESOURCE_PREFIX}-event-bus`;
         this.tokenLimits = {
             [token_management_types_1.UserPlan.BASIC]: parseInt(process.env.TOKEN_LIMIT_BASIC || '1000'),
             [token_management_types_1.UserPlan.PRO]: parseInt(process.env.TOKEN_LIMIT_PRO || '2000'),

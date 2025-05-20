@@ -27,7 +27,7 @@ class ConversationContextService {
         this.cacheService = cache_service_1.CacheService.getInstance();
         this.logger = new logger_1.Logger('ConversationContextService');
         this.metrics = new metrics_1.MetricsService('ConversationContext');
-        this.tableName = process.env.CONTEXT_TABLE || `${process.env.SERVICE_NAME}-${process.env.STAGE}-conversation-context-table`;
+        this.tableName = process.env.CONTEXT_TABLE || `${process.env.RESOURCE_PREFIX}-conversation-context-table`;
     }
     static getInstance() {
         if (!ConversationContextService.instance) {

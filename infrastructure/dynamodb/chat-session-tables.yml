@@ -4,7 +4,7 @@ Resources:
     DeletionPolicy: Retain
     UpdateReplacePolicy: Retain
     Properties:
-      TableName: ${self:custom.service}-${self:provider.stage}-chat-sessions
+      TableName: ${self:custom.resourcePrefix}-chat-sessions
       BillingMode: PAY_PER_REQUEST
       AttributeDefinitions:
         - AttributeName: sessionId
@@ -84,7 +84,7 @@ Resources:
     DeletionPolicy: Retain
     UpdateReplacePolicy: Retain
     Properties:
-      TableName: ${self:custom.service}-${self:provider.stage}-session-metrics
+      TableName: ${self:custom.resourcePrefix}-session-metrics
       BillingMode: PAY_PER_REQUEST
       AttributeDefinitions:
         - AttributeName: sessionId
@@ -143,7 +143,7 @@ Resources:
   ChatSessionsTableThrottlingAlarm:
     Type: AWS::CloudWatch::Alarm
     Properties:
-      AlarmName: ${self:custom.service}-${self:provider.stage}-chat-sessions-throttling
+      AlarmName: ${self:custom.resourcePrefix}-chat-sessions-throttling
       AlarmDescription: Chat Sessions table throttled requests exceed threshold
       MetricName: ThrottledRequests
       Namespace: AWS/DynamoDB
@@ -166,7 +166,7 @@ Resources:
   SessionMetricsTableThrottlingAlarm:
     Type: AWS::CloudWatch::Alarm
     Properties:
-      AlarmName: ${self:custom.service}-${self:provider.stage}-session-metrics-throttling
+      AlarmName: ${self:custom.resourcePrefix}-session-metrics-throttling
       AlarmDescription: Session Metrics table throttled requests exceed threshold
       MetricName: ThrottledRequests
       Namespace: AWS/DynamoDB
@@ -189,7 +189,7 @@ Resources:
   SessionLatencyAlarm:
     Type: AWS::CloudWatch::Alarm
     Properties:
-      AlarmName: ${self:custom.service}-${self:provider.stage}-sessions-latency
+      AlarmName: ${self:custom.resourcePrefix}-sessions-latency
       AlarmDescription: Session operations latency exceeds threshold
       MetricName: SuccessfulRequestLatency
       Namespace: AWS/DynamoDB
@@ -212,7 +212,7 @@ Resources:
   ActiveSessionsAlarm:
     Type: AWS::CloudWatch::Alarm
     Properties:
-      AlarmName: ${self:custom.service}-${self:provider.stage}-active-sessions
+      AlarmName: ${self:custom.resourcePrefix}-active-sessions
       AlarmDescription: Number of active sessions exceeds threshold
       MetricName: ActiveSessions
       Namespace: ${self:custom.service}/${self:provider.stage}
@@ -232,24 +232,28 @@ Resources:
 Outputs:
   ChatSessionsTableName:
     Description: Name of the Chat Sessions table
-    Value: !Ref ChatSessionsTable
+    Value:
+      Ref: ChatSessionsTable
     Export:
-      Name: ${self:custom.service}-${self:provider.stage}-chat-sessions-table-name
+      Name: ${self:custom.resourcePrefix}-chat-sessions-table-name
 
   ChatSessionsTableArn:
     Description: ARN of the Chat Sessions table
-    Value: !GetAtt ChatSessionsTable.Arn
+    Value:
+      Fn::GetAtt: [ChatSessionsTable, Arn]
     Export:
-      Name: ${self:custom.service}-${self:provider.stage}-chat-sessions-table-arn
+      Name: ${self:custom.resourcePrefix}-chat-sessions-table-arn
 
   SessionMetricsTableName:
     Description: Name of the Session Metrics table
-    Value: !Ref SessionMetricsTable
+    Value:
+      Ref: SessionMetricsTable
     Export:
-      Name: ${self:custom.service}-${self:provider.stage}-session-metrics-table-name
+      Name: ${self:custom.resourcePrefix}-session-metrics-table-name
 
   SessionMetricsTableArn:
     Description: ARN of the Session Metrics table
-    Value: !GetAtt SessionMetricsTable.Arn
+    Value:
+      Fn::GetAtt: [SessionMetricsTable, Arn]
     Export:
-      Name: ${self:custom.service}-${self:provider.stage}-session-metrics-table-arn
+      Name: ${self:custom.resourcePrefix}-session-metrics-table-arn

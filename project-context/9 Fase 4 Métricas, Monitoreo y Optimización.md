@@ -43,7 +43,7 @@ export class BusinessMetricsService {
     this.logger = new Logger('BusinessMetricsService');
     
     this.namespace = process.env.METRICS_NAMESPACE || `${process.env.SERVICE_NAME}/${process.env.STAGE}`;
-    this.metricsTableName = process.env.BOTPRESS_METRICS_TABLE || `${process.env.SERVICE_NAME}-${process.env.STAGE}-botpress-metrics-table`;
+    this.metricsTableName = process.env.BOTPRESS_METRICS_TABLE || `${process.env.RESOURCE_PREFIX}-botpress-metrics-table`;
   }
 
   public static getInstance(): BusinessMetricsService {

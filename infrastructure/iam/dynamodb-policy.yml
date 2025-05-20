@@ -1,0 +1,28 @@
+Resources:
+  DynamoDBPolicy:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyName: ${self:custom.resourcePrefix}-dynamodb-policy
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Action:
+              - dynamodb:GetItem
+              - dynamodb:PutItem
+              - dynamodb:UpdateItem
+              - dynamodb:DeleteItem
+              - dynamodb:Query
+              - dynamodb:Scan
+              - dynamodb:BatchGetItem
+              - dynamodb:BatchWriteItem
+              - dynamodb:ConditionCheckItem
+              - dynamodb:TransactGetItems
+              - dynamodb:TransactWriteItems
+            Resource:
+              - arn:aws:dynamodb:${self:provider.region}:*:table/espectra-backend-dev-v4-r1-users
+              - arn:aws:dynamodb:${self:provider.region}:*:table/espectra-backend-dev-v4-r1-users/index/*
+              - arn:aws:dynamodb:${self:provider.region}:*:table/espectra-backend-dev-users
+              - arn:aws:dynamodb:${self:provider.region}:*:table/espectra-backend-dev-users/index/*
+      Roles:
+        - Fn::ImportValue: ${self:custom.resourcePrefix}-lambda-role-name

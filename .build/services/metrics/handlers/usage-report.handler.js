@@ -22,7 +22,7 @@ const usageReportHandler = async (event) => {
         const ddbClient = new client_dynamodb_1.DynamoDBClient({});
         const documentClient = lib_dynamodb_1.DynamoDBDocumentClient.from(ddbClient);
         const tokenTableName = process.env.TOKEN_TABLE ||
-            `${process.env.SERVICE_NAME}-${process.env.STAGE}-token-usage-table`;
+            `${process.env.RESOURCE_PREFIX}-token-usage-table`;
         const tokenUsageResult = await documentClient.send(new lib_dynamodb_1.QueryCommand({
             TableName: tokenTableName,
             KeyConditionExpression: 'userId = :userId AND #date BETWEEN :startDate AND :endDate',
@@ -42,7 +42,7 @@ const usageReportHandler = async (event) => {
         const currentPlan = tokenUsage.length > 0 ?
             tokenUsage[tokenUsage.length - 1].plan : 'unknown';
         const handoffTableName = process.env.HANDOFF_TABLE ||
-            `${process.env.SERVICE_NAME}-${process.env.STAGE}-handoff-requests`;
+            `${process.env.RESOURCE_PREFIX}-handoff-requests`;
         const handoffResult = await documentClient.send(new lib_dynamodb_1.QueryCommand({
             TableName: handoffTableName,
             IndexName: 'UserIdCreatedAtIndex',

@@ -2,7 +2,7 @@ Resources:
   MessageQueue:
     Type: AWS::SQS::Queue
     Properties:
-      QueueName: ${self:custom.service}-${self:provider.stage}-messages.fifo
+      QueueName: ${self:custom.resourcePrefix}-messages.fifo
       FifoQueue: true
       ContentBasedDeduplication: true
       VisibilityTimeout: 60
@@ -26,7 +26,7 @@ Resources:
   MessageDLQ:
     Type: AWS::SQS::Queue
     Properties:
-      QueueName: ${self:custom.service}-${self:provider.stage}-messages-dlq.fifo
+      QueueName: ${self:custom.resourcePrefix}-messages-dlq.fifo
       FifoQueue: true
       MessageRetentionPeriod: 1209600 # 14 días
       KmsMasterKeyId: ${self:custom.kms.systemKeyArn}
@@ -45,7 +45,7 @@ Resources:
   HandoffQueue:
     Type: AWS::SQS::Queue
     Properties:
-      QueueName: ${self:custom.service}-${self:provider.stage}-handoff.fifo
+      QueueName: ${self:custom.resourcePrefix}-handoff.fifo
       FifoQueue: true
       ContentBasedDeduplication: true
       VisibilityTimeout: ${self:custom.handoff.maxWaitTime}
@@ -69,7 +69,7 @@ Resources:
   HandoffDLQ:
     Type: AWS::SQS::Queue
     Properties:
-      QueueName: ${self:custom.service}-${self:provider.stage}-handoff-dlq.fifo
+      QueueName: ${self:custom.resourcePrefix}-handoff-dlq.fifo
       FifoQueue: true
       MessageRetentionPeriod: 86400 # 1 día
       KmsMasterKeyId: ${self:custom.kms.systemKeyArn}
@@ -112,7 +112,7 @@ Resources:
   MessageQueueDepthAlarm:
     Type: AWS::CloudWatch::Alarm
     Properties:
-      AlarmName: ${self:custom.service}-${self:provider.stage}-message-queue-depth
+      AlarmName: ${self:custom.resourcePrefix}-message-queue-depth
       AlarmDescription: Alert when message queue depth is too high
       MetricName: ApproximateNumberOfMessagesVisible
       Namespace: AWS/SQS
@@ -135,7 +135,7 @@ Resources:
   HandoffQueueDepthAlarm:
     Type: AWS::CloudWatch::Alarm
     Properties:
-      AlarmName: ${self:custom.service}-${self:provider.stage}-handoff-queue-depth
+      AlarmName: ${self:custom.resourcePrefix}-handoff-queue-depth
       AlarmDescription: Alert when handoff queue depth is too high
       MetricName: ApproximateNumberOfMessagesVisible
       Namespace: AWS/SQS
@@ -159,7 +159,7 @@ Resources:
   MessageDLQDepthAlarm:
     Type: AWS::CloudWatch::Alarm
     Properties:
-      AlarmName: ${self:custom.service}-${self:provider.stage}-message-dlq-depth
+      AlarmName: ${self:custom.resourcePrefix}-message-dlq-depth
       AlarmDescription: Alert when messages appear in message DLQ
       MetricName: ApproximateNumberOfMessagesVisible
       Namespace: AWS/SQS
@@ -182,7 +182,7 @@ Resources:
   HandoffDLQDepthAlarm:
     Type: AWS::CloudWatch::Alarm
     Properties:
-      AlarmName: ${self:custom.service}-${self:provider.stage}-handoff-dlq-depth
+      AlarmName: ${self:custom.resourcePrefix}-handoff-dlq-depth
       AlarmDescription: Alert when messages appear in handoff DLQ
       MetricName: ApproximateNumberOfMessagesVisible
       Namespace: AWS/SQS
@@ -208,39 +208,39 @@ Outputs:
     Value:
       Ref: MessageQueue
     Export:
-      Name: espectra-backend-dev-v4-r1-message-queue-url
+      Name: ${self:custom.resourcePrefix}-message-queue-url
 
   MessageQueueArn:
     Description: ARN of the message queue
     Value:
       Fn::GetAtt: [MessageQueue, Arn]
     Export:
-      Name: espectra-backend-dev-v4-r1-message-queue-arn
+      Name: ${self:custom.resourcePrefix}-message-queue-arn
 
   HandoffQueueUrl:
     Description: URL of the handoff queue
     Value:
       Ref: HandoffQueue
     Export:
-      Name: espectra-backend-dev-v4-r1-handoff-queue-url
+      Name: ${self:custom.resourcePrefix}-handoff-queue-url
 
   HandoffQueueArn:
     Description: ARN of the handoff queue
     Value:
       Fn::GetAtt: [HandoffQueue, Arn]
     Export:
-      Name: espectra-backend-dev-v4-r1-handoff-queue-arn
+      Name: ${self:custom.resourcePrefix}-handoff-queue-arn
 
   MessageDLQUrl:
     Description: URL of the message DLQ
     Value:
       Ref: MessageDLQ
     Export:
-      Name: espectra-backend-dev-v4-r1-message-dlq-url
+      Name: ${self:custom.resourcePrefix}-message-dlq-url
 
   HandoffDLQUrl:
     Description: URL of the handoff DLQ
     Value:
       Ref: HandoffDLQ
     Export:
-      Name: espectra-backend-dev-v4-r1-handoff-dlq-url
+      Name: ${self:custom.resourcePrefix}-handoff-dlq-url

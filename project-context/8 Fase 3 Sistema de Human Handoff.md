@@ -113,7 +113,7 @@ export class AdvisorQueueService {
     this.logger = new Logger('AdvisorQueueService');
     
     this.queueUrl = process.env.HANDOFF_QUEUE_URL || '';
-    this.handoffTableName = process.env.HANDOFF_TABLE || `${process.env.SERVICE_NAME}-${process.env.STAGE}-handoff-table`;
+    this.handoffTableName = process.env.HANDOFF_TABLE || `${process.env.RESOURCE_PREFIX}-handoff-table`;
   }
 
   public static getInstance(): AdvisorQueueService {

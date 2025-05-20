@@ -37,7 +37,7 @@ export class ConversationContextService {
     this.dynamoDbClient = DynamoDBDocumentClient.from(client);
     this.cacheService = CacheService.getInstance();
     this.logger = new Logger('ConversationContextService');
-    this.tableName = process.env.CONTEXT_TABLE || `${process.env.SERVICE_NAME}-${process.env.STAGE}-conversation-context-table`;
+    this.tableName = process.env.CONTEXT_TABLE || `${process.env.RESOURCE_PREFIX}-conversation-context-table`;
   }
 
   public static getInstance(): ConversationContextService {
@@ -106,7 +106,7 @@ export class TokenManagementService {
     const client = new DynamoDBClient({});
     this.dynamoDbClient = DynamoDBDocumentClient.from(client);
     this.logger = new Logger('TokenManagementService');
-    this.tableName = process.env.TOKEN_TABLE || `${process.env.SERVICE_NAME}-${process.env.STAGE}-token-usage-table`;
+    this.tableName = process.env.TOKEN_TABLE || `${process.env.RESOURCE_PREFIX}-token-usage-table`;
     
     // Configurar límites de tokens por plan según documentación
     this.tokenLimits = {

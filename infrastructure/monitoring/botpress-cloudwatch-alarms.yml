@@ -3,7 +3,7 @@ Resources:
   BotpressHealthAlarm:
     Type: AWS::CloudWatch::CompositeAlarm
     Properties:
-      AlarmName: ${self:custom.service}-${self:provider.stage}-botpress-health
+      AlarmName: ${self:custom.resourcePrefix}-botpress-health
       AlarmDescription: Overall Botpress service health status
       AlarmRule: !Join
         - ''
@@ -38,7 +38,7 @@ Resources:
   BotpressErrorRateAlarm:
     Type: AWS::CloudWatch::Alarm
     Properties:
-      AlarmName: ${self:custom.service}-${self:provider.stage}-botpress-error-rate
+      AlarmName: ${self:custom.resourcePrefix}-botpress-error-rate
       AlarmDescription: !Sub "Botpress error rate exceeds ${self:custom.botpressAlarmThresholds.errorRate}%"
       MetricName: ErrorRate
       Namespace: Spectra/Botpress
@@ -65,7 +65,7 @@ Resources:
   BotpressLatencyAlarm:
     Type: AWS::CloudWatch::Alarm
     Properties:
-      AlarmName: ${self:custom.service}-${self:provider.stage}-botpress-latency
+      AlarmName: ${self:custom.resourcePrefix}-botpress-latency
       AlarmDescription: !Sub "Botpress response latency exceeds ${self:custom.botpressAlarmThresholds.latency}ms"
       MetricName: MessageLatency
       Namespace: Spectra/Botpress
@@ -92,7 +92,7 @@ Resources:
   HandoffQueueSizeAlarm:
     Type: AWS::CloudWatch::Alarm
     Properties:
-      AlarmName: ${self:custom.service}-${self:provider.stage}-handoff-queue-size
+      AlarmName: ${self:custom.resourcePrefix}-handoff-queue-size
       AlarmDescription: !Sub "Handoff queue size exceeds ${self:custom.botpressAlarmThresholds.handoffQueueSize} messages"
       MetricName: HandoffQueueSize
       Namespace: Spectra/Botpress
@@ -118,7 +118,7 @@ Resources:
   HandoffLatencyAlarm:
     Type: AWS::CloudWatch::Alarm
     Properties:
-      AlarmName: ${self:custom.service}-${self:provider.stage}-handoff-latency
+      AlarmName: ${self:custom.resourcePrefix}-handoff-latency
       AlarmDescription: !Sub "Handoff process latency exceeds ${self:custom.botpressAlarmThresholds.handoffLatency}ms"
       MetricName: HandoffLatency
       Namespace: Spectra/Botpress
@@ -145,7 +145,7 @@ Resources:
   TokenLimitAlarm:
     Type: AWS::CloudWatch::Alarm
     Properties:
-      AlarmName: ${self:custom.service}-${self:provider.stage}-token-usage
+      AlarmName: ${self:custom.resourcePrefix}-token-usage
       AlarmDescription: !Sub "Token usage exceeds ${self:custom.botpressAlarmThresholds.tokenUsage}% of limit"
       MetricName: TokenUsagePercentage
       Namespace: Spectra/Botpress
@@ -171,7 +171,7 @@ Resources:
   TokenExhaustionAlarm:
     Type: AWS::CloudWatch::Alarm
     Properties:
-      AlarmName: ${self:custom.service}-${self:provider.stage}-token-exhaustion
+      AlarmName: ${self:custom.resourcePrefix}-token-exhaustion
       AlarmDescription: Alert when token usage is near exhaustion
       MetricName: TokenUsagePercentage
       Namespace: Spectra/Botpress
@@ -197,7 +197,7 @@ Resources:
   HandoffSuccessRateAlarm:
     Type: AWS::CloudWatch::Alarm
     Properties:
-      AlarmName: ${self:custom.service}-${self:provider.stage}-handoff-success-rate
+      AlarmName: ${self:custom.resourcePrefix}-handoff-success-rate
       AlarmDescription: !Sub "Handoff success rate below ${self:custom.botpressAlarmThresholds.handoffSuccessRate}%"
       MetricName: HandoffSuccessRate
       Namespace: Spectra/Botpress
@@ -224,7 +224,7 @@ Resources:
   BotpressIntegrationHealthAlarm:
     Type: AWS::CloudWatch::Alarm
     Properties:
-      AlarmName: ${self:custom.service}-${self:provider.stage}-botpress-integration-health
+      AlarmName: ${self:custom.resourcePrefix}-botpress-integration-health
       AlarmDescription: Monitor Botpress integration health status
       MetricName: IntegrationHealth
       Namespace: Spectra/Botpress
@@ -252,7 +252,7 @@ Outputs:
     Description: ARN of the Botpress health composite alarm
     Value: !GetAtt BotpressHealthAlarm.Arn
     Export:
-      Name: ${self:custom.service}-${self:provider.stage}-botpress-health-alarm-arn
+      Name: ${self:custom.resourcePrefix}-botpress-health-alarm-arn
 
   BotpressHighPriorityAlarms:
     Description: List of Botpress high priority alarm ARNs
@@ -265,7 +265,7 @@ Outputs:
           - !GetAtt TokenExhaustionAlarm.Arn
           - !GetAtt BotpressIntegrationHealthAlarm.Arn
     Export:
-      Name: ${self:custom.service}-${self:provider.stage}-botpress-high-priority-alarms
+      Name: ${self:custom.resourcePrefix}-botpress-high-priority-alarms
 
   BotpressMediumPriorityAlarms:
     Description: List of Botpress medium priority alarm ARNs
@@ -277,4 +277,4 @@ Outputs:
           - !GetAtt HandoffLatencyAlarm.Arn
           - !GetAtt HandoffSuccessRateAlarm.Arn
     Export:
-      Name: ${self:custom.service}-${self:provider.stage}-botpress-medium-priority-alarms
+      Name: ${self:custom.resourcePrefix}-botpress-medium-priority-alarms

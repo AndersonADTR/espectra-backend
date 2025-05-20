@@ -14,7 +14,7 @@ export class MetricsModel {
     const client = new DynamoDBClient({});
     this.dynamodb = DynamoDBDocumentClient.from(client);
     this.logger = new Logger('MetricsModel');
-    this.tableName = `${process.env.SERVICE_NAME}-${process.env.STAGE}-metrics`;
+    this.tableName = `${process.env.RESOURCE_PREFIX}-metrics`;
   }
 
   async recordMetric(metric: MetricRecord): Promise<void> {

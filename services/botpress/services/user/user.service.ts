@@ -37,7 +37,7 @@ export class UserService {
     this.logger = new Logger('UserService');
     this.cacheService = CacheService.getInstance();
     this.usersTableName = process.env.USERS_TABLE ||
-      `${process.env.SERVICE_NAME}-${process.env.STAGE}-users`;
+      `${process.env.RESOURCE_PREFIX}-users`;
   }
 
   public static getInstance(): UserService {

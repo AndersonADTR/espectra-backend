@@ -2,7 +2,7 @@ Resources:
   RegistrationRequestsTable:
     Type: AWS::DynamoDB::Table
     Properties:
-      TableName: ${self:custom.service}-${self:provider.stage}-registration-requests
+      TableName: ${self:custom.resourcePrefix}-registration-requests
       BillingMode: PAY_PER_REQUEST
       AttributeDefinitions:
         - AttributeName: email
@@ -67,7 +67,7 @@ Resources:
   RegistrationRequestsTableReadThrottleAlarm:
     Type: AWS::CloudWatch::Alarm
     Properties:
-      AlarmName: ${self:custom.service}-${self:provider.stage}-registration-requests-read-throttle
+      AlarmName: ${self:custom.resourcePrefix}-registration-requests-read-throttle
       AlarmDescription: Registration requests table read capacity throttling
       MetricName: ReadThrottleEvents
       Namespace: AWS/DynamoDB
@@ -91,7 +91,7 @@ Resources:
   RegistrationRequestsTableWriteThrottleAlarm:
     Type: AWS::CloudWatch::Alarm
     Properties:
-      AlarmName: ${self:custom.service}-${self:provider.stage}-registration-requests-write-throttle
+      AlarmName: ${self:custom.resourcePrefix}-registration-requests-write-throttle
       AlarmDescription: Registration requests table write capacity throttling
       MetricName: WriteThrottleEvents
       Namespace: AWS/DynamoDB
@@ -115,7 +115,7 @@ Resources:
   RegistrationRequestsTableSystemErrorsAlarm:
     Type: AWS::CloudWatch::Alarm
     Properties:
-      AlarmName: ${self:custom.service}-${self:provider.stage}-registration-requests-system-errors
+      AlarmName: ${self:custom.resourcePrefix}-registration-requests-system-errors
       AlarmDescription: Registration requests table system errors
       MetricName: SystemErrors
       Namespace: AWS/DynamoDB
@@ -139,12 +139,14 @@ Resources:
 Outputs:
   RegistrationRequestsTableName:
     Description: Name of the Registration Requests table
-    Value: !Ref RegistrationRequestsTable
+    Value:
+      Ref: RegistrationRequestsTable
     Export:
-      Name: ${self:custom.service}-${self:provider.stage}-registration-requests-table-name
+      Name: ${self:custom.resourcePrefix}-registration-requests-table-name
 
   RegistrationRequestsTableArn:
     Description: ARN of the Registration Requests table
-    Value: !GetAtt RegistrationRequestsTable.Arn
+    Value:
+      Fn::GetAtt: [RegistrationRequestsTable, Arn]
     Export:
-      Name: ${self:custom.service}-${self:provider.stage}-registration-requests-table-arn
+      Name: ${self:custom.resourcePrefix}-registration-requests-table-arn

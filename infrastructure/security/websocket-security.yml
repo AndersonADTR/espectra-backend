@@ -18,7 +18,7 @@ Resources:
   # WebSocketWAFRules:
   #   Type: AWS::WAFv2::WebACL
   #   Properties:
-  #     Name: ${self:custom.service}-${self:provider.stage}-websocket-waf
+  #     Name: ${self:custom.resourcePrefix}-websocket-waf
   #     Description: WAF rules for WebSocket API
   #     Scope: REGIONAL
   #     DefaultAction:
@@ -74,7 +74,7 @@ Resources:
   WebSocketWAFLogGroup:
     Type: AWS::Logs::LogGroup
     Properties:
-      LogGroupName: /aws/waf/websocket/${self:custom.service}-${self:provider.stage}-logs
+      LogGroupName: /aws/waf/websocket/${self:custom.resourcePrefix}-logs
       RetentionInDays: ${self:custom.logRetentionInDays}
       KmsKeyId:
         Fn::ImportValue: ${self:custom.resourcePrefix}-kms-SystemKeyArn
@@ -110,7 +110,7 @@ Resources:
   WebSocketIPSet:
     Type: AWS::WAFv2::IPSet
     Properties:
-      Name: ${self:custom.service}-${self:provider.stage}-websocket-ipset
+      Name: ${self:custom.resourcePrefix}-websocket-ipset
       Description: IP Set for dynamic blocking of WebSocket connections
       Scope: REGIONAL
       IPAddressVersion: IPV4
@@ -125,7 +125,7 @@ Resources:
   WebSocketAuthorizerErrorsAlarm:
     Type: AWS::CloudWatch::Alarm
     Properties:
-      AlarmName: ${self:custom.service}-${self:provider.stage}-websocket-authorizer-errors
+      AlarmName: ${self:custom.resourcePrefix}-websocket-authorizer-errors
       AlarmDescription: WebSocket authorizer errors exceeding threshold
       MetricName: Errors
       Namespace: AWS/Lambda
@@ -143,7 +143,7 @@ Resources:
   WebSocketWAFBlocksAlarm:
     Type: AWS::CloudWatch::Alarm
     Properties:
-      AlarmName: ${self:custom.service}-${self:provider.stage}-waf-blocks
+      AlarmName: ${self:custom.resourcePrefix}-waf-blocks
       AlarmDescription: High number of WAF blocked requests
       MetricName: BlockedRequests
       Namespace: AWS/WAFV2
@@ -154,7 +154,7 @@ Resources:
       ComparisonOperator: GreaterThanThreshold
       Dimensions:
         - Name: WebACL
-          Value: ${self:custom.service}-${self:provider.stage}-websocket-waf
+          Value: ${self:custom.resourcePrefix}-websocket-waf
         - Name: Region
           Value: ${self:provider.region}
       AlarmActions:
@@ -171,11 +171,11 @@ Outputs:
   #   Description: WebSocket WAF ARN
   #   Value: !GetAtt WebSocketWAFRules.Arn
   #   Export:
-  #     Name: ${self:custom.service}-${self:provider.stage}-websocket-waf-arn
+  #     Name: ${self:custom.resourcePrefix}-websocket-waf-arn
 
   WebSocketIPSetId:
     Description: WebSocket IP Set ID
     Value:
       Ref: WebSocketIPSet
     Export:
-      Name: espectra-backend-dev-v4-r1-websocket-ipset-id
+      Name: ${self:custom.resourcePrefix}-websocket-ipset-id

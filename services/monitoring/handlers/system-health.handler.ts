@@ -291,7 +291,7 @@ async function checkWebSocketHealth(
 ): Promise<HealthCheckResult> {
   // Nombre de la tabla de conexiones WebSocket
   const connectionsTableName = process.env.CONNECTIONS_TABLE || 
-    `${process.env.SERVICE_NAME}-${process.env.STAGE}-websocket-connections`;
+    `${process.env.RESOURCE_PREFIX}-websocket-connections`;
   
   // Contar conexiones activas
   const activeConnectionsResult = await dynamoDb.send(new ScanCommand({
@@ -530,7 +530,7 @@ async function saveHealthCheckResults(
 ): Promise<void> {
   // Nombre de la tabla de historial de salud
   const healthHistoryTable = process.env.HEALTH_HISTORY_TABLE || 
-    `${process.env.SERVICE_NAME}-${process.env.STAGE}-health-history`;
+    `${process.env.RESOURCE_PREFIX}-health-history`;
   
   const timestamp = new Date().toISOString();
   const ttl = Math.floor(Date.now() / 1000) + (30 * 24 * 60 * 60); // 30 días
@@ -600,7 +600,7 @@ async function sendAlerts(
           components: problematicComponents
         }),
         EventBusName: process.env.EVENT_BUS_NAME || 
-          `${process.env.SERVICE_NAME}-${process.env.STAGE}-event-bus`
+          `${process.env.RESOURCE_PREFIX}-event-bus`
       }
     ]
   }));

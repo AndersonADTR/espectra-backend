@@ -4,7 +4,7 @@ Resources:
     DeletionPolicy: Retain
     UpdateReplacePolicy: Retain
     Properties:
-      TableName: ${self:custom.service}-${self:provider.stage}-connections
+      TableName: ${self:custom.resourcePrefix}-connections
       BillingMode: PAY_PER_REQUEST
       AttributeDefinitions:
         - AttributeName: connectionId
@@ -61,7 +61,7 @@ Resources:
   ConnectionsTableThrottlingAlarm:
     Type: AWS::CloudWatch::Alarm
     Properties:
-      AlarmName: ${self:custom.service}-${self:provider.stage}-connections-throttling
+      AlarmName: ${self:custom.resourcePrefix}-connections-throttling
       AlarmDescription: Connections table throttled requests exceed threshold
       MetricName: ThrottledRequests
       Namespace: AWS/DynamoDB
@@ -84,7 +84,7 @@ Resources:
   ConnectionsLatencyAlarm:
     Type: AWS::CloudWatch::Alarm
     Properties:
-      AlarmName: ${self:custom.service}-${self:provider.stage}-connections-latency
+      AlarmName: ${self:custom.resourcePrefix}-connections-latency
       AlarmDescription: Connection operations latency exceeds threshold
       MetricName: SuccessfulRequestLatency
       Namespace: AWS/DynamoDB
@@ -107,7 +107,7 @@ Resources:
   ActiveConnectionsAlarm:
     Type: AWS::CloudWatch::Alarm
     Properties:
-      AlarmName: ${self:custom.service}-${self:provider.stage}-active-connections
+      AlarmName: ${self:custom.resourcePrefix}-active-connections
       AlarmDescription: Number of active connections exceeds threshold
       MetricName: ActiveConnections
       Namespace: ${self:custom.service}/${self:provider.stage}
@@ -127,24 +127,26 @@ Resources:
 Outputs:
   ConnectionsTableName:
     Description: Name of the Connections table
-    Value: !Ref ConnectionsTable
+    Value:
+      Ref: ConnectionsTable
     Export:
-      Name: ${self:custom.service}-${self:provider.stage}-connections-table-name
+      Name: ${self:custom.resourcePrefix}-connections-table-name
 
   ConnectionsTableArn:
     Description: ARN of the Connections table
-    Value: !GetAtt ConnectionsTable.Arn
+    Value:
+      Fn::GetAtt: [ConnectionsTable, Arn]
     Export:
-      Name: ${self:custom.service}-${self:provider.stage}-connections-table-arn
+      Name: ${self:custom.resourcePrefix}-connections-table-arn
 
   UserIdIndexName:
     Description: Name of the UserId GSI
     Value: UserIdIndex
     Export:
-      Name: ${self:custom.service}-${self:provider.stage}-connections-userid-index-name
+      Name: ${self:custom.resourcePrefix}-connections-userid-index-name
 
   StatusActivityIndexName:
     Description: Name of the Status Activity GSI
     Value: StatusActivityIndex
     Export:
-      Name: ${self:custom.service}-${self:provider.stage}-connections-status-activity-index-name
+      Name: ${self:custom.resourcePrefix}-connections-status-activity-index-name

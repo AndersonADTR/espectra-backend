@@ -22,7 +22,7 @@ class BusinessMetricsService {
         this.namespace = process.env.METRICS_NAMESPACE ||
             `${process.env.SERVICE_NAME}/${process.env.STAGE}`;
         this.tableName = process.env.METRICS_TABLE ||
-            `${process.env.SERVICE_NAME}-${process.env.STAGE}-metrics`;
+            `${process.env.RESOURCE_PREFIX}-metrics`;
         this.defaultDimensions = {
             Service: process.env.SERVICE_NAME || 'spectrum',
             Stage: process.env.STAGE || 'dev',

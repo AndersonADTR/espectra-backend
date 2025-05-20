@@ -2,7 +2,7 @@ Resources:
   BotpressDashboard:
     Type: AWS::CloudWatch::Dashboard
     Properties:
-      DashboardName: ${self:custom.service}-${self:provider.stage}-botpress
+      DashboardName: ${self:custom.resourcePrefix}-botpress
       DashboardBody: !Sub |
         {
           "widgets": [
@@ -176,7 +176,7 @@ Resources:
               "width": 24,
               "height": 6,
               "properties": {
-                "query": "SOURCE '/aws/lambda/${self:custom.service}-${self:provider.stage}-botpress' | fields @timestamp, @message\n| filter @message like /ERROR/\n| sort @timestamp desc\n| limit 100",
+                "query": "SOURCE '/aws/lambda/${self:custom.resourcePrefix}-botpress' | fields @timestamp, @message\n| filter @message like /ERROR/\n| sort @timestamp desc\n| limit 100",
                 "region": "${AWS::Region}",
                 "title": "Botpress Error Logs",
                 "view": "table"
@@ -189,14 +189,14 @@ Resources:
               "properties": {
                 "title": "Active Botpress Alarms",
                 "alarms": [
-                  "arn:aws:cloudwatch:${AWS::Region}:${AWS::AccountId}:alarm:${self:custom.service}-${self:provider.stage}-botpress-health",
-                  "arn:aws:cloudwatch:${AWS::Region}:${AWS::AccountId}:alarm:${self:custom.service}-${self:provider.stage}-botpress-error-rate",
-                  "arn:aws:cloudwatch:${AWS::Region}:${AWS::AccountId}:alarm:${self:custom.service}-${self:provider.stage}-botpress-latency",
-                  "arn:aws:cloudwatch:${AWS::Region}:${AWS::AccountId}:alarm:${self:custom.service}-${self:provider.stage}-handoff-queue-size",
-                  "arn:aws:cloudwatch:${AWS::Region}:${AWS::AccountId}:alarm:${self:custom.service}-${self:provider.stage}-token-usage",
-                  "arn:aws:cloudwatch:${AWS::Region}:${AWS::AccountId}:alarm:${self:custom.service}-${self:provider.stage}-token-exhaustion",
-                  "arn:aws:cloudwatch:${AWS::Region}:${AWS::AccountId}:alarm:${self:custom.service}-${self:provider.stage}-handoff-success-rate",
-                  "arn:aws:cloudwatch:${AWS::Region}:${AWS::AccountId}:alarm:${self:custom.service}-${self:provider.stage}-botpress-integration-health"
+                  "arn:aws:cloudwatch:${AWS::Region}:${AWS::AccountId}:alarm:${self:custom.resourcePrefix}-botpress-health",
+                  "arn:aws:cloudwatch:${AWS::Region}:${AWS::AccountId}:alarm:${self:custom.resourcePrefix}-botpress-error-rate",
+                  "arn:aws:cloudwatch:${AWS::Region}:${AWS::AccountId}:alarm:${self:custom.resourcePrefix}-botpress-latency",
+                  "arn:aws:cloudwatch:${AWS::Region}:${AWS::AccountId}:alarm:${self:custom.resourcePrefix}-handoff-queue-size",
+                  "arn:aws:cloudwatch:${AWS::Region}:${AWS::AccountId}:alarm:${self:custom.resourcePrefix}-token-usage",
+                  "arn:aws:cloudwatch:${AWS::Region}:${AWS::AccountId}:alarm:${self:custom.resourcePrefix}-token-exhaustion",
+                  "arn:aws:cloudwatch:${AWS::Region}:${AWS::AccountId}:alarm:${self:custom.resourcePrefix}-handoff-success-rate",
+                  "arn:aws:cloudwatch:${AWS::Region}:${AWS::AccountId}:alarm:${self:custom.resourcePrefix}-botpress-integration-health"
                 ]
               }
             }
@@ -207,7 +207,7 @@ Resources:
   BotpressMetricsAlarm:
     Type: AWS::CloudWatch::Alarm
     Properties:
-      AlarmName: ${self:custom.service}-${self:provider.stage}-botpress-metrics
+      AlarmName: ${self:custom.resourcePrefix}-botpress-metrics
       AlarmDescription: Monitoring of Botpress metrics collection
       MetricName: MetricsDelivery
       Namespace: Spectra/Botpress
@@ -227,12 +227,12 @@ Resources:
 Outputs:
   DashboardURL:
     Description: URL of the Botpress Dashboard
-    Value: !Sub https://${AWS::Region}.console.aws.amazon.com/cloudwatch/home?region=${AWS::Region}#dashboards:name=${self:custom.service}-${self:provider.stage}-botpress
+    Value: !Sub https://${AWS::Region}.console.aws.amazon.com/cloudwatch/home?region=${AWS::Region}#dashboards:name=${self:custom.resourcePrefix}-botpress
     Export:
-      Name: ${self:custom.service}-${self:provider.stage}-botpress-dashboard-url
+      Name: ${self:custom.resourcePrefix}-botpress-dashboard-url
 
   BotpressMetricsAlarmArn:
     Description: ARN of the Botpress metrics alarm
     Value: !GetAtt BotpressMetricsAlarm.Arn
     Export:
-      Name: ${self:custom.service}-${self:provider.stage}-botpress-metrics-alarm-arn
+      Name: ${self:custom.resourcePrefix}-botpress-metrics-alarm-arn

@@ -66,105 +66,105 @@ outputs:
     Value:
       Ref: UsersTable
     Export:
-      Name: espectra-backend-dev-v4-r1-users-table-name
+      Name: ${self:custom.resourcePrefix}-users-table-name
 
   UsersTableArn:
     Description: ARN of the Users table
     Value:
       Fn::GetAtt: [UsersTable, Arn]
     Export:
-      Name: espectra-backend-dev-v4-r1-users-table-arn
+      Name: ${self:custom.resourcePrefix}-users-table-arn
 
   ChatHistoryTableName:
     Description: Name of the Chat History DynamoDB table
     Value:
       Ref: ChatHistoryTable
     Export:
-      Name: espectra-backend-dev-v4-r1-chat-history-table-name
+      Name: ${self:custom.resourcePrefix}-chat-history-table-name
 
   ChatHistoryTableArn:
     Description: ARN of the Chat History DynamoDB table
     Value:
       Fn::GetAtt: [ChatHistoryTable, Arn]
     Export:
-      Name: espectra-backend-dev-v4-r1-chat-history-table-arn
+      Name: ${self:custom.resourcePrefix}-chat-history-table-arn
 
   UserConversationsIndexName:
     Description: Name of the User Conversations GSI
     Value: UserConversationsIndex
     Export:
-      Name: espectra-backend-dev-v4-r1-user-conversations-index-name
+      Name: ${self:custom.resourcePrefix}-user-conversations-index-name
 
   MessageTypeIndexName:
     Description: Name of the Message Type GSI
     Value: MessageTypeIndex
     Export:
-      Name: espectra-backend-dev-v4-r1-message-type-index-name
+      Name: ${self:custom.resourcePrefix}-message-type-index-name
 
   ChatSessionsTableName:
     Description: Name of the Chat Sessions table
     Value:
       Ref: ChatSessionsTable
     Export:
-      Name: espectra-backend-dev-v4-r1-chat-sessions-table-name
+      Name: ${self:custom.resourcePrefix}-chat-sessions-table-name
 
   ChatSessionsTableArn:
     Description: ARN of the Chat Sessions table
     Value:
       Fn::GetAtt: [ChatSessionsTable, Arn]
     Export:
-      Name: espectra-backend-dev-v4-r1-chat-sessions-table-arn
+      Name: ${self:custom.resourcePrefix}-chat-sessions-table-arn
 
   SessionMetricsTableName:
     Description: Name of the Session Metrics table
     Value:
       Ref: SessionMetricsTable
     Export:
-      Name: espectra-backend-dev-v4-r1-session-metrics-table-name
+      Name: ${self:custom.resourcePrefix}-session-metrics-table-name
 
   SessionMetricsTableArn:
     Description: ARN of the Session Metrics table
     Value:
       Fn::GetAtt: [SessionMetricsTable, Arn]
     Export:
-      Name: espectra-backend-dev-v4-r1-session-metrics-table-arn
+      Name: ${self:custom.resourcePrefix}-session-metrics-table-arn
 
   ConnectionsTableName:
     Description: Name of the Connections table
     Value:
       Ref: ConnectionsTable
     Export:
-      Name: espectra-backend-dev-v4-r1-connections-table-name
+      Name: ${self:custom.resourcePrefix}-connections-table-name
 
   ConnectionsTableArn:
     Description: ARN of the Connections table
     Value:
       Fn::GetAtt: [ConnectionsTable, Arn]
     Export:
-      Name: espectra-backend-dev-v4-r1-connections-table-arn
+      Name: ${self:custom.resourcePrefix}-connections-table-arn
 
   UserIdIndexName:
     Description: Name of the UserId GSI
     Value: UserIdIndex
     Export:
-      Name: espectra-backend-dev-v4-r1-connections-userid-index-name
+      Name: ${self:custom.resourcePrefix}-connections-userid-index-name
 
   StatusActivityIndexName:
     Description: Name of the Status Activity GSI
     Value: StatusActivityIndex
     Export:
-      Name: espectra-backend-dev-v4-r1-connections-status-activity-index-name
+      Name: ${self:custom.resourcePrefix}-connections-status-activity-index-name
 
   RegistrationRequestsTableName:
     Description: Name of the Registration Requests table
     Value:
       Ref: RegistrationRequestsTable
     Export:
-      Name: espectra-backend-dev-v4-r1-registration-requests-table-name
+      Name: ${self:custom.resourcePrefix}-registration-requests-table-name
 
   RegistrationRequestsTableArn:
     Description: ARN of the Registration Requests table
     Value:
       Fn::GetAtt: [RegistrationRequestsTable, Arn]
     Export:
-      Name: espectra-backend-dev-v4-r1-registration-requests-table-arn
+      Name: ${self:custom.resourcePrefix}-registration-requests-table-arn

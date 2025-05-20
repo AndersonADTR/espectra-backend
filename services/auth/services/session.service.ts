@@ -39,7 +39,7 @@ export class SessionService {
     this.cache = CacheService.getInstance();
     this.dynamodb = DynamoDBDocumentClient.from(new DynamoDBClient({}));
     this.metrics = new MetricsService('Sessions');
-    this.tableName = process.env.SESSION_TABLE || `${process.env.SERVICE_NAME}-${process.env.STAGE}-chat-sessions`;
+    this.tableName = process.env.SESSION_TABLE || `${process.env.RESOURCE_PREFIX}-chat-sessions`;
     this.observability = ObservabilityService.getInstance();
   }
 

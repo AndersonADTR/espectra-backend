@@ -253,7 +253,7 @@ export class AuthenticationService {
   private async updateUserSub(userId: string, userSub: string): Promise<void> {
     try {
       await this.dynamodb.send(new UpdateCommand({
-        TableName: `${process.env.SERVICE_NAME}-${process.env.STAGE}-users`,
+        TableName: `${process.env.RESOURCE_PREFIX}-users`,
         Key: {
           userId: userId
         },
@@ -574,7 +574,7 @@ export class AuthenticationService {
   private async updateUserStatus(userId: string, status: UserStatus): Promise<void> {
     try {
       await this.dynamodb.send(new UpdateCommand({
-        TableName: `${process.env.SERVICE_NAME}-${process.env.STAGE}-users`,
+        TableName: `${process.env.RESOURCE_PREFIX}-users`,
         Key: {
           userId: userId
         },
@@ -655,7 +655,7 @@ export class AuthenticationService {
       // Preparar transacción DynamoDB
       const transactItems = [{
         Put: {
-          TableName: `${process.env.SERVICE_NAME}-${process.env.STAGE}-users`,
+          TableName: `${process.env.RESOURCE_PREFIX}-users`,
           Item: user.toDynamoDB(),
           ConditionExpression: 'attribute_not_exists(email)',
         }
@@ -804,7 +804,7 @@ export class AuthenticationService {
     try {
       console.log('Verifying email availability', { email });
       // Usar la variable de entorno USERS_TABLE si está disponible, o construir el nombre de la tabla
-      const tableName = process.env.USERS_TABLE || `${process.env.SERVICE_NAME}-${process.env.STAGE}-users`;
+      const tableName = process.env.USERS_TABLE || `${process.env.RESOURCE_PREFIX}-users`;
       console.log('Using table name:', { tableName });
 
       const result = await this.dynamodb.send(new QueryCommand({
@@ -960,7 +960,7 @@ export class AuthenticationService {
       });
 
       // Usar la variable de entorno USERS_TABLE si está disponible, o construir el nombre de la tabla
-      const tableName = process.env.USERS_TABLE || `${process.env.SERVICE_NAME}-${process.env.STAGE}-users`;
+      const tableName = process.env.USERS_TABLE || `${process.env.RESOURCE_PREFIX}-users`;
       this.logger.debug('Using table name for creating user record:', { tableName });
 
       await this.dynamodb.send(new PutCommand({
@@ -986,7 +986,7 @@ export class AuthenticationService {
 
     try {
       // Usar la variable de entorno USERS_TABLE si está disponible, o construir el nombre de la tabla
-      const tableName = process.env.USERS_TABLE || `${process.env.SERVICE_NAME}-${process.env.STAGE}-users`;
+      const tableName = process.env.USERS_TABLE || `${process.env.RESOURCE_PREFIX}-users`;
       this.logger.debug('Using table name for getUserByEmail:', { tableName });
 
       const response = await this.dynamodb.send(new QueryCommand({
@@ -1025,7 +1025,7 @@ export class AuthenticationService {
 
       try {
         // Usar la variable de entorno USERS_TABLE si está disponible, o construir el nombre de la tabla
-        const tableName = process.env.USERS_TABLE || `${process.env.SERVICE_NAME}-${process.env.STAGE}-users`;
+        const tableName = process.env.USERS_TABLE || `${process.env.RESOURCE_PREFIX}-users`;
         this.logger.debug('Using table name for getUserBySub:', { tableName });
 
         const queryResponse = await this.dynamodb.send(new QueryCommand({
@@ -1056,7 +1056,7 @@ export class AuthenticationService {
       this.logger.info('Scanning for user by userSub', { sub });
 
       const scanResponse = await this.dynamodb.send(new ScanCommand({
-        TableName: `${process.env.SERVICE_NAME}-${process.env.STAGE}-users`,
+        TableName: `${process.env.RESOURCE_PREFIX}-users`,
         FilterExpression: 'userSub = :userSub',
         ExpressionAttributeValues: {
           ':userSub': sub
@@ -1074,7 +1074,7 @@ export class AuthenticationService {
       this.logger.info('Trying to get user by userId', { userId: sub });
 
       const getResponse = await this.dynamodb.send(new GetCommand({
-        TableName: `${process.env.SERVICE_NAME}-${process.env.STAGE}-users`,
+        TableName: `${process.env.RESOURCE_PREFIX}-users`,
         Key: {
           userId: sub
         }
@@ -1110,7 +1110,7 @@ export class AuthenticationService {
       this.logger.info('Getting user by ID', { userId });
 
       // Usar la variable de entorno USERS_TABLE si está disponible, o construir el nombre de la tabla
-      const tableName = process.env.USERS_TABLE || `${process.env.SERVICE_NAME}-${process.env.STAGE}-users`;
+      const tableName = process.env.USERS_TABLE || `${process.env.RESOURCE_PREFIX}-users`;
       this.logger.debug('Using table name for getUserById:', { tableName });
 
       const response = await this.dynamodb.send(new GetCommand({
@@ -1139,7 +1139,7 @@ export class AuthenticationService {
   private async updateLastLogin(userId: string): Promise<void> {
     try {
       // Usar la variable de entorno USERS_TABLE si está disponible, o construir el nombre de la tabla
-      const tableName = process.env.USERS_TABLE || `${process.env.SERVICE_NAME}-${process.env.STAGE}-users`;
+      const tableName = process.env.USERS_TABLE || `${process.env.RESOURCE_PREFIX}-users`;
       this.logger.debug('Using table name for updateLastLogin:', { tableName });
 
       await this.dynamodb.send(new UpdateCommand({

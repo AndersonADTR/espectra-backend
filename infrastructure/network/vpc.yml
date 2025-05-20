@@ -8,7 +8,7 @@ Resources:
       InstanceTenancy: default
       Tags:
         - Key: Name
-          Value: espectra-backend-dev-v4-r1-vpc
+          Value: ${self:custom.resourcePrefix}-vpc
         - Key: Service
           Value: espectra-backend
         - Key: Environment
@@ -22,10 +22,10 @@ Resources:
   VPCFlowLogGroup:
     Type: AWS::Logs::LogGroup
     Properties:
-      LogGroupName: /aws/vpc/espectra-backend-dev-v4-r1-flow-logs
+      LogGroupName: /aws/vpc/${self:custom.resourcePrefix}-flow-logs
       RetentionInDays: 14
       KmsKeyId:
-        Fn::ImportValue: espectra-backend-dev-v4-r1-kms-SystemKeyArn
+        Fn::ImportValue: ${self:custom.resourcePrefix}-kms-SystemKeyArn
 
   VPCFlowLog:
     Type: AWS::EC2::FlowLog
@@ -49,7 +49,7 @@ Resources:
   VPCFlowLogRole:
     Type: AWS::IAM::Role
     Properties:
-      RoleName: espectra-backend-dev-v4-r1-vpc-flow-log-role
+      RoleName: ${self:custom.resourcePrefix}-vpc-flow-log-role
       AssumeRolePolicyDocument:
         Version: '2012-10-17'
         Statement:
@@ -68,14 +68,14 @@ Resources:
                 - logs:DescribeLogGroups
                 - logs:DescribeLogStreams
               Resource:
-                Fn::Sub: "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/vpc/espectra-backend-dev-v4-r1-flow-logs:*"
+                Fn::Sub: "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/vpc/${self:custom.resourcePrefix}-flow-logs:*"
             - Effect: Allow
               Action:
                 - kms:Encrypt
                 - kms:Decrypt
                 - kms:GenerateDataKey
               Resource:
-                Fn::ImportValue: espectra-backend-dev-v4-r1-kms-SystemKeyArn
+                Fn::ImportValue: ${self:custom.resourcePrefix}-kms-SystemKeyArn
 
   # Internet Gateway
   SpectraIGW:
@@ -83,7 +83,7 @@ Resources:
     Properties:
       Tags:
         - Key: Name
-          Value: espectra-backend-dev-v4-r1-igw
+          Value: ${self:custom.resourcePrefix}-igw
         - Key: Service
           Value: espectra-backend
         - Key: Environment
@@ -105,7 +105,7 @@ Resources:
       Domain: vpc
       Tags:
         - Key: Name
-          Value: espectra-backend-dev-v4-r1-nat-eip
+          Value: ${self:custom.resourcePrefix}-nat-eip
         - Key: Service
           Value: espectra-backend
         - Key: Environment
@@ -120,7 +120,7 @@ Resources:
         Ref: PublicSubnet1
       Tags:
         - Key: Name
-          Value: espectra-backend-dev-v4-r1-nat
+          Value: ${self:custom.resourcePrefix}-nat
         - Key: Service
           Value: espectra-backend
         - Key: Environment
@@ -140,7 +140,7 @@ Resources:
       MapPublicIpOnLaunch: true
       Tags:
         - Key: Name
-          Value: espectra-backend-dev-v4-r1-public-1
+          Value: ${self:custom.resourcePrefix}-public-1
         - Key: Service
           Value: espectra-backend
         - Key: Environment
@@ -161,7 +161,7 @@ Resources:
       MapPublicIpOnLaunch: true
       Tags:
         - Key: Name
-          Value: espectra-backend-dev-v4-r1-public-2
+          Value: ${self:custom.resourcePrefix}-public-2
         - Key: Service
           Value: espectra-backend
         - Key: Environment
@@ -179,7 +179,7 @@ Resources:
       MapPublicIpOnLaunch: false
       Tags:
         - Key: Name
-          Value: ${self:custom.service}-${self:provider.stage}-private-1
+          Value: ${self:custom.resourcePrefix}-private-1
         - Key: Service
           Value: ${self:custom.service}
         - Key: Environment
@@ -196,7 +196,7 @@ Resources:
       MapPublicIpOnLaunch: false
       Tags:
         - Key: Name
-          Value: ${self:custom.service}-${self:provider.stage}-private-2
+          Value: ${self:custom.resourcePrefix}-private-2
         - Key: Service
           Value: ${self:custom.service}
         - Key: Environment
@@ -211,7 +211,7 @@ Resources:
       VpcId: !Ref SpectraVPC
       Tags:
         - Key: Name
-          Value: ${self:custom.service}-${self:provider.stage}-public-rt
+          Value: ${self:custom.resourcePrefix}-public-rt
         - Key: Service
           Value: ${self:custom.service}
         - Key: Environment
@@ -223,7 +223,7 @@ Resources:
       VpcId: !Ref SpectraVPC
       Tags:
         - Key: Name
-          Value: ${self:custom.service}-${self:provider.stage}-private-rt
+          Value: ${self:custom.resourcePrefix}-private-rt
         - Key: Service
           Value: ${self:custom.service}
         - Key: Environment
@@ -275,7 +275,7 @@ Resources:
       VpcId: !Ref SpectraVPC
       Tags:
         - Key: Name
-          Value: ${self:custom.service}-${self:provider.stage}-public-nacl
+          Value: ${self:custom.resourcePrefix}-public-nacl
         - Key: Environment
           Value: ${self:provider.stage}
 
@@ -285,7 +285,7 @@ Resources:
       VpcId: !Ref SpectraVPC
       Tags:
         - Key: Name
-          Value: ${self:custom.service}-${self:provider.stage}-private-nacl
+          Value: ${self:custom.resourcePrefix}-private-nacl
         - Key: Environment
           Value: ${self:provider.stage}
 
@@ -377,7 +377,7 @@ Resources:
         - !Ref PrivateRouteTable
       Tags:
         - Key: Name
-          Value: ${self:custom.service}-${self:provider.stage}-dynamodb-endpoint
+          Value: ${self:custom.resourcePrefix}-dynamodb-endpoint
         - Key: Service
           Value: ${self:custom.service}
         - Key: Environment
@@ -397,7 +397,7 @@ Resources:
         - !Ref VPCEndpointSecurityGroup
       Tags:
         - Key: Name
-          Value: ${self:custom.service}-${self:provider.stage}-api-endpoint
+          Value: ${self:custom.resourcePrefix}-api-endpoint
         - Key: Service
           Value: ${self:custom.service}
         - Key: Environment
@@ -417,7 +417,7 @@ Resources:
         - !Ref VPCEndpointSecurityGroup
       Tags:
         - Key: Name
-          Value: ${self:custom.service}-${self:provider.stage}-secrets-endpoint
+          Value: ${self:custom.resourcePrefix}-secrets-endpoint
         - Key: Service
           Value: ${self:custom.service}
         - Key: Environment
@@ -450,7 +450,7 @@ Resources:
         - !Ref VPCEndpointSecurityGroup
       Tags:
         - Key: Name
-          Value: ${self:custom.service}-${self:provider.stage}-ssm-endpoint
+          Value: ${self:custom.resourcePrefix}-ssm-endpoint
         - Key: Service
           Value: ${self:custom.service}
         - Key: Environment
@@ -470,7 +470,7 @@ Resources:
         - !Ref VPCEndpointSecurityGroup
       Tags:
         - Key: Name
-          Value: ${self:custom.service}-${self:provider.stage}-ssmmessages-endpoint
+          Value: ${self:custom.resourcePrefix}-ssmmessages-endpoint
         - Key: Service
           Value: ${self:custom.service}
         - Key: Environment
@@ -483,14 +483,14 @@ Outputs:
     Value:
       Ref: SpectraVPC
     Export:
-      Name: espectra-backend-dev-v4-r1-phase1-VpcId
+      Name: ${self:custom.resourcePrefix}-phase1-VpcId
 
   VpcCidr:
     Description: VPC CIDR Block
     Value:
       Fn::GetAtt: [SpectraVPC, CidrBlock]
     Export:
-      Name: espectra-backend-dev-v4-r1-phase1-VpcCidr
+      Name: ${self:custom.resourcePrefix}-phase1-VpcCidr
 
   # Subnet Outputs
   PublicSubnet1Id:
@@ -498,28 +498,28 @@ Outputs:
     Value:
       Ref: PublicSubnet1
     Export:
-      Name: espectra-backend-dev-v4-r1-phase1-PublicSubnet1Id
+      Name: ${self:custom.resourcePrefix}-phase1-PublicSubnet1Id
 
   PublicSubnet2Id:
     Description: Public Subnet 2 ID
     Value:
       Ref: PublicSubnet2
     Export:
-      Name: espectra-backend-dev-v4-r1-phase1-PublicSubnet2Id
+      Name: ${self:custom.resourcePrefix}-phase1-PublicSubnet2Id
 
   PrivateSubnet1Id:
     Description: Private Subnet 1 ID
     Value:
       Ref: PrivateSubnet1
     Export:
-      Name: espectra-backend-dev-v4-r1-phase1-PrivateSubnet1Id
+      Name: ${self:custom.resourcePrefix}-phase1-PrivateSubnet1Id
 
   PrivateSubnet2Id:
     Description: Private Subnet 2 ID
     Value:
       Ref: PrivateSubnet2
     Export:
-      Name: espectra-backend-dev-v4-r1-phase1-PrivateSubnet2Id
+      Name: ${self:custom.resourcePrefix}-phase1-PrivateSubnet2Id
 
   # Route Table Outputs
   PublicRouteTableId:
@@ -527,11 +527,11 @@ Outputs:
     Value:
       Ref: PublicRouteTable
     Export:
-      Name: espectra-backend-dev-v4-r1-phase1-PublicRouteTableId
+      Name: ${self:custom.resourcePrefix}-phase1-PublicRouteTableId
 
   PrivateRouteTableId:
     Description: Private Route Table ID
     Value:
       Ref: PrivateRouteTable
     Export:
-      Name: espectra-backend-dev-v4-r1-phase1-PrivateRouteTableId
+      Name: ${self:custom.resourcePrefix}-phase1-PrivateRouteTableId

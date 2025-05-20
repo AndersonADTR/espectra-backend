@@ -62,7 +62,7 @@ custom:
 functions:
   botpressMetricsCollector:
     handler: services/metrics/handlers/metrics-collector.handler
-    name: espectra-backend-dev-v4-r1-botpress-metrics
+    name: ${self:custom.resourcePrefix}-botpress-metrics
     description: Processes Botpress metrics events
     memorySize: 256
     timeout: 30
@@ -89,10 +89,10 @@ functions:
     tracing: Active
     vpc:
       securityGroupIds:
-        - Fn::ImportValue: espectra-backend-dev-v4-r1-phase1-LambdaSecurityGroupId
+        - Fn::ImportValue: ${self:custom.resourcePrefix}-phase1-LambdaSecurityGroupId
       subnetIds:
-        - Fn::ImportValue: espectra-backend-dev-v4-r1-phase1-PublicSubnet1Id
-        - Fn::ImportValue: espectra-backend-dev-v4-r1-phase1-PublicSubnet2Id
+        - Fn::ImportValue: ${self:custom.resourcePrefix}-phase1-PublicSubnet1Id
+        - Fn::ImportValue: ${self:custom.resourcePrefix}-phase1-PublicSubnet2Id
 
 resources:
   - ${file(infrastructure/dynamodb/botpress-tables.yml)}
@@ -112,169 +112,169 @@ outputs:
     Value:
       Fn::GetAtt: [BotpressMetricsCollectorLambdaFunction, Arn]
     Export:
-      Name: espectra-backend-dev-v4-r1-metrics-collector-arn
+      Name: ${self:custom.resourcePrefix}-metrics-collector-arn
 
   MessageQueueUrl:
     Description: URL of the message queue
     Value:
       Ref: MessageQueue
     Export:
-      Name: espectra-backend-dev-v4-r1-message-queue-url
+      Name: ${self:custom.resourcePrefix}-message-queue-url
 
   MessageQueueArn:
     Description: ARN of the message queue
     Value:
       Fn::GetAtt: [MessageQueue, Arn]
     Export:
-      Name: espectra-backend-dev-v4-r1-message-queue-arn
+      Name: ${self:custom.resourcePrefix}-message-queue-arn
 
   HandoffQueueUrl:
     Description: URL of the handoff queue
     Value:
       Ref: HandoffQueue
     Export:
-      Name: espectra-backend-dev-v4-r1-handoff-queue-url
+      Name: ${self:custom.resourcePrefix}-handoff-queue-url
 
   HandoffQueueArn:
     Description: ARN of the handoff queue
     Value:
       Fn::GetAtt: [HandoffQueue, Arn]
     Export:
-      Name: espectra-backend-dev-v4-r1-handoff-queue-arn
+      Name: ${self:custom.resourcePrefix}-handoff-queue-arn
 
   MessageDLQUrl:
     Description: URL of the message DLQ
     Value:
       Ref: MessageDLQ
     Export:
-      Name: espectra-backend-dev-v4-r1-message-dlq-url
+      Name: ${self:custom.resourcePrefix}-message-dlq-url
 
   HandoffDLQUrl:
     Description: URL of the handoff DLQ
     Value:
       Ref: HandoffDLQ
     Export:
-      Name: espectra-backend-dev-v4-r1-handoff-dlq-url
+      Name: ${self:custom.resourcePrefix}-handoff-dlq-url
 
   LambdaRoleArn:
     Description: ARN of the Lambda execution IAM role
     Value:
       Fn::GetAtt: [IamRoleLambdaExecution, Arn]
     Export:
-      Name: espectra-backend-dev-v4-r1-lambda-role-arn
+      Name: ${self:custom.resourcePrefix}-lambda-role-arn
 
   WafAssociationLambdaRoleArn:
     Description: ARN of the WAF Association Lambda IAM role
     Value:
       Fn::GetAtt: [WafAssociationLambdaRole, Arn]
     Export:
-      Name: espectra-backend-dev-v4-r1-waf-association-lambda-role-arn
+      Name: ${self:custom.resourcePrefix}-waf-association-lambda-role-arn
 
   MetricsCollectorRoleArn:
     Description: ARN of the Metrics Collector IAM role
     Value:
       Fn::GetAtt: [MetricsCollectorRole, Arn]
     Export:
-      Name: espectra-backend-dev-v4-r1-metrics-collector-role-arn
+      Name: ${self:custom.resourcePrefix}-metrics-collector-role-arn
 
   WebSocketLambdaRoleArn:
     Description: ARN of the WebSocket Lambda IAM role
     Value:
       Fn::GetAtt: [WebSocketLambdaRole, Arn]
     Export:
-      Name: espectra-backend-dev-v4-r1-websocket-role-arn
+      Name: ${self:custom.resourcePrefix}-websocket-role-arn
 
   WebSocketAuthorizerRoleArn:
     Description: ARN of the WebSocket Authorizer Lambda IAM role
     Value:
       Fn::GetAtt: [WebSocketAuthorizerRole, Arn]
     Export:
-      Name: espectra-backend-dev-v4-r1-websocket-authorizer-role-arn
+      Name: ${self:custom.resourcePrefix}-websocket-authorizer-role-arn
 
   EventBusArn:
     Description: ARN of the Botpress Event Bus
     Value:
       Fn::GetAtt: [BotpressEventBus, Arn]
     Export:
-      Name: espectra-backend-dev-v4-r1-eventbus-arn
+      Name: ${self:custom.resourcePrefix}-eventbus-arn
 
   EventBusName:
     Description: Name of the Botpress Event Bus
     Value:
       Ref: BotpressEventBus
     Export:
-      Name: espectra-backend-dev-v4-r1-eventbus-name
+      Name: ${self:custom.resourcePrefix}-eventbus-name
 
   RedisEndpoint:
     Description: Redis primary endpoint
     Value:
       Fn::GetAtt: [RedisCluster, PrimaryEndPoint.Address]
     Export:
-      Name: espectra-backend-dev-v4-r1-redis-endpoint
+      Name: ${self:custom.resourcePrefix}-redis-endpoint
 
   RedisPort:
     Description: Redis port
     Value:
       Fn::GetAtt: [RedisCluster, PrimaryEndPoint.Port]
     Export:
-      Name: espectra-backend-dev-v4-r1-redis-port
+      Name: ${self:custom.resourcePrefix}-redis-port
 
   RedisConnectionString:
     Description: Redis connection string with protocol
     Value:
       Fn::Sub: "redis://${RedisCluster.PrimaryEndPoint.Address}:${RedisCluster.PrimaryEndPoint.Port}"
     Export:
-      Name: espectra-backend-dev-v4-r1-redis-connection-string
+      Name: ${self:custom.resourcePrefix}-redis-connection-string
 
   RedisClusterId:
     Description: ID of the Redis cluster
     Value:
       Ref: RedisCluster
     Export:
-      Name: espectra-backend-dev-v4-r1-redis-cluster-id
+      Name: ${self:custom.resourcePrefix}-redis-cluster-id
 
   RedisParameterGroupName:
     Description: Name of the Redis parameter group
     Value:
       Ref: RedisParameterGroup
     Export:
-      Name: espectra-backend-dev-v4-r1-redis-parameter-group
+      Name: ${self:custom.resourcePrefix}-redis-parameter-group
 
   ConversationContextTableName:
     Description: Name of the Conversation Context table
     Value: ${self:custom.tableNames.context}
     Export:
-      Name: espectra-backend-dev-v4-r1-context-table-name
+      Name: ${self:custom.resourcePrefix}-context-table-name
 
   ConversationContextTableArn:
     Description: ARN of the Conversation Context table
     Value:
       Fn::GetAtt: [ConversationContextTable, Arn]
     Export:
-      Name: espectra-backend-dev-v4-r1-context-table-arn
+      Name: ${self:custom.resourcePrefix}-context-table-arn
 
   BotpressMetricsTableName:
     Description: Name of the Botpress Metrics table
     Value: ${self:custom.tableNames.metrics}
     Export:
-      Name: espectra-backend-dev-v4-r1-metrics-table-name
+      Name: ${self:custom.resourcePrefix}-metrics-table-name
 
   BotpressMetricsTableArn:
     Description: ARN of the Botpress Metrics table
     Value:
       Fn::GetAtt: [BotpressMetricsTable, Arn]
     Export:
-      Name: espectra-backend-dev-v4-r1-metrics-table-arn
+      Name: ${self:custom.resourcePrefix}-metrics-table-arn
 
   TokenUsageTableName:
     Description: Name of the Token Usage table
     Value: ${self:custom.tableNames.tokens}
     Export:
-      Name: espectra-backend-dev-v4-r1-tokens-table-name
+      Name: ${self:custom.resourcePrefix}-tokens-table-name
 
   TokenUsageTableArn:
     Description: ARN of the Token Usage table
     Value:
       Fn::GetAtt: [TokenUsageTable, Arn]
     Export:
-      Name: espectra-backend-dev-v4-r1-tokens-table-arn
+      Name: ${self:custom.resourcePrefix}-tokens-table-arn

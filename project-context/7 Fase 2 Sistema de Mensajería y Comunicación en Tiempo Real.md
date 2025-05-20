@@ -105,7 +105,7 @@ export class ChatHistoryService {
     const client = new DynamoDBClient({});
     this.dynamoDbClient = DynamoDBDocumentClient.from(client);
     this.logger = new Logger('ChatHistoryService');
-    this.tableName = process.env.CHAT_HISTORY_TABLE || `${process.env.SERVICE_NAME}-${process.env.STAGE}-chat-history-table`;
+    this.tableName = process.env.CHAT_HISTORY_TABLE || `${process.env.RESOURCE_PREFIX}-chat-history-table`;
   }
 
   public static getInstance(): ChatHistoryService {
@@ -217,7 +217,7 @@ export class ConnectionManager {
     const client = new DynamoDBClient({});
     this.dynamoDbClient = DynamoDBDocumentClient.from(client);
     this.logger = new Logger('ConnectionManager');
-    this.tableName = process.env.CONNECTION_TABLE || `${process.env.SERVICE_NAME}-${process.env.STAGE}-connections`;
+    this.tableName = process.env.CONNECTION_TABLE || `${process.env.RESOURCE_PREFIX}-connections`;
     
     // Configurar cliente de API Gateway para envío de mensajes
     this.apiGateway = new ApiGatewayManagementApiClient({

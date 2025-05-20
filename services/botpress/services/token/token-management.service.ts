@@ -39,9 +39,9 @@ export class TokenManagementService {
     this.logger = new Logger('TokenManagementService');
     this.metrics = new MetricsService('TokenManagement');
 
-    this.tableName = process.env.TOKEN_TABLE || `${process.env.SERVICE_NAME}-${process.env.STAGE}-token-usage-table`;
-    this.usersTableName = process.env.USERS_TABLE || `${process.env.SERVICE_NAME}-${process.env.STAGE}-users`;
-    this.eventBusName = process.env.EVENT_BUS_NAME || `${process.env.SERVICE_NAME}-${process.env.STAGE}-event-bus`;
+    this.tableName = process.env.TOKEN_TABLE || `${process.env.RESOURCE_PREFIX}-token-usage-table`;
+    this.usersTableName = process.env.USERS_TABLE || `${process.env.RESOURCE_PREFIX}-users`;
+    this.eventBusName = process.env.EVENT_BUS_NAME || `${process.env.RESOURCE_PREFIX}-event-bus`;
 
     // Configurar límites de tokens por plan
     this.tokenLimits = {

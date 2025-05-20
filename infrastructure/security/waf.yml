@@ -197,25 +197,25 @@ Outputs:
     Value:
       Fn::GetAtt: [SpectraWebACL, Id]
     Export:
-      Name: espectra-backend-dev-v4-r1-waf-id
+      Name: ${self:custom.resourcePrefix}-waf-id
 
   WebACLArn:
     Description: ARN of the Web ACL
     Value:
       Fn::GetAtt: [SpectraWebACL, Arn]
     Export:
-      Name: espectra-backend-dev-v4-r1-waf-arn
+      Name: ${self:custom.resourcePrefix}-waf-arn
 
   IPSetId:
     Description: ID of the IP Set
     Value:
       Ref: IPSet
     Export:
-      Name: espectra-backend-dev-v4-r1-ipset-id
+      Name: ${self:custom.resourcePrefix}-ipset-id
 
   WafLogGroupName:
     Description: Name of the WAF Log Group
     Value:
       Ref: WafLogGroup
     Export:
-      Name: espectra-backend-dev-v4-r1-waf-log-group
+      Name: ${self:custom.resourcePrefix}-waf-log-group

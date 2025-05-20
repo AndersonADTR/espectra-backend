@@ -25,11 +25,11 @@ class AnomalyDetectionService {
         this.sns = new client_sns_1.SNSClient({});
         this.metricsService = business_metrics_service_1.BusinessMetricsService.getInstance();
         this.rulesTableName = process.env.ANOMALY_RULES_TABLE ||
-            `${process.env.SERVICE_NAME}-${process.env.STAGE}-anomaly-rules`;
+            `${process.env.RESOURCE_PREFIX}-anomaly-rules`;
         this.anomaliesTableName = process.env.ANOMALIES_TABLE ||
-            `${process.env.SERVICE_NAME}-${process.env.STAGE}-anomalies`;
+            `${process.env.RESOURCE_PREFIX}-anomalies`;
         this.eventBusName = process.env.EVENT_BUS_NAME ||
-            `${process.env.SERVICE_NAME}-${process.env.STAGE}-event-bus`;
+            `${process.env.RESOURCE_PREFIX}-event-bus`;
     }
     static getInstance() {
         if (!AnomalyDetectionService.instance) {

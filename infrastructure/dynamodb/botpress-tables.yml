@@ -161,7 +161,7 @@ Resources:
   BotpressContextTableThrottlingAlarm:
     Type: AWS::CloudWatch::Alarm
     Properties:
-      AlarmName: ${self:custom.service}-${self:provider.stage}-context-throttling
+      AlarmName: ${self:custom.resourcePrefix}-context-throttling
       AlarmDescription: Context table throttling events
       MetricName: ThrottledRequests
       Namespace: AWS/DynamoDB
@@ -179,7 +179,7 @@ Resources:
   BotpressMetricsTableThrottlingAlarm:
     Type: AWS::CloudWatch::Alarm
     Properties:
-      AlarmName: ${self:custom.service}-${self:provider.stage}-metrics-throttling
+      AlarmName: ${self:custom.resourcePrefix}-metrics-throttling
       AlarmDescription: Metrics table throttling events
       MetricName: ThrottledRequests
       Namespace: AWS/DynamoDB
@@ -197,7 +197,7 @@ Resources:
   TokenUsageTableThrottlingAlarm:
     Type: AWS::CloudWatch::Alarm
     Properties:
-      AlarmName: ${self:custom.service}-${self:provider.stage}-tokens-throttling
+      AlarmName: ${self:custom.resourcePrefix}-tokens-throttling
       AlarmDescription: Token usage table throttling events
       MetricName: ThrottledRequests
       Namespace: AWS/DynamoDB
@@ -215,7 +215,7 @@ Resources:
   TokenUsageTableCapacityAlarm:
     Type: AWS::CloudWatch::Alarm
     Properties:
-      AlarmName: ${self:custom.service}-${self:provider.stage}-token-usage-capacity
+      AlarmName: ${self:custom.resourcePrefix}-token-usage-capacity
       AlarmDescription: Alert when token usage table is approaching capacity limits
       MetricName: ConsumedWriteCapacityUnits
       Namespace: AWS/DynamoDB
@@ -235,37 +235,37 @@ Outputs:
     Description: Name of the Conversation Context table
     Value: ${self:custom.tableNames.context}
     Export:
-      Name: espectra-backend-dev-v4-r1-context-table-name
+      Name: ${self:custom.resourcePrefix}-context-table-name
 
   ConversationContextTableArn:
     Description: ARN of the Conversation Context table
     Value:
       Fn::GetAtt: [ConversationContextTable, Arn]
     Export:
-      Name: espectra-backend-dev-v4-r1-context-table-arn
+      Name: ${self:custom.resourcePrefix}-context-table-arn
 
   BotpressMetricsTableName:
     Description: Name of the Botpress Metrics table
     Value: ${self:custom.tableNames.metrics}
     Export:
-      Name: espectra-backend-dev-v4-r1-metrics-table-name
+      Name: ${self:custom.resourcePrefix}-metrics-table-name
 
   BotpressMetricsTableArn:
     Description: ARN of the Botpress Metrics table
     Value:
       Fn::GetAtt: [BotpressMetricsTable, Arn]
     Export:
-      Name: espectra-backend-dev-v4-r1-metrics-table-arn
+      Name: ${self:custom.resourcePrefix}-metrics-table-arn
 
   TokenUsageTableName:
     Description: Name of the Token Usage table
     Value: ${self:custom.tableNames.tokens}
     Export:
-      Name: espectra-backend-dev-v4-r1-tokens-table-name
+      Name: ${self:custom.resourcePrefix}-tokens-table-name
 
   TokenUsageTableArn:
     Description: ARN of the Token Usage table
     Value:
       Fn::GetAtt: [TokenUsageTable, Arn]
     Export:
-      Name: espectra-backend-dev-v4-r1-tokens-table-arn
+      Name: ${self:custom.resourcePrefix}-tokens-table-arn

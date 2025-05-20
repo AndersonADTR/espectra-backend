@@ -24,7 +24,7 @@ class UserService {
         this.logger = new logger_1.Logger('UserService');
         this.cacheService = cache_service_1.CacheService.getInstance();
         this.usersTableName = process.env.USERS_TABLE ||
-            `${process.env.SERVICE_NAME}-${process.env.STAGE}-users`;
+            `${process.env.RESOURCE_PREFIX}-users`;
     }
     static getInstance() {
         if (!UserService.instance) {

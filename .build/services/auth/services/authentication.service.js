@@ -170,7 +170,7 @@ class AuthenticationService {
     async updateUserSub(userId, userSub) {
         try {
             await this.dynamodb.send(new lib_dynamodb_1.UpdateCommand({
-                TableName: `${process.env.SERVICE_NAME}-${process.env.STAGE}-users`,
+                TableName: `${process.env.RESOURCE_PREFIX}-users`,
                 Key: {
                     userId: userId
                 },
@@ -362,7 +362,7 @@ class AuthenticationService {
     async updateUserStatus(userId, status) {
         try {
             await this.dynamodb.send(new lib_dynamodb_1.UpdateCommand({
-                TableName: `${process.env.SERVICE_NAME}-${process.env.STAGE}-users`,
+                TableName: `${process.env.RESOURCE_PREFIX}-users`,
                 Key: {
                     userId: userId
                 },
@@ -429,7 +429,7 @@ class AuthenticationService {
             });
             const transactItems = [{
                     Put: {
-                        TableName: `${process.env.SERVICE_NAME}-${process.env.STAGE}-users`,
+                        TableName: `${process.env.RESOURCE_PREFIX}-users`,
                         Item: user.toDynamoDB(),
                         ConditionExpression: 'attribute_not_exists(email)',
                     }
@@ -540,7 +540,7 @@ class AuthenticationService {
         try {
             console.log('Verifying email availability', { email });
             const result = await this.dynamodb.send(new lib_dynamodb_1.QueryCommand({
-                TableName: `${process.env.SERVICE_NAME}-${process.env.STAGE}-users`,
+                TableName: `${process.env.RESOURCE_PREFIX}-users`,
                 IndexName: 'EmailIndex',
                 KeyConditionExpression: 'email = :email',
                 ExpressionAttributeValues: {
@@ -665,7 +665,7 @@ class AuthenticationService {
                 status: user_model_1.UserStatus.ACTIVE
             });
             await this.dynamodb.send(new lib_dynamodb_1.PutCommand({
-                TableName: `${process.env.SERVICE_NAME}-${process.env.STAGE}-users`,
+                TableName: `${process.env.RESOURCE_PREFIX}-users`,
                 Item: newUser.toDynamoDB()
             }));
             return newUser;
@@ -682,7 +682,7 @@ class AuthenticationService {
         }
         try {
             const response = await this.dynamodb.send(new lib_dynamodb_1.QueryCommand({
-                TableName: `${process.env.SERVICE_NAME}-${process.env.STAGE}-users`,
+                TableName: `${process.env.RESOURCE_PREFIX}-users`,
                 IndexName: 'EmailIndex',
                 KeyConditionExpression: 'email = :email',
                 ExpressionAttributeValues: {
@@ -709,7 +709,7 @@ class AuthenticationService {
             this.logger.info('Searching user by sub using SubIndex', { sub });
             try {
                 const queryResponse = await this.dynamodb.send(new lib_dynamodb_1.QueryCommand({
-                    TableName: `${process.env.SERVICE_NAME}-${process.env.STAGE}-users`,
+                    TableName: `${process.env.RESOURCE_PREFIX}-users`,
                     IndexName: 'SubIndex',
                     KeyConditionExpression: 'userSub = :userSub',
                     ExpressionAttributeValues: {
@@ -731,7 +731,7 @@ class AuthenticationService {
             }
             this.logger.info('Scanning for user by userSub', { sub });
             const scanResponse = await this.dynamodb.send(new lib_dynamodb_1.ScanCommand({
-                TableName: `${process.env.SERVICE_NAME}-${process.env.STAGE}-users`,
+                TableName: `${process.env.RESOURCE_PREFIX}-users`,
                 FilterExpression: 'userSub = :userSub',
                 ExpressionAttributeValues: {
                     ':userSub': sub
@@ -744,7 +744,7 @@ class AuthenticationService {
             }
             this.logger.info('Trying to get user by userId', { userId: sub });
             const getResponse = await this.dynamodb.send(new lib_dynamodb_1.GetCommand({
-                TableName: `${process.env.SERVICE_NAME}-${process.env.STAGE}-users`,
+                TableName: `${process.env.RESOURCE_PREFIX}-users`,
                 Key: {
                     userId: sub
                 }
@@ -765,7 +765,7 @@ class AuthenticationService {
         try {
             this.logger.info('Getting user by ID', { userId });
             const response = await this.dynamodb.send(new lib_dynamodb_1.GetCommand({
-                TableName: `${process.env.SERVICE_NAME}-${process.env.STAGE}-users`,
+                TableName: `${process.env.RESOURCE_PREFIX}-users`,
                 Key: {
                     userId: userId
                 }
@@ -785,7 +785,7 @@ class AuthenticationService {
     async updateLastLogin(userId) {
         try {
             await this.dynamodb.send(new lib_dynamodb_1.UpdateCommand({
-                TableName: `${process.env.SERVICE_NAME}-${process.env.STAGE}-users`,
+                TableName: `${process.env.RESOURCE_PREFIX}-users`,
                 Key: {
                     userId: userId
                 },

@@ -2,8 +2,8 @@ Resources:
   WebSocketLambdaRole:
     Type: AWS::IAM::Role
     Properties:
-      RoleName: ${self:custom.service}-${self:provider.stage}-websocket-lambda-role
-      Description: IAM role for WebSocket Lambda functions in ${self:custom.service}-${self:provider.stage}
+      RoleName: ${self:custom.resourcePrefix}-websocket-lambda-role
+      Description: IAM role for WebSocket Lambda functions in ${self:custom.resourcePrefix}
       AssumeRolePolicyDocument:
         Version: '2012-10-17'
         Statement:
@@ -32,8 +32,8 @@ Resources:
                   - dynamodb:Query
                   - dynamodb:UpdateItem
                 Resource:
-                  - !Sub "arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${self:custom.service}-${self:provider.stage}-connections"
-                  - !Sub "arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${self:custom.service}-${self:provider.stage}-connections/index/*"
+                  - !Sub "arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${self:custom.resourcePrefix}-connections"
+                  - !Sub "arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${self:custom.resourcePrefix}-connections/index/*"
               - Effect: Allow
                 Action:
                   - sqs:SendMessage
@@ -41,14 +41,14 @@ Resources:
                   - sqs:ReceiveMessage
                   - sqs:DeleteMessage
                 Resource:
-                  - !Sub "arn:aws:sqs:${AWS::Region}:${AWS::AccountId}:${self:custom.service}-${self:provider.stage}-message-queue"
+                  - !Sub "arn:aws:sqs:${AWS::Region}:${AWS::AccountId}:${self:custom.resourcePrefix}-message-queue"
               - Effect: Allow
                 Action:
                   - logs:CreateLogGroup
                   - logs:CreateLogStream
                   - logs:PutLogEvents
                 Resource: 
-                  - !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/${self:custom.service}-${self:provider.stage}-*:*"
+                  - !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/${self:custom.resourcePrefix}-*:*"
               - Effect: Allow
                 Action:
                   - cognito-idp:AdminInitiateAuth
@@ -67,8 +67,8 @@ Resources:
   WebSocketAuthorizerRole:
     Type: AWS::IAM::Role
     Properties:
-      RoleName: ${self:custom.service}-${self:provider.stage}-websocket-authorizer-role
-      Description: IAM role for WebSocket authorizer Lambda function in ${self:custom.service}-${self:provider.stage}
+      RoleName: ${self:custom.resourcePrefix}-websocket-authorizer-role
+      Description: IAM role for WebSocket authorizer Lambda function in ${self:custom.resourcePrefix}
       AssumeRolePolicyDocument:
         Version: '2012-10-17'
         Statement:
@@ -109,11 +109,11 @@ Outputs:
     Value:
       Fn::GetAtt: [WebSocketLambdaRole, Arn]
     Export:
-      Name: espectra-backend-dev-v4-r1-websocket-role-arn
+      Name: ${self:custom.resourcePrefix}-websocket-role-arn
 
   WebSocketAuthorizerRoleArn:
     Description: ARN of the WebSocket Authorizer Lambda IAM role
     Value:
       Fn::GetAtt: [WebSocketAuthorizerRole, Arn]
     Export:
-      Name: espectra-backend-dev-v4-r1-websocket-authorizer-role-arn
+      Name: ${self:custom.resourcePrefix}-websocket-authorizer-role-arn

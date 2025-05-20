@@ -2,11 +2,11 @@ Resources:
   RedisSubnetGroup:
     Type: AWS::ElastiCache::SubnetGroup
     Properties:
-      CacheSubnetGroupName: espectra-backend-dev-v4-r1-redis-sg
-      Description: espectra-backend-dev-v4-r1 subnet group for Redis cluster
+      CacheSubnetGroupName: ${self:custom.resourcePrefix}-redis-sg
+      Description: ${self:custom.resourcePrefix} subnet group for Redis cluster
       SubnetIds:
-        - Fn::ImportValue: espectra-backend-dev-v4-r1-phase1-PrivateSubnet1Id
-        - Fn::ImportValue: espectra-backend-dev-v4-r1-phase1-PrivateSubnet2Id
+        - Fn::ImportValue: ${self:custom.resourcePrefix}-phase1-PrivateSubnet1Id
+        - Fn::ImportValue: ${self:custom.resourcePrefix}-phase1-PrivateSubnet2Id
       Tags:
         - Key: Environment
           Value: dev
@@ -23,7 +23,7 @@ Resources:
     Type: AWS::ElastiCache::ParameterGroup
     Properties:
       CacheParameterGroupFamily: redis6.x
-      Description: espectra-backend-dev-v4-r1 parameter group for Redis cluster
+      Description: ${self:custom.resourcePrefix} parameter group for Redis cluster
       Properties:
         timeout: 30000
         notify-keyspace-events: "Ex"
@@ -47,7 +47,7 @@ Resources:
     Type: AWS::S3::Bucket
     DeletionPolicy: Retain
     Properties:
-      BucketName: !Sub "${self:custom.service}-${self:provider.stage}-redis-cache-backups-bucket"
+      BucketName: !Sub "${self:custom.resourcePrefix}-redis-cache-backups-bucket"
       VersioningConfiguration:
         Status: Enabled
       LifecycleConfiguration:
@@ -73,8 +73,8 @@ Resources:
       - RedisSubnetGroup
       - RedisParameterGroup
     Properties:
-      ReplicationGroupId: !Sub "${self:custom.service}-${self:provider.stage}-redis"
-      ReplicationGroupDescription: !Sub "${self:custom.service}-${self:provider.stage} Redis cluster for session management"
+      ReplicationGroupId: !Sub "${self:custom.resourcePrefix}-redis"
+      ReplicationGroupDescription: !Sub "${self:custom.resourcePrefix} Redis cluster for session management"
       Engine: redis
       EngineVersion: "6.x"
       CacheNodeType: ${self:custom.redis.instanceType}
@@ -84,7 +84,7 @@ Resources:
       CacheParameterGroupName: !Ref RedisParameterGroup
       CacheSubnetGroupName: !Ref RedisSubnetGroup
       SecurityGroupIds:
-        - Fn::ImportValue: espectra-backend-dev-v4-r1-phase1-RedisSecurityGroupId
+        - Fn::ImportValue: ${self:custom.resourcePrefix}-phase1-RedisSecurityGroupId
       AtRestEncryptionEnabled: true
       TransitEncryptionEnabled: true
       KmsKeyId:
@@ -107,7 +107,7 @@ Resources:
   RedisCPUAlarm:
     Type: AWS::CloudWatch::Alarm
     Properties:
-      AlarmName: !Sub "${self:custom.service}-${self:provider.stage}-redis-cpu"
+      AlarmName: !Sub "${self:custom.resourcePrefix}-redis-cpu"
       AlarmDescription: Redis cluster CPU utilization exceeds threshold
       MetricName: CPUUtilization
       Namespace: AWS/ElastiCache
@@ -126,7 +126,7 @@ Resources:
   RedisMemoryAlarm:
     Type: AWS::CloudWatch::Alarm
     Properties:
-      AlarmName: !Sub "${self:custom.service}-${self:provider.stage}-redis-memory"
+      AlarmName: !Sub "${self:custom.resourcePrefix}-redis-memory"
       AlarmDescription: Redis cluster memory usage exceeds threshold
       MetricName: DatabaseMemoryUsagePercentage
       Namespace: AWS/ElastiCache
@@ -145,7 +145,7 @@ Resources:
   RedisConnectionsAlarm:
     Type: AWS::CloudWatch::Alarm
     Properties:
-      AlarmName: !Sub "${self:custom.service}-${self:provider.stage}-redis-connections"
+      AlarmName: !Sub "${self:custom.resourcePrefix}-redis-connections"
       AlarmDescription: Redis cluster current connections exceeds threshold
       MetricName: CurrConnections
       Namespace: AWS/ElastiCache
@@ -164,7 +164,7 @@ Resources:
   RedisReplicationLagAlarm:
     Type: AWS::CloudWatch::Alarm
     Properties:
-      AlarmName: !Sub "${self:custom.service}-${self:provider.stage}-redis-replication-lag"
+      AlarmName: !Sub "${self:custom.resourcePrefix}-redis-replication-lag"
       AlarmDescription: Redis cluster replication lag exceeds threshold
       MetricName: ReplicationLag
       Namespace: AWS/ElastiCache
@@ -184,7 +184,7 @@ Resources:
   RedisConnectionFailuresAlarm:
     Type: AWS::CloudWatch::Alarm
     Properties:
-      AlarmName: !Sub "${self:custom.service}-${self:provider.stage}-redis-connection-failures"
+      AlarmName: !Sub "${self:custom.resourcePrefix}-redis-connection-failures"
       AlarmDescription: Redis connection failures detected
       MetricName: ConnectionFailures
       Namespace: AWS/ElastiCache
@@ -206,32 +206,32 @@ Outputs:
     Value:
       Fn::GetAtt: [RedisCluster, PrimaryEndPoint.Address]
     Export:
-      Name: espectra-backend-dev-v4-r1-redis-endpoint
+      Name: ${self:custom.resourcePrefix}-redis-endpoint
 
   RedisPort:
     Description: Redis port
     Value:
       Fn::GetAtt: [RedisCluster, PrimaryEndPoint.Port]
     Export:
-      Name: espectra-backend-dev-v4-r1-redis-port
+      Name: ${self:custom.resourcePrefix}-redis-port
 
   RedisConnectionString:
     Description: Redis connection string with protocol
     Value:
       Fn::Sub: "redis://${RedisCluster.PrimaryEndPoint.Address}:${RedisCluster.PrimaryEndPoint.Port}"
     Export:
-      Name: espectra-backend-dev-v4-r1-redis-connection-string
+      Name: ${self:custom.resourcePrefix}-redis-connection-string
 
   RedisClusterId:
     Description: ID of the Redis cluster
     Value:
       Ref: RedisCluster
     Export:
-      Name: espectra-backend-dev-v4-r1-redis-cluster-id
+      Name: ${self:custom.resourcePrefix}-redis-cluster-id
 
   RedisParameterGroupName:
     Description: Name of the Redis parameter group
     Value:
       Ref: RedisParameterGroup
     Export:
-      Name: espectra-backend-dev-v4-r1-redis-parameter-group
+      Name: ${self:custom.resourcePrefix}-redis-parameter-group

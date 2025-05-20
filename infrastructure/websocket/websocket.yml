@@ -5,7 +5,7 @@ Resources:
     DependsOn:
       - WsAuthorizerLambdaFunction
     Properties:
-      Name: espectra-backend-dev-v4-r1-websocket
+      Name: ${self:custom.resourcePrefix}-websocket
       ProtocolType: WEBSOCKET
       RouteSelectionExpression: $request.body.action
       Description: WebSocket API for real-time communications in espectra-backend
@@ -66,7 +66,7 @@ Resources:
   WebSocketLogs:
     Type: AWS::Logs::LogGroup
     Properties:
-      LogGroupName: /aws/websocket/${self:custom.service}-${self:provider.stage}
+      LogGroupName: /aws/websocket/${self:custom.resourcePrefix}
       RetentionInDays: ${self:custom.logRetentionInDays}
       Tags:
         - Key: Service
@@ -208,7 +208,7 @@ Resources:
   WebSocketApiRole:
     Type: AWS::IAM::Role
     Properties:
-      RoleName: ${self:custom.service}-${self:provider.stage}-websocket-api-role
+      RoleName: ${self:custom.resourcePrefix}-websocket-api-role
       AssumeRolePolicyDocument:
         Version: '2012-10-17'
         Statement:
@@ -240,7 +240,7 @@ Resources:
   WebSocketConnectionsAlarm:
     Type: AWS::CloudWatch::Alarm
     Properties:
-      AlarmName: ${self:custom.service}-${self:provider.stage}-websocket-connections
+      AlarmName: ${self:custom.resourcePrefix}-websocket-connections
       AlarmDescription: Alert when concurrent WebSocket connections exceed threshold
       MetricName: ConnectorConnections
       Namespace: AWS/ApiGateway
@@ -259,7 +259,7 @@ Resources:
   WebSocketLatencyAlarm:
     Type: AWS::CloudWatch::Alarm
     Properties:
-      AlarmName: ${self:custom.service}-${self:provider.stage}-websocket-latency
+      AlarmName: ${self:custom.resourcePrefix}-websocket-latency
       AlarmDescription: WebSocket message processing latency exceeds threshold
       MetricName: IntegrationLatency
       Namespace: AWS/ApiGateway
@@ -288,18 +288,18 @@ Outputs:
     Value:
       Ref: WebSocketApi
     Export:
-      Name: espectra-backend-dev-v4-r1-websocket-api-id
+      Name: ${self:custom.resourcePrefix}-websocket-api-id
 
   WebSocketApiEndpoint:
     Description: WebSocket API Endpoint
     Value:
       Fn::Sub: 'https://${WebSocketApi}.execute-api.${AWS::Region}.amazonaws.com/dev'
     Export:
-      Name: espectra-backend-dev-v4-r1-websocket-endpoint
+      Name: ${self:custom.resourcePrefix}-websocket-endpoint
 
   WebSocketStageArn:
     Description: WebSocket Stage ARN
     Value:
       Fn::Sub: 'arn:aws:apigateway:${AWS::Region}::/apis/${WebSocketApi}/stages/dev'
     Export:
-      Name: espectra-backend-dev-v4-r1-websocket-stage-arn
+      Name: ${self:custom.resourcePrefix}-websocket-stage-arn

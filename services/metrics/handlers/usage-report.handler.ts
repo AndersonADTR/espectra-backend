@@ -32,7 +32,7 @@ const usageReportHandler: APIGatewayProxyHandler = async (event) => {
     
     // Nombre de la tabla de uso de tokens
     const tokenTableName = process.env.TOKEN_TABLE || 
-      `${process.env.SERVICE_NAME}-${process.env.STAGE}-token-usage-table`;
+      `${process.env.RESOURCE_PREFIX}-token-usage-table`;
     
     // Consultar uso de tokens
     const tokenUsageResult = await documentClient.send(new QueryCommand({
@@ -62,7 +62,7 @@ const usageReportHandler: APIGatewayProxyHandler = async (event) => {
     
     // Nombre de la tabla de handoffs
     const handoffTableName = process.env.HANDOFF_TABLE || 
-      `${process.env.SERVICE_NAME}-${process.env.STAGE}-handoff-requests`;
+      `${process.env.RESOURCE_PREFIX}-handoff-requests`;
     
     // Consultar handoffs del usuario
     const handoffResult = await documentClient.send(new QueryCommand({

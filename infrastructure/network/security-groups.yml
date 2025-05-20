@@ -31,7 +31,7 @@ Resources:
           Description: DNS (UDP)
       Tags:
         - Key: Name
-          Value: espectra-backend-dev-v4-r1-lambda-sg
+          Value: ${self:custom.resourcePrefix}-lambda-sg
         - Key: Service
           Value: espectra-backend
         - Key: Environment
@@ -56,7 +56,7 @@ Resources:
           Description: Redis access from Lambda functions
       Tags:
         - Key: Name
-          Value: espectra-backend-dev-v4-r1-redis-sg
+          Value: ${self:custom.resourcePrefix}-redis-sg
         - Key: Service
           Value: espectra-backend
         - Key: Environment
@@ -86,7 +86,7 @@ Resources:
           Description: HTTPS outbound
       Tags:
         - Key: Name
-          Value: espectra-backend-dev-v4-r1-internal-api-sg
+          Value: ${self:custom.resourcePrefix}-internal-api-sg
         - Key: Service
           Value: espectra-backend
         - Key: Environment
@@ -116,7 +116,7 @@ Resources:
           Description: All outbound traffic
       Tags:
         - Key: Name
-          Value: espectra-backend-dev-v4-r1-vpce-sg
+          Value: ${self:custom.resourcePrefix}-vpce-sg
         - Key: Service
           Value: espectra-backend
         - Key: Environment
@@ -131,7 +131,7 @@ Resources:
   SGMetricsAlarm:
     Type: AWS::CloudWatch::Alarm
     Properties:
-      AlarmName: espectra-backend-dev-v4-r1-sg-blocked-requests
+      AlarmName: ${self:custom.resourcePrefix}-sg-blocked-requests
       MetricName: BlockedRequests
       Namespace: AWS/EC2
       Statistic: Sum
@@ -140,7 +140,7 @@ Resources:
       Threshold: 100
       ComparisonOperator: GreaterThanThreshold
       AlarmActions:
-        - Fn::ImportValue: espectra-backend-dev-v4-r1-sns-HighPriorityTopicArn
+        - Fn::ImportValue: ${self:custom.resourcePrefix}-sns-HighPriorityTopicArn
 
 Outputs:
   # Security Group Outputs
@@ -149,25 +149,25 @@ Outputs:
     Value:
       Ref: LambdaSecurityGroup
     Export:
-      Name: espectra-backend-dev-v4-r1-phase1-LambdaSecurityGroupId
+      Name: ${self:custom.resourcePrefix}-phase1-LambdaSecurityGroupId
 
   RedisSecurityGroupId:
     Description: ID of the Redis Security Group
     Value:
       Ref: RedisSecurityGroup
     Export:
-      Name: espectra-backend-dev-v4-r1-phase1-RedisSecurityGroupId
+      Name: ${self:custom.resourcePrefix}-phase1-RedisSecurityGroupId
 
   InternalApiSecurityGroupId:
     Description: ID of the Internal API Security Group
     Value:
       Ref: InternalApiSecurityGroup
     Export:
-      Name: espectra-backend-dev-v4-r1-phase1-InternalApiSecurityGroupId
+      Name: ${self:custom.resourcePrefix}-phase1-InternalApiSecurityGroupId
 
   VPCEndpointSecurityGroupId:
     Description: ID of the VPC Endpoint Security Group
     Value:
       Ref: VPCEndpointSecurityGroup
     Export:
-      Name: espectra-backend-dev-v4-r1-phase1-VPCEndpointSecurityGroupId
+      Name: ${self:custom.resourcePrefix}-phase1-VPCEndpointSecurityGroupId

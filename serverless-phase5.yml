@@ -134,19 +134,19 @@ package:
 # functions:
 #   metricsCollector:
 #     handler: services/metrics/handlers/collector.handler
-#     name: ${self:custom.service}-${self:provider.stage}-metrics-collector
+#     name: ${self:custom.resourcePrefix}-metrics-collector
 #     description: Collects and processes system metrics
 #     memorySize: 256
 #     timeout: 30
 #     environment:
 #       METRICS_TABLE:
-#         Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-metrics-table-name
+#         Fn::ImportValue: ${self:custom.resourcePrefix}-metrics-table-name
 #       KMS_KEY_ARN:
-#         Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-system-kms-key-arn
+#         Fn::ImportValue: ${self:custom.resourcePrefix}-system-kms-key-arn
 #       BOTPRESS_METRICS_TABLE:
-#         Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-metrics-table-name
+#         Fn::ImportValue: ${self:custom.resourcePrefix}-metrics-table-name
 #     role:
-#       Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-metrics-collector-role-arn
+#       Fn::ImportValue: ${self:custom.resourcePrefix}-metrics-collector-role-arn
 #     events:
 #       - schedule: rate(1 minute)
 #       - eventBridge:
@@ -160,15 +160,15 @@ package:
 
 #   botpressMetricsProcessor:
 #     handler: services/metrics/handlers/botpress-metrics.handler
-#     name: ${self:custom.service}-${self:provider.stage}-botpress-metrics
+#     name: ${self:custom.resourcePrefix}-botpress-metrics
 #     description: Processes Botpress specific metrics
 #     memorySize: 256
 #     timeout: 30
 #     environment:
 #       METRICS_TABLE:
-#         Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-metrics-table-name
+#         Fn::ImportValue: ${self:custom.resourcePrefix}-metrics-table-name
 #     role:
-#       Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-metrics-collector-role-arn
+#       Fn::ImportValue: ${self:custom.resourcePrefix}-metrics-collector-role-arn
 #     events:
 #       - schedule: rate(5 minutes)
 #     vpc: ${self:provider.vpc}
@@ -185,43 +185,43 @@ resources:
   #   MetricsProcessingLogGroup:
   #     Type: AWS::Logs::LogGroup
   #     Properties:
-  #       LogGroupName: /aws/lambda/${self:custom.service}-${self:provider.stage}-metrics-processing
+  #       LogGroupName: /aws/lambda/${self:custom.resourcePrefix}-metrics-processing
   #       RetentionInDays: ${self:custom.logRetentionInDays}
   #       KmsKeyId:
-  #         Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-system-kms-key-arn
+  #         Fn::ImportValue: ${self:custom.resourcePrefix}-system-kms-key-arn
 
   #   BotpressMetricsLogGroup:
   #     Type: AWS::Logs::LogGroup
   #     Properties:
-  #       LogGroupName: /aws/lambda/${self:custom.service}-${self:provider.stage}-botpress-metrics
+  #       LogGroupName: /aws/lambda/${self:custom.resourcePrefix}-botpress-metrics
   #       RetentionInDays: ${self:custom.logRetentionInDays}
   #       KmsKeyId:
-  #         Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-system-kms-key-arn
+  #         Fn::ImportValue: ${self:custom.resourcePrefix}-system-kms-key-arn
 
 outputs:
   # MetricsCollectorFunctionName:
   #   Description: Name of metrics collector function
   #   Value: !Ref MetricsCollectorLambdaFunction
   #   Export:
-  #     Name: ${self:custom.service}-${self:provider.stage}-metrics-collector-name
+  #     Name: ${self:custom.resourcePrefix}-metrics-collector-name
 
   # BotpressMetricsProcessorName:
   #   Description: Name of Botpress metrics processor
   #   Value: !Ref BotpressMetricsProcessorLambdaFunction
   #   Export:
-  #     Name: ${self:custom.service}-${self:provider.stage}-botpress-metrics-name
+  #     Name: ${self:custom.resourcePrefix}-botpress-metrics-name
 
   # MetricsLogGroupName:
   #   Description: Name of metrics processing log group
   #   Value: !Ref MetricsProcessingLogGroup
   #   Export:
-  #     Name: ${self:custom.service}-${self:provider.stage}-metrics-log-group
+  #     Name: ${self:custom.resourcePrefix}-metrics-log-group
 
   # BotpressMetricsLogGroupName:
   #   Description: Name of Botpress metrics log group
   #   Value: !Ref BotpressMetricsLogGroup
   #   Export:
-  #     Name: ${self:custom.service}-${self:provider.stage}-botpress-metrics-log-group
+  #     Name: ${self:custom.resourcePrefix}-botpress-metrics-log-group
 
   CloudWatchRoleArn:
     Description: ARN of the CloudWatch IAM role
@@ -287,7 +287,7 @@ outputs:
         - - !GetAtt LambdaDurationAlarm.Arn
           - !GetAtt Api4xxErrorAlarm.Arn
     Export:
-      Name: ${self:custom.service}-${self:provider.stage}-low-priority-cw-alarms
+      Name: ${self:custom.resourcePrefix}-low-priority-cw-alarms
 
   MediumPriorityAlarms:
     Description: List of medium priority alarm ARNs
@@ -300,7 +300,7 @@ outputs:
           - !GetAtt DynamoDBThrottlesAlarm.Arn
           - !GetAtt WebSocketConnectionsAlarm.Arn
     Export:
-      Name: ${self:custom.service}-${self:provider.stage}-medium-priority-cw-alarms
+      Name: ${self:custom.resourcePrefix}-medium-priority-cw-alarms
 
   HighPriorityAlarms:
     Description: List of high priority alarm ARNs
@@ -313,19 +313,19 @@ outputs:
           - !GetAtt KMSKeyErrorAlarm.Arn
           - !GetAtt MonthlyEstimatedChargesAlarm.Arn
     Export:
-      Name: ${self:custom.service}-${self:provider.stage}-high-priority-cw-alarms
+      Name: ${self:custom.resourcePrefix}-high-priority-cw-alarms
 
   BillingAlarmArn:
     Description: ARN of the monthly billing alarm
     Value: !GetAtt MonthlyEstimatedChargesAlarm.Arn
     Export:
-      Name: ${self:custom.service}-${self:provider.stage}-billing-cw-alarm-arn
+      Name: ${self:custom.resourcePrefix}-billing-cw-alarm-arn
 
   BotpressHealthAlarmArn:
     Description: ARN of the Botpress health composite alarm
     Value: !GetAtt BotpressHealthAlarm.Arn
     Export:
-      Name: ${self:custom.service}-${self:provider.stage}-botpress-health-alarm-arn
+      Name: ${self:custom.resourcePrefix}-botpress-health-alarm-arn
 
   BotpressHighPriorityAlarms:
     Description: List of Botpress high priority alarm ARNs
@@ -338,7 +338,7 @@ outputs:
           - !GetAtt TokenExhaustionAlarm.Arn
           - !GetAtt BotpressIntegrationHealthAlarm.Arn
     Export:
-      Name: ${self:custom.service}-${self:provider.stage}-botpress-high-priority-alarms
+      Name: ${self:custom.resourcePrefix}-botpress-high-priority-alarms
 
   BotpressMediumPriorityAlarms:
     Description: List of Botpress medium priority alarm ARNs
@@ -350,16 +350,16 @@ outputs:
           - !GetAtt HandoffLatencyAlarm.Arn
           - !GetAtt HandoffSuccessRateAlarm.Arn
     Export:
-      Name: ${self:custom.service}-${self:provider.stage}-botpress-medium-priority-alarms
+      Name: ${self:custom.resourcePrefix}-botpress-medium-priority-alarms
 
   DashboardURL:
     Description: URL of the Botpress Dashboard
-    Value: !Sub https://${AWS::Region}.console.aws.amazon.com/cloudwatch/home?region=${AWS::Region}#dashboards:name=${self:custom.service}-${self:provider.stage}-botpress
+    Value: !Sub https://${AWS::Region}.console.aws.amazon.com/cloudwatch/home?region=${AWS::Region}#dashboards:name=${self:custom.resourcePrefix}-botpress
     Export:
-      Name: ${self:custom.service}-${self:provider.stage}-botpress-dashboard-url
+      Name: ${self:custom.resourcePrefix}-botpress-dashboard-url
 
   BotpressMetricsAlarmArn:
     Description: ARN of the Botpress metrics alarm
     Value: !GetAtt BotpressMetricsAlarm.Arn
     Export:
-      Name: ${self:custom.service}-${self:provider.stage}-botpress-metrics-alarm-arn
+      Name: ${self:custom.resourcePrefix}-botpress-metrics-alarm-arn

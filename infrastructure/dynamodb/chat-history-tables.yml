@@ -4,7 +4,7 @@ Resources:
     DeletionPolicy: Retain
     UpdateReplacePolicy: Retain
     Properties:
-      TableName: ${self:custom.service}-${self:provider.stage}-chat-history-table
+      TableName: ${self:custom.resourcePrefix}-chat-history-table
       AttributeDefinitions:
         - AttributeName: conversationId
           AttributeType: S
@@ -65,13 +65,13 @@ Resources:
   ChatHistoryTableReadCapacityAlarm:
     Type: AWS::CloudWatch::Alarm
     Properties:
-      AlarmName: ${self:custom.service}-${self:provider.stage}-chat-history-read-throttling
+      AlarmName: ${self:custom.resourcePrefix}-chat-history-read-throttling
       AlarmDescription: Chat History table read capacity throttling
       MetricName: ReadThrottleEvents
       Namespace: AWS/DynamoDB
       Dimensions:
         - Name: TableName
-          Value: ${self:custom.service}-${self:provider.stage}-chat-history-table
+          Value: ${self:custom.resourcePrefix}-chat-history-table
       Statistic: Sum
       Period: 300
       EvaluationPeriods: 2
@@ -89,13 +89,13 @@ Resources:
   ChatHistoryTableWriteCapacityAlarm:
     Type: AWS::CloudWatch::Alarm
     Properties:
-      AlarmName: ${self:custom.service}-${self:provider.stage}-chat-history-write-throttling
+      AlarmName: ${self:custom.resourcePrefix}-chat-history-write-throttling
       AlarmDescription: Chat History table write capacity throttling
       MetricName: WriteThrottleEvents
       Namespace: AWS/DynamoDB
       Dimensions:
         - Name: TableName
-          Value: ${self:custom.service}-${self:provider.stage}-chat-history-table
+          Value: ${self:custom.resourcePrefix}-chat-history-table
       Statistic: Sum
       Period: 300
       EvaluationPeriods: 2
@@ -113,13 +113,13 @@ Resources:
   ChatHistoryTableErrorAlarm:
     Type: AWS::CloudWatch::Alarm
     Properties:
-      AlarmName: ${self:custom.service}-${self:provider.stage}-chat-history-errors
+      AlarmName: ${self:custom.resourcePrefix}-chat-history-errors
       AlarmDescription: Chat History table system errors
       MetricName: SystemErrors
       Namespace: AWS/DynamoDB
       Dimensions:
         - Name: TableName
-          Value: ${self:custom.service}-${self:provider.stage}-chat-history-table
+          Value: ${self:custom.resourcePrefix}-chat-history-table
       Statistic: Sum
       Period: 300
       EvaluationPeriods: 1
@@ -137,13 +137,13 @@ Resources:
   ChatHistoryTableLatencyAlarm:
     Type: AWS::CloudWatch::Alarm
     Properties:
-      AlarmName: ${self:custom.service}-${self:provider.stage}-chat-history-latency
+      AlarmName: ${self:custom.resourcePrefix}-chat-history-latency
       AlarmDescription: Chat History table high latency
       MetricName: SuccessfulRequestLatency
       Namespace: AWS/DynamoDB
       Dimensions:
         - Name: TableName
-          Value: ${self:custom.service}-${self:provider.stage}-chat-history-table
+          Value: ${self:custom.resourcePrefix}-chat-history-table
       Statistic: Average
       Period: 300
       EvaluationPeriods: 3
@@ -161,24 +161,26 @@ Resources:
 Outputs:
   ChatHistoryTableName:
     Description: Name of the Chat History DynamoDB table
-    Value: !Ref ChatHistoryTable
+    Value:
+      Ref: ChatHistoryTable
     Export:
-      Name: ${self:custom.service}-${self:provider.stage}-chat-history-table-name
+      Name: ${self:custom.resourcePrefix}-chat-history-table-name
 
   ChatHistoryTableArn:
     Description: ARN of the Chat History DynamoDB table
-    Value: !GetAtt ChatHistoryTable.Arn
+    Value:
+      Fn::GetAtt: [ChatHistoryTable, Arn]
     Export:
-      Name: ${self:custom.service}-${self:provider.stage}-chat-history-table-arn
+      Name: ${self:custom.resourcePrefix}-chat-history-table-arn
 
   UserConversationsIndexName:
     Description: Name of the User Conversations GSI
     Value: UserConversationsIndex
     Export:
-      Name: ${self:custom.service}-${self:provider.stage}-user-conversations-index-name
+      Name: ${self:custom.resourcePrefix}-user-conversations-index-name
 
   MessageTypeIndexName:
     Description: Name of the Message Type GSI
     Value: MessageTypeIndex
     Export:
-      Name: ${self:custom.service}-${self:provider.stage}-message-type-index-name
+      Name: ${self:custom.resourcePrefix}-message-type-index-name

@@ -234,7 +234,7 @@ async function getUserDetails(userId: string): Promise<any | null> {
   const client = new DynamoDBClient({});
   const ddbDocClient = DynamoDBDocumentClient.from(client);
   const tableName = process.env.USERS_TABLE || 
-    `${process.env.SERVICE_NAME}-${process.env.STAGE}-users`;
+    `${process.env.RESOURCE_PREFIX}-users`;
   
   try {
     const result = await ddbDocClient.send(new GetCommand({

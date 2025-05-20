@@ -55,7 +55,7 @@ export class ConversationContextService {
     this.cacheService = CacheService.getInstance();
     this.logger = new Logger('ConversationContextService');
     this.metrics = new MetricsService('ConversationContext');
-    this.tableName = process.env.CONTEXT_TABLE || `${process.env.SERVICE_NAME}-${process.env.STAGE}-conversation-context-table`;
+    this.tableName = process.env.CONTEXT_TABLE || `${process.env.RESOURCE_PREFIX}-conversation-context-table`;
   }
 
   public static getInstance(): ConversationContextService {

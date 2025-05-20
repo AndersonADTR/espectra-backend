@@ -12,7 +12,7 @@ class MetricsModel {
         const client = new client_dynamodb_1.DynamoDBClient({});
         this.dynamodb = lib_dynamodb_1.DynamoDBDocumentClient.from(client);
         this.logger = new logger_1.Logger('MetricsModel');
-        this.tableName = `${process.env.SERVICE_NAME}-${process.env.STAGE}-metrics`;
+        this.tableName = `${process.env.RESOURCE_PREFIX}-metrics`;
     }
     async recordMetric(metric) {
         try {

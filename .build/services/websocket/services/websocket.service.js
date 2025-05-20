@@ -30,12 +30,12 @@ class WebSocketService {
             endpoint: this.apiGatewayEndpoint
         });
         this.connectionsTableName = process.env.CONNECTIONS_TABLE ||
-            `${process.env.SERVICE_NAME}-${process.env.STAGE}-websocket-connections`;
+            `${process.env.RESOURCE_PREFIX}-websocket-connections`;
     }
     async getUserIdFromConversation(conversationId) {
         try {
             const result = await this.dynamoDbClient.send(new lib_dynamodb_1.GetCommand({
-                TableName: process.env.CONTEXT_TABLE || `${process.env.SERVICE_NAME}-${process.env.STAGE}-conversation-context-table`,
+                TableName: process.env.CONTEXT_TABLE || `${process.env.RESOURCE_PREFIX}-conversation-context-table`,
                 Key: { conversationId }
             }));
             if (!result.Item) {

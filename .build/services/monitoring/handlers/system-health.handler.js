@@ -216,7 +216,7 @@ async function checkDynamoDBHealth(cloudWatch) {
 }
 async function checkWebSocketHealth(cloudWatch, dynamoDb) {
     const connectionsTableName = process.env.CONNECTIONS_TABLE ||
-        `${process.env.SERVICE_NAME}-${process.env.STAGE}-websocket-connections`;
+        `${process.env.RESOURCE_PREFIX}-websocket-connections`;
     const activeConnectionsResult = await dynamoDb.send(new lib_dynamodb_1.ScanCommand({
         TableName: connectionsTableName,
         Select: 'COUNT'
@@ -400,7 +400,7 @@ function determineSystemStatus(healthChecks) {
 }
 async function saveHealthCheckResults(dynamoDb, healthChecks) {
     const healthHistoryTable = process.env.HEALTH_HISTORY_TABLE ||
-        `${process.env.SERVICE_NAME}-${process.env.STAGE}-health-history`;
+        `${process.env.RESOURCE_PREFIX}-health-history`;
     const timestamp = new Date().toISOString();
     const ttl = Math.floor(Date.now() / 1000) + (30 * 24 * 60 * 60);
     const item = {
@@ -445,7 +445,7 @@ async function sendAlerts(sns, eventBridge, systemStatus, healthChecks) {
                     components: problematicComponents
                 }),
                 EventBusName: process.env.EVENT_BUS_NAME ||
-                    `${process.env.SERVICE_NAME}-${process.env.STAGE}-event-bus`
+                    `${process.env.RESOURCE_PREFIX}-event-bus`
             }
         ]
     }));

@@ -3,7 +3,7 @@ Resources:
   RestApiId:
     Type: AWS::ApiGateway::RestApi
     Properties:
-      Name: espectra-backend-dev-v4-r1-api
+      Name: ${self:custom.resourcePrefix}-api
       Description: Main REST API for espectra-backend Platform
       EndpointConfiguration:
         Types:
@@ -39,7 +39,7 @@ Resources:
     DependsOn:
       - RestApiId
     Properties:
-      Name: espectra-backend-dev-v4-r1-rest-authorizer
+      Name: ${self:custom.resourcePrefix}-rest-authorizer
       Type: COGNITO_USER_POOLS
       IdentitySource: method.request.header.Authorization
       AuthorizerResultTtlInSeconds: 300
@@ -270,25 +270,25 @@ Outputs:
     Value:
       Ref: RestApiId
     Export:
-      Name: espectra-backend-dev-v4-r1-rest-api-id
+      Name: ${self:custom.resourcePrefix}-rest-api-id
 
   RestApiRootResourceId:
     Description: REST API Root Resource Id
     Value:
       Fn::GetAtt: [RestApiId, RootResourceId]
     Export:
-      Name: espectra-backend-dev-v4-r1-rest-api-root-resource-id
+      Name: ${self:custom.resourcePrefix}-rest-api-root-resource-id
 
   ApiEndpoint:
     Description: API Gateway endpoint URL
     Value:
       Fn::Sub: 'https://${RestApiId}.execute-api.${AWS::Region}.amazonaws.com/dev'
     Export:
-      Name: espectra-backend-dev-v4-r1-api-endpoint
+      Name: ${self:custom.resourcePrefix}-api-endpoint
 
   RestApiAuthorizerId:
     Description: REST API Authorizer ID
     Value:
       Ref: RestApiAuthorizer
     Export:
-      Name: espectra-backend-dev-v4-r1-rest-authorizer-id
+      Name: ${self:custom.resourcePrefix}-rest-authorizer-id

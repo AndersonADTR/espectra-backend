@@ -40,7 +40,7 @@ export class WebSocketService {
 
     // Get connections table name from environment variables
     this.connectionsTableName = process.env.CONNECTIONS_TABLE ||
-      `${process.env.SERVICE_NAME}-${process.env.STAGE}-websocket-connections`;
+      `${process.env.RESOURCE_PREFIX}-websocket-connections`;
   }
 
   /**
@@ -52,7 +52,7 @@ export class WebSocketService {
     try {
       // Obtener el contexto de la conversación para encontrar el userId
       const result = await this.dynamoDbClient.send(new GetCommand({
-        TableName: process.env.CONTEXT_TABLE || `${process.env.SERVICE_NAME}-${process.env.STAGE}-conversation-context-table`,
+        TableName: process.env.CONTEXT_TABLE || `${process.env.RESOURCE_PREFIX}-conversation-context-table`,
         Key: { conversationId }
       }));
 

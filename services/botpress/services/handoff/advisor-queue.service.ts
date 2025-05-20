@@ -71,12 +71,12 @@ export class AdvisorQueueService {
     
     // Nombres de recursos desde variables de entorno
     this.handoffTableName = process.env.HANDOFF_TABLE || 
-      `${process.env.SERVICE_NAME}-${process.env.STAGE}-handoff-requests`;
+      `${process.env.RESOURCE_PREFIX}-handoff-requests`;
     this.advisorTableName = process.env.ADVISOR_TABLE || 
-      `${process.env.SERVICE_NAME}-${process.env.STAGE}-advisors`;
+      `${process.env.RESOURCE_PREFIX}-advisors`;
     this.handoffQueueUrl = process.env.HANDOFF_QUEUE_URL || '';
     this.eventBusName = process.env.EVENT_BUS_NAME || 
-      `${process.env.SERVICE_NAME}-${process.env.STAGE}-event-bus`;
+      `${process.env.RESOURCE_PREFIX}-event-bus`;
   }
 
   public static getInstance(): AdvisorQueueService {

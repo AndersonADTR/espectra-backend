@@ -37,7 +37,7 @@ class SessionService {
         this.cache = cache_service_1.CacheService.getInstance();
         this.dynamodb = lib_dynamodb_1.DynamoDBDocumentClient.from(new client_dynamodb_1.DynamoDBClient({}));
         this.metrics = new metrics_1.MetricsService('Sessions');
-        this.tableName = process.env.SESSION_TABLE || `${process.env.SERVICE_NAME}-${process.env.STAGE}-chat-sessions`;
+        this.tableName = process.env.SESSION_TABLE || `${process.env.RESOURCE_PREFIX}-chat-sessions`;
         this.observability = observability_service_1.ObservabilityService.getInstance();
     }
     async createSession(userId, metadata = {}) {

@@ -2,8 +2,8 @@ Resources:
   IamRoleLambdaExecution:
     Type: AWS::IAM::Role
     Properties:
-      RoleName: ${self:custom.service}-${self:provider.stage}-lambda-role
-      Description: IAM role for Lambda functions in ${self:custom.service}-${self:provider.stage}
+      RoleName: ${self:custom.resourcePrefix}-lambda-role
+      Description: IAM role for Lambda functions in ${self:custom.resourcePrefix}
       AssumeRolePolicyDocument:
         Version: '2012-10-17'
         Statement:
@@ -15,7 +15,7 @@ Resources:
         - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
         - arn:aws:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole
       Policies:
-        - PolicyName: ${self:custom.service}-${self:provider.stage}-lambda-policy
+        - PolicyName: ${self:custom.resourcePrefix}-lambda-policy
           PolicyDocument:
             Version: '2012-10-17'
             Statement:
@@ -84,8 +84,8 @@ Resources:
                   - dynamodb:BatchGetItem
                   - dynamodb:BatchWriteItem
                 Resource:
-                  - !Sub arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${self:custom.service}-${self:provider.stage}-*
-                  - !Sub arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${self:custom.service}-${self:provider.stage}-*/index/*
+                  - !Sub arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${self:custom.resourcePrefix}-*
+                  - !Sub arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${self:custom.resourcePrefix}-*/index/*
               - Effect: Allow
                 Action:
                   - xray:PutTraceSegments
@@ -134,8 +134,8 @@ Resources:
   WafAssociationLambdaRole:
     Type: AWS::IAM::Role
     Properties:
-      RoleName: ${self:custom.service}-${self:provider.stage}-waf-association-lambda-role
-      Description: IAM role for Lambda functions associating WAF with API Gateway in ${self:custom.service}-${self:provider.stage}
+      RoleName: ${self:custom.resourcePrefix}-waf-association-lambda-role
+      Description: IAM role for Lambda functions associating WAF with API Gateway in ${self:custom.resourcePrefix}
       AssumeRolePolicyDocument:
         Version: '2012-10-17'
         Statement:
@@ -147,7 +147,7 @@ Resources:
         - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
         - arn:aws:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole
       Policies:
-        - PolicyName: ${self:custom.service}-${self:provider.stage}-waf-lambda-policy
+        - PolicyName: ${self:custom.resourcePrefix}-waf-lambda-policy
           PolicyDocument:
             Version: '2012-10-17'
             Statement:
@@ -211,8 +211,8 @@ Resources:
                   - dynamodb:BatchGetItem
                   - dynamodb:BatchWriteItem
                 Resource:
-                  - !Sub arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${self:custom.service}-${self:provider.stage}-*
-                  - !Sub arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${self:custom.service}-${self:provider.stage}-*/index/*
+                  - !Sub arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${self:custom.resourcePrefix}-*
+                  - !Sub arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${self:custom.resourcePrefix}-*/index/*
               - Effect: Allow
                 Action:
                   - sqs:SendMessage
@@ -268,8 +268,8 @@ Resources:
   MetricsCollectorRole:
     Type: AWS::IAM::Role
     Properties:
-      RoleName: ${self:custom.service}-${self:provider.stage}-metrics-collector-role
-      Description: IAM role for collecting metrics in ${self:custom.service}-${self:provider.stage}
+      RoleName: ${self:custom.resourcePrefix}-metrics-collector-role
+      Description: IAM role for collecting metrics in ${self:custom.resourcePrefix}
       AssumeRolePolicyDocument:
         Version: '2012-10-17'
         Statement:
@@ -325,7 +325,7 @@ Resources:
                   - dynamodb:Query
                   - dynamodb:Scan
                 Resource:
-                  - !Sub arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${self:custom.service}-${self:provider.stage}-*
+                  - !Sub arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${self:custom.resourcePrefix}-*
 
 Outputs:
   LambdaRoleArn:
@@ -333,18 +333,18 @@ Outputs:
     Value:
       Fn::GetAtt: [IamRoleLambdaExecution, Arn]
     Export:
-      Name: espectra-backend-dev-v4-r1-lambda-role-arn
+      Name: ${self:custom.resourcePrefix}-lambda-role-arn
 
   WafAssociationLambdaRoleArn:
     Description: ARN of the WAF Association Lambda IAM role
     Value:
       Fn::GetAtt: [WafAssociationLambdaRole, Arn]
     Export:
-      Name: espectra-backend-dev-v4-r1-waf-association-lambda-role-arn
+      Name: ${self:custom.resourcePrefix}-waf-association-lambda-role-arn
 
   MetricsCollectorRoleArn:
     Description: ARN of the Metrics Collector IAM role
     Value:
       Fn::GetAtt: [MetricsCollectorRole, Arn]
     Export:
-      Name: espectra-backend-dev-v4-r1-metrics-collector-role-arn
+      Name: ${self:custom.resourcePrefix}-metrics-collector-role-arn

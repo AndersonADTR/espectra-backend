@@ -16,7 +16,7 @@ export const handler: Handler = async (event) => {
   const client = new DynamoDBClient({});
   const ddbDocClient = DynamoDBDocumentClient.from(client);
   const usersTable = process.env.USERS_TABLE ||
-    `${process.env.SERVICE_NAME}-${process.env.STAGE}-users`;
+    `${process.env.RESOURCE_PREFIX}-users`;
 
   try {
     // Obtener todos los usuarios activos

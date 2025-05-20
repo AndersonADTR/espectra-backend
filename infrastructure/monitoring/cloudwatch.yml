@@ -79,7 +79,7 @@ Resources:
   CloudWatchRole:
     Type: AWS::IAM::Role
     Properties:
-      RoleName: ${self:custom.service}-${self:provider.stage}-cloudwatch-role
+      RoleName: ${self:custom.resourcePrefix}-cloudwatch-role
       AssumeRolePolicyDocument:
         Version: '2012-10-17'
         Statement:
@@ -126,7 +126,7 @@ Resources:
   MainDashboard:
     Type: AWS::CloudWatch::Dashboard
     Properties:
-      DashboardName: ${self:custom.service}-${self:provider.stage}-main
+      DashboardName: ${self:custom.resourcePrefix}-main
       DashboardBody: !Sub |
         {
           "widgets": [
@@ -139,8 +139,8 @@ Resources:
                 "metrics": [
                   [ "AWS/ApiGateway", "4XXError", "ApiName", "${self:custom.service}" ],
                   [ ".", "5XXError", ".", "." ],
-                  [ "AWS/Lambda", "Errors", "FunctionName", "${self:custom.service}-${self:provider.stage}-*" ],
-                  [ "AWS/DynamoDB", "ThrottledRequests", "TableName", "${self:custom.service}-${self:provider.stage}-*" ],
+                  [ "AWS/Lambda", "Errors", "FunctionName", "${self:custom.resourcePrefix}-*" ],
+                  [ "AWS/DynamoDB", "ThrottledRequests", "TableName", "${self:custom.resourcePrefix}-*" ],
                   [ "${self:custom.service}/${self:provider.stage}", "ActiveConnections", "Service", "WebSocket" ],
                   [ ".", "BotpressErrors", "Service", "Botpress" ]
                 ],
@@ -155,7 +155,7 @@ Resources:
               "height": 6,
               "properties": {
                 "metrics": [
-                  [ "AWS/Lambda", "Invocations", "FunctionName", "${self:custom.service}-${self:provider.stage}-*" ],
+                  [ "AWS/Lambda", "Invocations", "FunctionName", "${self:custom.resourcePrefix}-*" ],
                   [ ".", "Errors", ".", "." ],
                   [ ".", "Throttles", ".", "." ],
                   [ ".", "Duration", ".", "." ]
@@ -187,7 +187,7 @@ Resources:
               "width": 24,
               "height": 6,
               "properties": {
-                "query": "SOURCE '/aws/lambda/${self:custom.service}-${self:provider.stage}-*' | fields @timestamp, @message\n| filter @message like /ERROR/\n| sort @timestamp desc\n| limit 20",
+                "query": "SOURCE '/aws/lambda/${self:custom.resourcePrefix}-*' | fields @timestamp, @message\n| filter @message like /ERROR/\n| sort @timestamp desc\n| limit 20",
                 "region": "${AWS::Region}",
                 "title": "Recent Error Logs",
                 "view": "table"
