@@ -12,20 +12,22 @@ export class ErrorHandlingMiddleware {
       try {
         // Configurar el contexto
         context.callbackWaitsForEmptyEventLoop = false;
-        
+
         // Agregar request ID al logger context
         const requestContext = {
           requestId: context.awsRequestId,
           path: event.path,
           method: event.httpMethod,
-          sourceIP: event.requestContext.identity.sourceIp
+          sourceIP: event.requestContext?.identity?.sourceIp ||
+                   (event.requestContext as any)?.http?.sourceIp ||
+                   'unknown'
         };
 
         this.logger.info('Processing request', requestContext);
 
         // Ejecutar el handler
         const result = await handler(event, context, callback);
-        
+
         if (!result) {
           throw new Error('Handler did not return a result');
         }
@@ -52,7 +54,9 @@ export class ErrorHandlingMiddleware {
     const requestInfo = {
       path: event.path,
       method: event.httpMethod,
-      sourceIP: event.requestContext.identity.sourceIp
+      sourceIP: event.requestContext?.identity?.sourceIp ||
+               (event.requestContext as any)?.http?.sourceIp ||
+               'unknown'
     };
 
     if (error instanceof BaseError) {
@@ -110,8 +114,8 @@ export class ErrorHandlingMiddleware {
       },
       body: JSON.stringify({
         code: 'INTERNAL_SERVER_ERROR',
-        message: process.env.STAGE === 'dev' ? 
-          (error instanceof Error ? error.message : 'Unknown error') : 
+        message: process.env.STAGE === 'dev' ?
+          (error instanceof Error ? error.message : 'Unknown error') :
           'An internal server error occurred',
         statusCode: 500,
         details: {
@@ -124,5 +128,5 @@ export class ErrorHandlingMiddleware {
 }
 
 // Helper para uso más simple
-export const withErrorHandling = (handler: APIGatewayProxyHandler): APIGatewayProxyHandler => 
+export const withErrorHandling = (handler: APIGatewayProxyHandler): APIGatewayProxyHandler =>
   ErrorHandlingMiddleware.withErrorHandling(handler);

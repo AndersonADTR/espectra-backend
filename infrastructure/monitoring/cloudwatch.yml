@@ -3,10 +3,10 @@ Resources:
   ApiGatewayLogGroup:
     Type: AWS::Logs::LogGroup
     Properties:
-      LogGroupName: /aws/apigateway/${self:custom.service}-${self:provider.stage}
+      LogGroupName: /aws/apigateway/${self:custom.resourcePrefix}
       RetentionInDays: ${self:custom.logRetentionInDays}
-      KmsKeyId: 
-        Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-system-kms-key-arn
+      KmsKeyId:
+        Fn::ImportValue: ${self:custom.resourcePrefix}-kms-SystemKeyArn
       Tags:
         - Key: Service
           Value: ${self:custom.service}
@@ -18,10 +18,10 @@ Resources:
   LambdaLogGroup:
     Type: AWS::Logs::LogGroup
     Properties:
-      LogGroupName: /aws/lambda/${self:custom.service}-${self:provider.stage}
+      LogGroupName: /aws/lambda/${self:custom.resourcePrefix}
       RetentionInDays: ${self:custom.logRetentionInDays}
-      KmsKeyId: 
-        Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-system-kms-key-arn
+      KmsKeyId:
+        Fn::ImportValue: ${self:custom.resourcePrefix}-kms-SystemKeyArn
       Tags:
         - Key: Service
           Value: ${self:custom.service}
@@ -33,10 +33,10 @@ Resources:
   MetricsLogGroup:
     Type: AWS::Logs::LogGroup
     Properties:
-      LogGroupName: /custom/${self:custom.service}-${self:provider.stage}/metrics
+      LogGroupName: /custom/${self:custom.resourcePrefix}/metrics
       RetentionInDays: ${self:custom.logRetentionInDays}
-      KmsKeyId: 
-        Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-system-kms-key-arn
+      KmsKeyId:
+        Fn::ImportValue: ${self:custom.resourcePrefix}-kms-SystemKeyArn
       Tags:
         - Key: Service
           Value: ${self:custom.service}
@@ -48,10 +48,10 @@ Resources:
   BotpressLogGroup:
     Type: AWS::Logs::LogGroup
     Properties:
-      LogGroupName: /custom/${self:custom.service}-${self:provider.stage}/botpress
+      LogGroupName: /custom/${self:custom.resourcePrefix}/botpress
       RetentionInDays: ${self:custom.logRetentionInDays}
-      KmsKeyId: 
-        Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-system-kms-key-arn
+      KmsKeyId:
+        Fn::ImportValue: ${self:custom.resourcePrefix}-kms-SystemKeyArn
       Tags:
         - Key: Service
           Value: ${self:custom.service}
@@ -63,10 +63,10 @@ Resources:
   WebSocketLogGroup:
     Type: AWS::Logs::LogGroup
     Properties:
-      LogGroupName: /custom/${self:custom.service}-${self:provider.stage}/websocket
+      LogGroupName: /custom/${self:custom.resourcePrefix}/websocket
       RetentionInDays: ${self:custom.logRetentionInDays}
-      KmsKeyId: 
-        Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-system-kms-key-arn
+      KmsKeyId:
+        Fn::ImportValue: ${self:custom.resourcePrefix}-kms-SystemKeyArn
       Tags:
         - Key: Service
           Value: ${self:custom.service}
@@ -85,7 +85,7 @@ Resources:
         Statement:
           - Effect: Allow
             Principal:
-              Service: 
+              Service:
                 - apigateway.amazonaws.com
                 - lambda.amazonaws.com
                 - events.amazonaws.com
@@ -106,7 +106,7 @@ Resources:
                   - logs:DescribeLogStreams
                   - logs:GetLogEvents
                   - logs:FilterLogEvents
-                Resource: 
+                Resource:
                   - !Sub arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/apigateway/*
                   - !Sub arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/*
                   - !Sub arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/custom/*
@@ -120,7 +120,7 @@ Resources:
                   - kms:Decrypt
                   - kms:GenerateDataKey
                 Resource:
-                  - Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-system-kms-key-arn
+                  - Fn::ImportValue: ${self:custom.resourcePrefix}-kms-SystemKeyArn
 
   # CloudWatch Dashboard
   MainDashboard:
@@ -199,42 +199,49 @@ Resources:
 Outputs:
   CloudWatchRoleArn:
     Description: ARN of the CloudWatch IAM role
-    Value: !GetAtt CloudWatchRole.Arn
+    Value:
+      Fn::GetAtt: [CloudWatchRole, Arn]
     Export:
-      Name: ${self:custom.service}-${self:provider.stage}-cloudwatch-role-arn
+      Name: ${self:custom.resourcePrefix}-cloudwatch-role-arn
 
   ApiGatewayLogGroupName:
     Description: Name of the API Gateway log group
-    Value: !Ref ApiGatewayLogGroup
+    Value:
+      Ref: ApiGatewayLogGroup
     Export:
-      Name: ${self:custom.service}-${self:provider.stage}-apigateway-log-group
+      Name: ${self:custom.resourcePrefix}-apigateway-log-group
 
   LambdaLogGroupName:
     Description: Name of the Lambda log group
-    Value: !Ref LambdaLogGroup
+    Value:
+      Ref: LambdaLogGroup
     Export:
-      Name: ${self:custom.service}-${self:provider.stage}-lambda-log-group
+      Name: ${self:custom.resourcePrefix}-lambda-log-group
 
   MetricsLogGroupName:
     Description: Name of the metrics log group
-    Value: !Ref MetricsLogGroup
+    Value:
+      Ref: MetricsLogGroup
     Export:
-      Name: ${self:custom.service}-${self:provider.stage}-metrics-log-group
+      Name: ${self:custom.resourcePrefix}-metrics-log-group
 
   BotpressLogGroupName:
     Description: Name of the Botpress log group
-    Value: !Ref BotpressLogGroup
+    Value:
+      Ref: BotpressLogGroup
     Export:
-      Name: ${self:custom.service}-${self:provider.stage}-botpress-log-group
+      Name: ${self:custom.resourcePrefix}-botpress-log-group
 
   WebSocketLogGroupName:
     Description: Name of the WebSocket log group
-    Value: !Ref WebSocketLogGroup
+    Value:
+      Ref: WebSocketLogGroup
     Export:
-      Name: ${self:custom.service}-${self:provider.stage}-websocket-log-group
+      Name: ${self:custom.resourcePrefix}-websocket-log-group
 
   MainDashboardURL:
     Description: URL of the main CloudWatch dashboard
-    Value: !Sub https://${AWS::Region}.console.aws.amazon.com/cloudwatch/home?region=${AWS::Region}#dashboards:name=${self:custom.service}-${self:provider.stage}-main
+    Value:
+      Fn::Sub: "https://${AWS::Region}.console.aws.amazon.com/cloudwatch/home?region=${AWS::Region}#dashboards:name=${self:custom.resourcePrefix}-main"
     Export:
-      Name: ${self:custom.service}-${self:provider.stage}-main-dashboard-url
+      Name: ${self:custom.resourcePrefix}-main-dashboard-url

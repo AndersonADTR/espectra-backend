@@ -803,8 +803,12 @@ export class AuthenticationService {
   private async verifyEmailAvailability(email: string): Promise<void> {
     try {
       console.log('Verifying email availability', { email });
+      // Usar la variable de entorno USERS_TABLE si está disponible, o construir el nombre de la tabla
+      const tableName = process.env.USERS_TABLE || `${process.env.SERVICE_NAME}-${process.env.STAGE}-users`;
+      console.log('Using table name:', { tableName });
+
       const result = await this.dynamodb.send(new QueryCommand({
-        TableName: `${process.env.SERVICE_NAME}-${process.env.STAGE}-users`,
+        TableName: tableName,
         IndexName: 'EmailIndex',
         KeyConditionExpression: 'email = :email',
         ExpressionAttributeValues: {
@@ -955,8 +959,12 @@ export class AuthenticationService {
         status: UserStatus.ACTIVE
       });
 
+      // Usar la variable de entorno USERS_TABLE si está disponible, o construir el nombre de la tabla
+      const tableName = process.env.USERS_TABLE || `${process.env.SERVICE_NAME}-${process.env.STAGE}-users`;
+      this.logger.debug('Using table name for creating user record:', { tableName });
+
       await this.dynamodb.send(new PutCommand({
-        TableName: `${process.env.SERVICE_NAME}-${process.env.STAGE}-users`,
+        TableName: tableName,
         Item: newUser.toDynamoDB()
       }));
 
@@ -977,8 +985,12 @@ export class AuthenticationService {
     }
 
     try {
+      // Usar la variable de entorno USERS_TABLE si está disponible, o construir el nombre de la tabla
+      const tableName = process.env.USERS_TABLE || `${process.env.SERVICE_NAME}-${process.env.STAGE}-users`;
+      this.logger.debug('Using table name for getUserByEmail:', { tableName });
+
       const response = await this.dynamodb.send(new QueryCommand({
-        TableName: `${process.env.SERVICE_NAME}-${process.env.STAGE}-users`,
+        TableName: tableName,
         IndexName: 'EmailIndex', // Asegúrate de que este sea el nombre correcto del índice
         KeyConditionExpression: 'email = :email',
         ExpressionAttributeValues: {
@@ -1012,8 +1024,12 @@ export class AuthenticationService {
       this.logger.info('Searching user by sub using SubIndex', { sub });
 
       try {
+        // Usar la variable de entorno USERS_TABLE si está disponible, o construir el nombre de la tabla
+        const tableName = process.env.USERS_TABLE || `${process.env.SERVICE_NAME}-${process.env.STAGE}-users`;
+        this.logger.debug('Using table name for getUserBySub:', { tableName });
+
         const queryResponse = await this.dynamodb.send(new QueryCommand({
-          TableName: `${process.env.SERVICE_NAME}-${process.env.STAGE}-users`,
+          TableName: tableName,
           IndexName: 'SubIndex', // Nombre correcto del índice según infrastructure/dynamodb/user-tables.yml
           KeyConditionExpression: 'userSub = :userSub',
           ExpressionAttributeValues: {
@@ -1093,8 +1109,12 @@ export class AuthenticationService {
     try {
       this.logger.info('Getting user by ID', { userId });
 
+      // Usar la variable de entorno USERS_TABLE si está disponible, o construir el nombre de la tabla
+      const tableName = process.env.USERS_TABLE || `${process.env.SERVICE_NAME}-${process.env.STAGE}-users`;
+      this.logger.debug('Using table name for getUserById:', { tableName });
+
       const response = await this.dynamodb.send(new GetCommand({
-        TableName: `${process.env.SERVICE_NAME}-${process.env.STAGE}-users`,
+        TableName: tableName,
         Key: {
           userId: userId
         }
@@ -1118,8 +1138,12 @@ export class AuthenticationService {
 
   private async updateLastLogin(userId: string): Promise<void> {
     try {
+      // Usar la variable de entorno USERS_TABLE si está disponible, o construir el nombre de la tabla
+      const tableName = process.env.USERS_TABLE || `${process.env.SERVICE_NAME}-${process.env.STAGE}-users`;
+      this.logger.debug('Using table name for updateLastLogin:', { tableName });
+
       await this.dynamodb.send(new UpdateCommand({
-        TableName: `${process.env.SERVICE_NAME}-${process.env.STAGE}-users`,
+        TableName: tableName,
         Key: {
           userId: userId
         },

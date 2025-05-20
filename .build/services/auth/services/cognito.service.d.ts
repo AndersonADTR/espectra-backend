@@ -1,0 +1,23 @@
+import { CognitoIdentityProviderClient } from "@aws-sdk/client-cognito-identity-provider";
+import { LoginCredentials, RegisterCredentials, AuthTokens } from '../types/auth.types';
+export declare class CognitoService {
+    readonly client: CognitoIdentityProviderClient;
+    private readonly logger;
+    private readonly userPoolId;
+    private readonly clientId;
+    constructor();
+    private calculateSecretHash;
+    refreshUserTokens(userSub: string, refreshToken: string): Promise<any>;
+    registerUser(credentials: RegisterCredentials): Promise<string | undefined>;
+    authenticateUser(credentials: LoginCredentials): Promise<AuthTokens>;
+    deleteUser(email: string): Promise<void>;
+    confirmSignUp(email: string): Promise<void>;
+    getUserBySub(userSub: string): Promise<Record<string, string>>;
+    getUserByEmail(email: string): Promise<Record<string, string>>;
+    signOut(accessToken: string): Promise<void>;
+    forgotPassword(email: string): Promise<void>;
+    confirmForgotPassword(email: string, confirmationCode: string, newPassword: string): Promise<void>;
+    confirmSignUpWithCode(email: string, confirmationCode: string): Promise<void>;
+    resendConfirmationCode(email: string): Promise<void>;
+}
+//# sourceMappingURL=cognito.service.d.ts.map

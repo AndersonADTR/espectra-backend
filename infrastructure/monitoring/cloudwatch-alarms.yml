@@ -289,7 +289,7 @@ Resources:
       Dimensions:
         - Name: ApiId
           Value: 
-            Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-websocket-api-id
+            Fn::ImportValue: ${self:custom.resourcePrefix}-websocket-api-id
       AlarmActions:
         - ${self:custom.snsMediumPriorityTopic}
       Tags:
@@ -360,13 +360,14 @@ Resources:
 Outputs:
   ServiceHealthAlarmArn:
     Description: ARN of the composite service health alarm
-    Value: !GetAtt ServiceHealthAlarm.Arn
+    Value:
+      Fn::GetAtt: [ServiceHealthAlarm, Arn]
     Export:
-      Name: ${self:custom.service}-${self:provider.stage}-service-health-cw-alarm-arn
+      Name: ${self:custom.resourcePrefix}-service-health-cw-alarm-arn
 
   LowPriorityAlarms:
     Description: List of low priority alarm ARNs
-    Value: 
+    Value:
       Fn::Join:
         - ","
         - - !GetAtt LambdaDurationAlarm.Arn

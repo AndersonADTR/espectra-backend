@@ -30,7 +30,7 @@ const sendMessageHandler: APIGatewayProxyHandler = async (event) => {
     // Procesar solicitud
     const request = JSON.parse(event.body);
     const { conversationId, message, handoffId } = request;
-    
+
     if (!conversationId || !message || !handoffId) {
       return {
         statusCode: 400,
@@ -42,7 +42,7 @@ const sendMessageHandler: APIGatewayProxyHandler = async (event) => {
     const queueService = AdvisorQueueService.getInstance();
     const contextService = ConversationContextService.getInstance();
     const websocketService = new WebSocketService();
-    
+
     // Verificar que este asesor está asignado a este handoff
     const handoff = await queueService.getHandoffRequest(handoffId);
     if (!handoff || handoff.assignedAdvisorId !== advisorId) {
@@ -51,10 +51,10 @@ const sendMessageHandler: APIGatewayProxyHandler = async (event) => {
         body: JSON.stringify({ message: 'Unauthorized to send messages to this conversation' })
       };
     }
-    
+
     // Obtener información del asesor
     const advisor = await queueService.getAdvisorInfo(advisorId);
-    
+
     // Obtener el contexto de la conversación
     const context = await contextService.getContext(conversationId);
     if (!context) {
@@ -63,10 +63,10 @@ const sendMessageHandler: APIGatewayProxyHandler = async (event) => {
         body: JSON.stringify({ message: 'Conversation not found' })
       };
     }
-    
+
     // Añadir mensaje al contexto
     const timestamp = Date.now();
-    const updatedContext = await contextService.updateContext(conversationId, {
+    await contextService.updateContext(conversationId, {
       messages: [
         ...context.messages,
         {
@@ -82,7 +82,7 @@ const sendMessageHandler: APIGatewayProxyHandler = async (event) => {
       ],
       updatedAt: timestamp
     });
-    
+
     // Enviar mensaje al usuario a través de WebSocket
     await websocketService.sendMessageToUser(context.userId, {
       type: 'AGENT_MESSAGE',
@@ -95,11 +95,11 @@ const sendMessageHandler: APIGatewayProxyHandler = async (event) => {
         advisorName: advisor?.name || 'Asesor'
       }
     });
-    
-    logger.info('Advisor message sent', { 
-      handoffId, 
-      conversationId, 
-      advisorId 
+
+    logger.info('Advisor message sent', {
+      handoffId,
+      conversationId,
+      advisorId
     });
 
     return {

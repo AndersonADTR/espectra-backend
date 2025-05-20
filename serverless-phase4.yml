@@ -75,6 +75,7 @@ provider:
       Fn::ImportValue: ${self:custom.resourcePrefix}-tokens-table-name
     REGISTRATION_REQUESTS_TABLE:
       Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-registration-requests-table-name
+    USERS_TABLE: espectra-backend-dev-v4-r1-users
     # HANDOFF_TABLE:
     #   Fn::ImportValue: espectra-backend-dev-v4-r1-handoff-table-name
 
@@ -249,7 +250,7 @@ functions:
         Fn::ImportValue: ${self:custom.resourcePrefix}-cognito-UserPoolId
       COGNITO_CLIENT_ID:
         Fn::ImportValue: ${self:custom.resourcePrefix}-cognito-UserPoolClientId
-      COGNITO_CLIENT_SECRET: ${ssm:/espectra/dev/cognito/client-secret, 'your-client-secret'}
+      COGNITO_CLIENT_SECRET: ${ssm:/espectra/dev/cognito/client-secret}
 
   contactRequest:
     handler: services/auth/handlers/contactRequest.handler

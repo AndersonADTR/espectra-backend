@@ -2,7 +2,7 @@
 
 import { Handler } from 'aws-lambda';
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
-import { DynamoDBDocumentClient, ScanCommand, PutCommand } from '@aws-sdk/lib-dynamodb';
+import { DynamoDBDocumentClient, ScanCommand } from '@aws-sdk/lib-dynamodb';
 import { TokenManagementService } from '../../services/token/token-management.service';
 
 /**
@@ -11,13 +11,13 @@ import { TokenManagementService } from '../../services/token/token-management.se
  */
 export const handler: Handler = async (event) => {
   console.info('Starting daily token reset process', { event });
-  
+
   const tokenService = TokenManagementService.getInstance();
   const client = new DynamoDBClient({});
   const ddbDocClient = DynamoDBDocumentClient.from(client);
-  const usersTable = process.env.USERS_TABLE || 
+  const usersTable = process.env.USERS_TABLE ||
     `${process.env.SERVICE_NAME}-${process.env.STAGE}-users`;
-  
+
   try {
     // Obtener todos los usuarios activos
     // Nota: En producción, esto debería paginarse para manejar grandes volúmenes de usuarios
@@ -28,31 +28,31 @@ export const handler: Handler = async (event) => {
         ':active': 'active'
       }
     }));
-    
+
     const users = result.Items || [];
     console.info(`Found ${users.length} active users for token reset`);
-    
+
     // Resetear tokens para cada usuario
-    const resetPromises = users.map(user => 
+    const resetPromises = users.map(user =>
       tokenService.resetDailyTokens(user.userId)
         .catch(error => {
-          console.error('Error resetting tokens for user', { 
-            error, 
-            userId: user.userId 
+          console.error('Error resetting tokens for user', {
+            error,
+            userId: user.userId
           });
           return null;
         })
     );
-    
+
     const results = await Promise.all(resetPromises);
     const successCount = results.filter(result => result !== null).length;
-    
-    console.info('Daily token reset completed', { 
+
+    console.info('Daily token reset completed', {
       totalUsers: users.length,
       successCount,
       failureCount: users.length - successCount
     });
-    
+
     return {
       statusCode: 200,
       body: JSON.stringify({
@@ -64,7 +64,7 @@ export const handler: Handler = async (event) => {
     };
   } catch (error) {
     console.error('Error in daily token reset process', { error });
-    
+
     return {
       statusCode: 500,
       body: JSON.stringify({

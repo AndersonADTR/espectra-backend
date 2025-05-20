@@ -18,8 +18,10 @@ export class RateLimitMiddleware {
     return (handler: APIGatewayProxyHandler): APIGatewayProxyHandler => {
       return async (event: APIGatewayProxyEvent, context: Context): Promise<APIGatewayProxyResult> => {
         try {
-          // Obtener IP del cliente
-          const clientIp = event.requestContext.identity.sourceIp;
+          // Obtener IP del cliente - compatible con REST API y HTTP API
+          const clientIp = event.requestContext?.identity?.sourceIp ||
+                          (event.requestContext as any)?.http?.sourceIp ||
+                          '127.0.0.1'; // IP por defecto si no se puede determinar
 
           // Construir key para Redis
           const key = `${config.keyPrefix || 'rateLimit'}:${clientIp}:${event.path}`;

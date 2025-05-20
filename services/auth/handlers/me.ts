@@ -12,13 +12,17 @@ const meHandler: APIGatewayProxyHandler = async (event) => {
   logger.info('Processing me request');
 
   const authService = new AuthenticationService();
-  
+
   try {
     // El usuario ya está autenticado por el middleware withAuth
     // y está disponible en event.requestContext.authorizer.user
-    const user = event.requestContext.authorizer.user;
+    const user = event.requestContext?.authorizer?.user;
 
-    logger.info('User information retrieved', { 
+    if (!user) {
+      throw new Error('User not found in request context');
+    }
+
+    logger.info('User information retrieved', {
       userId: user.userId,
       userType: user.userType
     });

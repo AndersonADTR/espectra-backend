@@ -60,14 +60,14 @@ Resources:
           AttributeDataType: String
           Mutable: true
           Required: false
-        - Name: custom:userType
+        - Name: userType
           AttributeDataType: String
           Mutable: true
           Required: false
           StringAttributeConstraints:
             MaxLength: "20"
             MinLength: "1"
-        - Name: custom:language
+        - Name: language
           AttributeDataType: String
           Mutable: true
           Required: false
@@ -110,14 +110,14 @@ Resources:
         - email
         - name
         - phone_number
-        #- custom:userType
-        #- custom:language
+        - custom:userType
+        - custom:language
       WriteAttributes:
         - email
         - name
         - phone_number
-        #- custom:userType
-        #- custom:language
+        - custom:userType
+        - custom:language
 
   # Servidor de recursos para definir scopes de API
   SpectraUserPoolResourceServer:

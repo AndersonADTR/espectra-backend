@@ -1,7 +1,7 @@
 // services/botpress/handlers/advisor/complete-handoff.handler.ts
 
 import { APIGatewayProxyHandler } from 'aws-lambda';
-import { AdvisorQueueService } from '../../services/handoff/advisor-queue.service';
+// import { AdvisorQueueService } from '../../services/handoff/advisor-queue.service';
 import { HandoffService } from '../../services/handoff/handoff.service';
 import { Logger } from '@shared/utils/logger';
 import { ErrorHandlingMiddleware } from '@shared/middleware/error/error-handling.middleware';
@@ -29,7 +29,7 @@ const completeHandoffHandler: APIGatewayProxyHandler = async (event) => {
     // Procesar solicitud
     const request = JSON.parse(event.body);
     const { handoffId, resolution } = request;
-    
+
     if (!handoffId) {
       return {
         statusCode: 400,
@@ -46,10 +46,10 @@ const completeHandoffHandler: APIGatewayProxyHandler = async (event) => {
 
     // Obtener servicios
     const handoffService = HandoffService.getInstance();
-    
+
     // Completar el handoff
     await handoffService.completeHandoff(handoffId, resolution);
-    
+
     logger.info('Handoff completed', { handoffId, advisorId, resolution });
 
     return {

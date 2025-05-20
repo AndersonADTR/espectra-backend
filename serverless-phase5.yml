@@ -1,28 +1,28 @@
-service: espectra-backend-phase5
+service: espectra-backend-phase5-v4r1
 
 provider:
   name: aws
   runtime: nodejs20.x
-  stage: ${opt:stage, 'dev'}
-  region: ${opt:region, 'us-east-1'}
+  stage: dev
+  region: us-east-1
   memorySize: 1024
   timeout: 29
   logRetentionInDays: 14
   tracing:
-    lambda: true
-    apiGateway: true
-  logs:
-    restApi:
-      accessLogging: true
-      executionLogging: true
-      level: INFO
-      fullExecutionData: true
+    lambda: false
+  # Disabled logs configuration to avoid CloudWatch Logs role requirement
+  # logs:
+  #   restApi:
+  #     accessLogging: false
+  #     executionLogging: false
+  #     level: OFF
+  #     fullExecutionData: false
   vpc:
     securityGroupIds:
-      - Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-lambda-sg-id
+      - Fn::ImportValue: ${self:custom.resourcePrefix}-lambda-security-group-id
     subnetIds:
-      - Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-public-subnet-1-id
-      - Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-public-subnet-2-id
+      - Fn::ImportValue: ${self:custom.resourcePrefix}-public-subnet-1-id
+      - Fn::ImportValue: ${self:custom.resourcePrefix}-public-subnet-2-id
   environment:
     # System Variables
     STAGE: ${self:provider.stage}
@@ -39,35 +39,39 @@ provider:
     BOTPRESS_API_KEY: ${ssm:/espectra/${self:provider.stage}/botpress-api-key}
     BOTPRESS_WORKSPACE_ID: ${ssm:/espectra/${self:provider.stage}/botpress-workspace-id}
     BOTPRESS_EVENT_BUS:
-      Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-eventbus-name
+      Fn::ImportValue: ${self:custom.resourcePrefix}-eventbus-name
 
 custom:
   service: espectra-backend
+  resourcePrefix: espectra-backend-dev-v4-r1
   logRetentionInDays: 14
-  
+
   redis:
     instanceType: 'cache.t3.micro'
-
 
   logLevel:
     dev: 'DEBUG'
     staging: 'INFO'
     prod: 'WARN'
-  
+
   # Configuración de Table Names
   tableNames:
-    connections: ${self:custom.service}-${self:provider.stage}-connection-table
-    context: ${self:custom.service}-${self:provider.stage}-conversation-context-table
-    tokens: ${self:custom.service}-${self:provider.stage}-token-usage-table
-    handoff: ${self:custom.service}-${self:provider.stage}-handoff-table
-    metrics: ${self:custom.service}-${self:provider.stage}-botpress-metrics-table
+    connections: ${self:custom.resourcePrefix}-connection-table
+    context: ${self:custom.resourcePrefix}-conversation-context-table
+    tokens: ${self:custom.resourcePrefix}-token-usage-table
+    handoff: ${self:custom.resourcePrefix}-handoff-table
+    metrics: ${self:custom.resourcePrefix}-botpress-metrics-table
 
   # KMS Keys (importados del deploy previo)
   kms:
-    systemKeyId: ${cf:${self:custom.service}-kms-${self:provider.stage}.SystemKMSKeyId}
-    systemKeyArn: ${cf:${self:custom.service}-kms-${self:provider.stage}.SystemKMSKeyArn}
-    secretsKeyId: ${cf:${self:custom.service}-kms-${self:provider.stage}.SecretsKMSKeyId}
-    secretsKeyArn: ${cf:${self:custom.service}-kms-${self:provider.stage}.SecretsKMSKeyArn}
+    systemKeyId:
+      Fn::ImportValue: espectra-backend-dev-v4-r1-kms-SystemKeyId
+    systemKeyArn:
+      Fn::ImportValue: espectra-backend-dev-v4-r1-kms-SystemKeyArn
+    secretsKeyId:
+      Fn::ImportValue: espectra-backend-dev-v4-r1-kms-SecretsKeyId
+    secretsKeyArn:
+      Fn::ImportValue: espectra-backend-dev-v4-r1-kms-SecretsKeyArn
 
   # Configuración de alarmas
   alarmThresholds:
@@ -141,7 +145,7 @@ package:
 #         Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-system-kms-key-arn
 #       BOTPRESS_METRICS_TABLE:
 #         Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-metrics-table-name
-#     role: 
+#     role:
 #       Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-metrics-collector-role-arn
 #     events:
 #       - schedule: rate(1 minute)
@@ -163,7 +167,7 @@ package:
 #     environment:
 #       METRICS_TABLE:
 #         Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-metrics-table-name
-#     role: 
+#     role:
 #       Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-metrics-collector-role-arn
 #     events:
 #       - schedule: rate(5 minutes)
@@ -183,7 +187,7 @@ resources:
   #     Properties:
   #       LogGroupName: /aws/lambda/${self:custom.service}-${self:provider.stage}-metrics-processing
   #       RetentionInDays: ${self:custom.logRetentionInDays}
-  #       KmsKeyId: 
+  #       KmsKeyId:
   #         Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-system-kms-key-arn
 
   #   BotpressMetricsLogGroup:
@@ -191,7 +195,7 @@ resources:
   #     Properties:
   #       LogGroupName: /aws/lambda/${self:custom.service}-${self:provider.stage}-botpress-metrics
   #       RetentionInDays: ${self:custom.logRetentionInDays}
-  #       KmsKeyId: 
+  #       KmsKeyId:
   #         Fn::ImportValue: ${self:custom.service}-${self:provider.stage}-system-kms-key-arn
 
 outputs:
@@ -218,58 +222,66 @@ outputs:
   #   Value: !Ref BotpressMetricsLogGroup
   #   Export:
   #     Name: ${self:custom.service}-${self:provider.stage}-botpress-metrics-log-group
-      
+
   CloudWatchRoleArn:
     Description: ARN of the CloudWatch IAM role
-    Value: !GetAtt CloudWatchRole.Arn
+    Value:
+      Fn::GetAtt: [CloudWatchRole, Arn]
     Export:
-      Name: ${self:custom.service}-${self:provider.stage}-cloudwatch-role-arn
+      Name: ${self:custom.resourcePrefix}-cloudwatch-role-arn
 
   ApiGatewayLogGroupName:
     Description: Name of the API Gateway log group
-    Value: !Ref ApiGatewayLogGroup
+    Value:
+      Ref: ApiGatewayLogGroup
     Export:
-      Name: ${self:custom.service}-${self:provider.stage}-apigateway-log-group
+      Name: ${self:custom.resourcePrefix}-apigateway-log-group
 
   LambdaLogGroupName:
     Description: Name of the Lambda log group
-    Value: !Ref LambdaLogGroup
+    Value:
+      Ref: LambdaLogGroup
     Export:
-      Name: ${self:custom.service}-${self:provider.stage}-lambda-log-group
+      Name: ${self:custom.resourcePrefix}-lambda-log-group
 
   MetricsLogGroupName:
     Description: Name of the metrics log group
-    Value: !Ref MetricsLogGroup
+    Value:
+      Ref: MetricsLogGroup
     Export:
-      Name: ${self:custom.service}-${self:provider.stage}-metrics-log-group
+      Name: ${self:custom.resourcePrefix}-metrics-log-group
 
   BotpressLogGroupName:
     Description: Name of the Botpress log group
-    Value: !Ref BotpressLogGroup
+    Value:
+      Ref: BotpressLogGroup
     Export:
-      Name: ${self:custom.service}-${self:provider.stage}-botpress-log-group
+      Name: ${self:custom.resourcePrefix}-botpress-log-group
 
   WebSocketLogGroupName:
     Description: Name of the WebSocket log group
-    Value: !Ref WebSocketLogGroup
+    Value:
+      Ref: WebSocketLogGroup
     Export:
-      Name: ${self:custom.service}-${self:provider.stage}-websocket-log-group
+      Name: ${self:custom.resourcePrefix}-websocket-log-group
 
   MainDashboardURL:
     Description: URL of the main CloudWatch dashboard
-    Value: !Sub https://${AWS::Region}.console.aws.amazon.com/cloudwatch/home?region=${AWS::Region}#dashboards:name=${self:custom.service}-${self:provider.stage}-main
+    Value:
+      Fn::Sub: "https://${AWS::Region}.console.aws.amazon.com/cloudwatch/home?region=${AWS::Region}#dashboards:name=${self:custom.resourcePrefix}-main"
     Export:
-      Name: ${self:custom.service}-${self:provider.stage}-main-dashboard-url
-      
+      Name: ${self:custom.resourcePrefix}-main-dashboard-url
+
   ServiceHealthAlarmArn:
     Description: ARN of the composite service health alarm
-    Value: !GetAtt ServiceHealthAlarm.Arn
+    Value:
+      Fn::GetAtt: [ServiceHealthAlarm, Arn]
     Export:
-      Name: ${self:custom.service}-${self:provider.stage}-service-health-cw-alarm-arn
+      Name: ${self:custom.resourcePrefix}-service-health-cw-alarm-arn
 
   LowPriorityAlarms:
     Description: List of low priority alarm ARNs
-    Value: 
+    Value:
       Fn::Join:
         - ","
         - - !GetAtt LambdaDurationAlarm.Arn
@@ -308,7 +320,7 @@ outputs:
     Value: !GetAtt MonthlyEstimatedChargesAlarm.Arn
     Export:
       Name: ${self:custom.service}-${self:provider.stage}-billing-cw-alarm-arn
-      
+
   BotpressHealthAlarmArn:
     Description: ARN of the Botpress health composite alarm
     Value: !GetAtt BotpressHealthAlarm.Arn
@@ -339,7 +351,7 @@ outputs:
           - !GetAtt HandoffSuccessRateAlarm.Arn
     Export:
       Name: ${self:custom.service}-${self:provider.stage}-botpress-medium-priority-alarms
-      
+
   DashboardURL:
     Description: URL of the Botpress Dashboard
     Value: !Sub https://${AWS::Region}.console.aws.amazon.com/cloudwatch/home?region=${AWS::Region}#dashboards:name=${self:custom.service}-${self:provider.stage}-botpress
