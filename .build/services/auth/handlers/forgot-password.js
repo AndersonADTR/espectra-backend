@@ -50,21 +50,48 @@ const forgotPasswordSchema = Joi.object({
 });
 const logger = new logger_1.Logger('ForgotPasswordHandler');
 const forgotPasswordHandler = async (event) => {
+    console.log(JSON.stringify({
+        message: 'CLOUDWATCH TEST: Processing forgot password request',
+        timestamp: new Date().toISOString(),
+        requestId: event.requestContext?.requestId,
+        path: event.path,
+        method: event.httpMethod,
+        stage: event.requestContext?.stage
+    }));
     logger.info('Processing forgot password request');
     const authService = new authentication_service_1.AuthenticationService();
     try {
         const { email } = JSON.parse(event.body);
+        console.log(JSON.stringify({
+            message: 'CLOUDWATCH TEST: Forgot password request received',
+            email,
+            timestamp: new Date().toISOString(),
+            requestId: event.requestContext?.requestId
+        }));
         logger.info('Forgot password request received', { email });
         logger.info('Starting forgot password process', {
             email,
             environment: process.env.NODE_ENV,
             region: process.env.REGION,
             cognitoUserPoolId: process.env.COGNITO_USER_POOL_ID,
-            cognitoClientId: process.env.COGNITO_CLIENT_ID
+            cognitoClientId: process.env.COGNITO_CLIENT_ID,
+            requestId: event.requestContext?.requestId,
+            timestamp: new Date().toISOString()
         });
         try {
-            await authService.forgotPassword(email);
-            logger.info('Password reset requested successfully', { email });
+            const deliveryDetails = await authService.forgotPassword(email);
+            console.log(JSON.stringify({
+                message: 'CLOUDWATCH TEST: Password reset requested successfully',
+                email,
+                deliveryDetails,
+                timestamp: new Date().toISOString(),
+                requestId: event.requestContext?.requestId
+            }));
+            logger.info('Password reset requested successfully', {
+                email,
+                deliveryDetails,
+                timestamp: new Date().toISOString()
+            });
             return {
                 statusCode: 200,
                 headers: {
@@ -76,21 +103,43 @@ const forgotPasswordHandler = async (event) => {
                 body: JSON.stringify({
                     success: true,
                     message: 'Password reset instructions sent to your email',
-                    data: null,
+                    data: {
+                        destination: deliveryDetails?.destination || 'your email',
+                        deliveryMedium: deliveryDetails?.deliveryMedium || 'EMAIL',
+                        message: 'Please check your email for a 6-digit verification code'
+                    },
                     errors: null
                 })
             };
         }
         catch (serviceError) {
+            console.error(JSON.stringify({
+                message: 'CLOUDWATCH TEST: Error in forgot password service',
+                email,
+                errorName: serviceError instanceof Error ? serviceError.name : 'Unknown',
+                errorMessage: serviceError instanceof Error ? serviceError.message : String(serviceError),
+                stack: serviceError instanceof Error ? serviceError.stack : 'No stack trace',
+                timestamp: new Date().toISOString(),
+                requestId: event.requestContext?.requestId
+            }));
             logger.error('Error in forgot password service', {
                 error: serviceError,
                 email,
                 errorName: serviceError instanceof Error ? serviceError.name : 'Unknown',
                 errorMessage: serviceError instanceof Error ? serviceError.message : String(serviceError),
-                stack: serviceError instanceof Error ? serviceError.stack : 'No stack trace'
+                stack: serviceError instanceof Error ? serviceError.stack : 'No stack trace',
+                timestamp: new Date().toISOString(),
+                requestId: event.requestContext?.requestId
             });
             if (serviceError instanceof Error) {
                 if (serviceError.message.includes('Email delivery configuration error')) {
+                    console.error(JSON.stringify({
+                        message: 'CLOUDWATCH TEST: Email delivery configuration error',
+                        email,
+                        errorMessage: serviceError.message,
+                        timestamp: new Date().toISOString(),
+                        requestId: event.requestContext?.requestId
+                    }));
                     return {
                         statusCode: 500,
                         headers: {
@@ -113,6 +162,13 @@ const forgotPasswordHandler = async (event) => {
                 if (serviceError.message.includes('not verified') ||
                     serviceError.message.includes('identity') ||
                     serviceError.message.includes('verification')) {
+                    console.error(JSON.stringify({
+                        message: 'CLOUDWATCH TEST: Email verification issue',
+                        email,
+                        errorMessage: serviceError.message,
+                        timestamp: new Date().toISOString(),
+                        requestId: event.requestContext?.requestId
+                    }));
                     return {
                         statusCode: 500,
                         headers: {
@@ -133,6 +189,14 @@ const forgotPasswordHandler = async (event) => {
                     };
                 }
             }
+            console.error(JSON.stringify({
+                message: 'CLOUDWATCH TEST: Generic error in forgot password service',
+                email,
+                errorName: serviceError instanceof Error ? serviceError.name : 'Unknown',
+                errorMessage: serviceError instanceof Error ? serviceError.message : String(serviceError),
+                timestamp: new Date().toISOString(),
+                requestId: event.requestContext?.requestId
+            }));
             return {
                 statusCode: 500,
                 headers: {
@@ -154,6 +218,15 @@ const forgotPasswordHandler = async (event) => {
         }
     }
     finally {
+        console.log(JSON.stringify({
+            message: 'CLOUDWATCH TEST: Forgot password process completed',
+            timestamp: new Date().toISOString(),
+            requestId: event.requestContext?.requestId
+        }));
+        logger.info('Forgot password process completed', {
+            timestamp: new Date().toISOString(),
+            requestId: event.requestContext?.requestId
+        });
         await authService.cleanup();
     }
 };

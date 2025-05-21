@@ -311,12 +311,12 @@ export class AuthenticationService {
    * @param email - La dirección de correo electrónico del usuario
    * @param newPassword - La nueva contraseña
    * @param confirmationCode - El código de confirmación enviado al usuario
-   * @returns Promise<void | { message: string }> - No devuelve ningún valor en caso de éxito,
+   * @returns Promise<void | { message: string, deliveryDetails?: any }> - No devuelve ningún valor en caso de éxito,
    *         o devuelve un objeto con un mensaje en caso de código expirado con nuevo código enviado
    * @throws ValidationError - Si el código de confirmación es inválido o ha expirado
    * @throws AuthenticationError - Si ocurre un error durante el proceso
    */
-  async resetPassword(email: string, newPassword: string, confirmationCode: string): Promise<void | { message: string }> {
+  async resetPassword(email: string, newPassword: string, confirmationCode: string): Promise<void | { message: string, deliveryDetails?: any }> {
     try {
       this.logger.info('Starting password reset process', { email });
       console.log('Starting password reset process', {
@@ -338,6 +338,29 @@ export class AuthenticationService {
         timestamp: new Date().toISOString()
       });
 
+      // Verificar que el código tenga el formato correcto
+      if (normalizedCode.length !== 6 || !/^\d+$/.test(normalizedCode)) {
+        console.warn('Confirmation code format is invalid', {
+          email: normalizedEmail,
+          codeLength: normalizedCode.length,
+          isNumeric: /^\d+$/.test(normalizedCode),
+          codeMasked: normalizedCode.substring(0, 2) + '****' + normalizedCode.substring(normalizedCode.length - 2),
+          timestamp: new Date().toISOString()
+        });
+
+        if (normalizedCode.length !== 6) {
+          throw new ValidationError(
+            `Invalid confirmation code format: Code must be 6 digits. Received code with ${normalizedCode.length} characters.`
+          );
+        }
+
+        if (!/^\d+$/.test(normalizedCode)) {
+          throw new ValidationError(
+            'Invalid confirmation code format: Code must contain only digits.'
+          );
+        }
+      }
+
       // Verificar que el usuario existe en DynamoDB antes de intentar restablecer la contraseña
       const user = await this.getUserByEmail(normalizedEmail);
       console.log('User lookup result in DynamoDB:', {
@@ -352,15 +375,33 @@ export class AuthenticationService {
       // Confirmar el código y establecer la nueva contraseña
       console.log('Calling Cognito to confirm forgot password', {
         email: normalizedEmail,
-        codeLength: normalizedCode.length
-      });
-
-      await this.cognitoService.confirmForgotPassword(normalizedEmail, normalizedCode, newPassword);
-
-      console.log('Cognito confirmForgotPassword call successful', {
-        email: normalizedEmail,
+        codeLength: normalizedCode.length,
+        codeMasked: normalizedCode.substring(0, 2) + '****' + normalizedCode.substring(normalizedCode.length - 2),
         timestamp: new Date().toISOString()
       });
+
+      try {
+        await this.cognitoService.confirmForgotPassword(normalizedEmail, normalizedCode, newPassword);
+
+        console.log('Cognito confirmForgotPassword call successful', {
+          email: normalizedEmail,
+          timestamp: new Date().toISOString()
+        });
+      } catch (confirmError) {
+        console.error('Error from Cognito during confirmForgotPassword in authentication service', {
+          error: confirmError,
+          errorName: confirmError instanceof Error ? confirmError.name : 'Unknown',
+          errorMessage: confirmError instanceof Error ? confirmError.message : String(confirmError),
+          stack: confirmError instanceof Error ? confirmError.stack : 'No stack trace',
+          email: normalizedEmail,
+          codeLength: normalizedCode.length,
+          codeMasked: normalizedCode.substring(0, 2) + '****' + normalizedCode.substring(normalizedCode.length - 2),
+          timestamp: new Date().toISOString()
+        });
+
+        // Propagar el error para que sea manejado por el bloque catch principal
+        throw confirmError;
+      }
 
       // Actualizar el estado del usuario si es necesario
       if (user) {
@@ -536,31 +577,26 @@ export class AuthenticationService {
             );
 
           case 'ExpiredCodeException':
-            // Código expirado - sugerir solicitar un nuevo código
-            this.logger.info('Confirmation code has expired, suggesting to request a new code', {
+            // Código expirado - enviar un nuevo código automáticamente
+            this.logger.info('Confirmation code has expired, sending a new code', {
               email,
-              errorName: error.name,
-              errorMessage: error.message
+              timestamp: new Date().toISOString()
             });
 
-            console.log('Confirmation code has expired, attempting to send a new code', {
+            console.log('Confirmation code has expired, sending a new code', {
               email,
-              errorName: error.name,
-              errorMessage: error.message
+              timestamp: new Date().toISOString()
             });
 
-            // Intentar enviar un nuevo código automáticamente
             try {
-              this.logger.info('Attempting to send a new confirmation code', { email });
-              console.log('Attempting to send a new confirmation code', { email });
-
-              // Enviar un nuevo código
-              const deliveryDetails = await this.forgotPassword(email);
+              // Enviar un nuevo código inmediatamente
+              const deliveryDetails = await this.cognitoService.forgotPassword(email);
 
               // Registrar el éxito
               this.logger.info('New confirmation code sent successfully', {
                 email,
-                deliveryDetails
+                deliveryDetails,
+                timestamp: new Date().toISOString()
               });
 
               console.log('New confirmation code sent successfully', {
@@ -571,21 +607,14 @@ export class AuthenticationService {
 
               // Devolver un objeto con el mensaje para que el handler pueda responder adecuadamente
               return {
-                message: 'The confirmation code has expired. We have sent a new code to your email. Please check your inbox and try again with the new code.'
+                message: 'The confirmation code has expired. We have sent a new code to your email. Please check your inbox and try again with the new code.',
+                deliveryDetails
               };
             } catch (sendError) {
               this.logger.error('Failed to send a new confirmation code', {
                 error: sendError,
                 email,
-                originalError: error
-              });
-
-              console.error('Failed to send a new confirmation code', {
-                error: sendError,
-                email,
-                originalError: error,
-                errorName: sendError instanceof Error ? sendError.name : 'Unknown',
-                errorMessage: sendError instanceof Error ? sendError.message : String(sendError)
+                timestamp: new Date().toISOString()
               });
 
               throw new ValidationError(
@@ -1272,6 +1301,14 @@ export class AuthenticationService {
 
   async logout(accessToken: string): Promise<void> {
     try {
+      // Log directo a CloudWatch para verificar que los logs se están enviando
+      console.log(JSON.stringify({
+        message: 'CLOUDWATCH TEST: Starting logout process',
+        accessTokenLength: accessToken ? accessToken.length : 0,
+        accessTokenFirstChars: accessToken ? accessToken.substring(0, 10) + '...' : 'null',
+        timestamp: new Date().toISOString()
+      }));
+
       this.logger.info('Starting logout process');
       console.log('Starting logout process', {
         accessTokenLength: accessToken ? accessToken.length : 0,
@@ -1280,12 +1317,22 @@ export class AuthenticationService {
       });
 
       if (!accessToken) {
+        console.log(JSON.stringify({
+          message: 'CLOUDWATCH TEST: No access token provided for logout',
+          timestamp: new Date().toISOString()
+        }));
         console.error('No access token provided for logout');
         throw new AuthenticationError('No access token provided');
       }
 
       // Verificar que el token tenga un formato válido (JWT)
       if (!accessToken.includes('.') || accessToken.split('.').length !== 3) {
+        console.log(JSON.stringify({
+          message: 'CLOUDWATCH TEST: Invalid token format',
+          accessTokenLength: accessToken.length,
+          accessTokenFirstChars: accessToken.substring(0, 10) + '...',
+          timestamp: new Date().toISOString()
+        }));
         console.error('Invalid token format', {
           accessTokenLength: accessToken.length,
           accessTokenFirstChars: accessToken.substring(0, 10) + '...'
@@ -1295,8 +1342,19 @@ export class AuthenticationService {
 
       try {
         // Intentar obtener información del usuario a partir del token
+        console.log(JSON.stringify({
+          message: 'CLOUDWATCH TEST: Verifying token before logout',
+          timestamp: new Date().toISOString()
+        }));
         console.log('Verifying token before logout');
         const payload = await this.tokenService.verifyToken(accessToken);
+        console.log(JSON.stringify({
+          message: 'CLOUDWATCH TEST: Token verified successfully',
+          sub: payload.sub,
+          username: payload.username,
+          hasEmail: !!payload.email,
+          timestamp: new Date().toISOString()
+        }));
         console.log('Token verified successfully', {
           sub: payload.sub,
           username: payload.username,
@@ -1304,6 +1362,12 @@ export class AuthenticationService {
         });
       } catch (verifyError) {
         // Si hay un error al verificar el token, lo registramos pero continuamos con el proceso
+        console.log(JSON.stringify({
+          message: 'CLOUDWATCH TEST: Error verifying token before logout',
+          errorName: verifyError instanceof Error ? verifyError.name : 'Unknown',
+          errorMessage: verifyError instanceof Error ? verifyError.message : String(verifyError),
+          timestamp: new Date().toISOString()
+        }));
         console.error('Error verifying token before logout', {
           error: verifyError,
           errorName: verifyError instanceof Error ? verifyError.name : 'Unknown',
@@ -1313,11 +1377,25 @@ export class AuthenticationService {
       }
 
       // Invalidar el token en Cognito
+      console.log(JSON.stringify({
+        message: 'CLOUDWATCH TEST: Invalidating token in Cognito',
+        timestamp: new Date().toISOString()
+      }));
       console.log('Invalidating token in Cognito');
       try {
         await this.cognitoService.signOut(accessToken);
+        console.log(JSON.stringify({
+          message: 'CLOUDWATCH TEST: Token invalidated successfully in Cognito',
+          timestamp: new Date().toISOString()
+        }));
         console.log('Token invalidated successfully in Cognito');
       } catch (cognitoError) {
+        console.log(JSON.stringify({
+          message: 'CLOUDWATCH TEST: Error invalidating token in Cognito',
+          errorName: cognitoError instanceof Error ? cognitoError.name : 'Unknown',
+          errorMessage: cognitoError instanceof Error ? cognitoError.message : String(cognitoError),
+          timestamp: new Date().toISOString()
+        }));
         console.error('Error invalidating token in Cognito', {
           error: cognitoError,
           errorName: cognitoError instanceof Error ? cognitoError.name : 'Unknown',
@@ -1328,6 +1406,10 @@ export class AuthenticationService {
         if (cognitoError instanceof Error &&
             (cognitoError.name === 'NotAuthorizedException' ||
              cognitoError.message.includes('expired'))) {
+          console.log(JSON.stringify({
+            message: 'CLOUDWATCH TEST: Token already invalid or expired in Cognito, continuing with local invalidation',
+            timestamp: new Date().toISOString()
+          }));
           console.log('Token already invalid or expired in Cognito, continuing with local invalidation');
         } else {
           // Para otros errores, lanzamos la excepción
@@ -1336,11 +1418,25 @@ export class AuthenticationService {
       }
 
       // Agregar el token a la blacklist local
+      console.log(JSON.stringify({
+        message: 'CLOUDWATCH TEST: Adding token to local blacklist',
+        timestamp: new Date().toISOString()
+      }));
       console.log('Adding token to local blacklist');
       try {
         await this.tokenService.invalidateToken(accessToken);
+        console.log(JSON.stringify({
+          message: 'CLOUDWATCH TEST: Token added to local blacklist successfully',
+          timestamp: new Date().toISOString()
+        }));
         console.log('Token added to local blacklist successfully');
       } catch (blacklistError) {
+        console.log(JSON.stringify({
+          message: 'CLOUDWATCH TEST: Error adding token to local blacklist',
+          errorName: blacklistError instanceof Error ? blacklistError.name : 'Unknown',
+          errorMessage: blacklistError instanceof Error ? blacklistError.message : String(blacklistError),
+          timestamp: new Date().toISOString()
+        }));
         console.error('Error adding token to local blacklist', {
           error: blacklistError,
           errorName: blacklistError instanceof Error ? blacklistError.name : 'Unknown',
@@ -1351,12 +1447,23 @@ export class AuthenticationService {
         // ya que el token ya fue invalidado en Cognito
       }
 
+      console.log(JSON.stringify({
+        message: 'CLOUDWATCH TEST: Logout completed successfully',
+        timestamp: new Date().toISOString()
+      }));
       this.logger.info('Logout completed successfully');
       console.log('Logout completed successfully', {
         timestamp: new Date().toISOString()
       });
 
     } catch (error) {
+      console.log(JSON.stringify({
+        message: 'CLOUDWATCH TEST: Error in logout',
+        errorName: error instanceof Error ? error.name : 'Unknown',
+        errorMessage: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : 'No stack trace',
+        timestamp: new Date().toISOString()
+      }));
       this.logger.error('Error in logout', {
         error,
         errorName: error instanceof Error ? error.name : 'Unknown',

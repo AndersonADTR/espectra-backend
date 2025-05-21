@@ -10,34 +10,46 @@ class Logger {
     logger;
     constructor(context) {
         this.context = context;
+        const logLevel = process.env.LOG_LEVEL || 'info';
+        const customFormat = winston_1.default.format.printf(({ level, message, timestamp, ...rest }) => {
+            const meta = Object.keys(rest).length ? JSON.stringify(rest) : '';
+            return `${timestamp} [${level.toUpperCase()}] [${this.context}]: ${message} ${meta}`;
+        });
         this.logger = winston_1.default.createLogger({
-            level: process.env.LOG_LEVEL || 'info',
+            level: logLevel,
             format: winston_1.default.format.combine(winston_1.default.format.timestamp(), winston_1.default.format.json()),
             defaultMeta: {
                 service: 'espectra-backend',
                 context: this.context,
+                environment: process.env.NODE_ENV || 'dev',
+                region: process.env.REGION || 'us-east-1'
             },
             transports: [
                 new winston_1.default.transports.Console({
-                    format: winston_1.default.format.combine(winston_1.default.format.colorize(), winston_1.default.format.simple()),
+                    format: winston_1.default.format.combine(winston_1.default.format.colorize(), winston_1.default.format.timestamp(), customFormat),
                 }),
             ],
         });
+        this.debug(`Logger initialized with level: ${logLevel}`);
     }
     info(message, meta) {
-        console.info(message, meta);
+        const logData = { message, context: this.context, ...meta };
+        console.log(JSON.stringify(logData));
         this.logger.info(message, meta);
     }
     error(message, meta) {
-        console.error(message, meta);
+        const logData = { message, context: this.context, ...meta };
+        console.error(JSON.stringify(logData));
         this.logger.error(message, meta);
     }
     warn(message, meta) {
-        console.warn(message, meta);
+        const logData = { message, context: this.context, ...meta };
+        console.warn(JSON.stringify(logData));
         this.logger.warn(message, meta);
     }
     debug(message, meta) {
-        console.debug(message, meta);
+        const logData = { message, context: this.context, ...meta };
+        console.debug(JSON.stringify(logData));
         this.logger.debug(message, meta);
     }
 }

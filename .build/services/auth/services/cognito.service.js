@@ -161,20 +161,94 @@ class CognitoService {
     }
     async authenticateUser(credentials) {
         try {
-            const secretHash = this.calculateSecretHash(credentials.email, this.clientId);
-            console.log('Calculated secret hash', { secret: secretHash });
+            const normalizedEmail = credentials.email.toLowerCase().trim();
+            console.log('CognitoService.authenticateUser called', {
+                email: normalizedEmail,
+                userPoolId: this.userPoolId,
+                clientId: this.clientId,
+                timestamp: new Date().toISOString()
+            });
+            try {
+                console.log('Verifying user status in Cognito before authentication', { email: normalizedEmail });
+                const userInfo = await this.getUserByEmail(normalizedEmail);
+                console.log('User exists in Cognito, checking status', {
+                    email: normalizedEmail,
+                    userStatus: userInfo.UserStatus,
+                    userCreatedAt: userInfo.UserCreateDate,
+                    userLastModified: userInfo.UserLastModifiedDate
+                });
+                if (userInfo.UserStatus === 'UNCONFIRMED') {
+                    console.error('User is not confirmed in Cognito', { email: normalizedEmail });
+                    throw new errors_1.AuthenticationError('User is not confirmed. Please verify your email before logging in.');
+                }
+            }
+            catch (userError) {
+                if (userError.name === 'UserNotFoundException') {
+                    console.error('User not found in Cognito during pre-authentication check', { email: normalizedEmail });
+                    throw new errors_1.AuthenticationError('User not found');
+                }
+                console.error('Error checking user status before authentication', {
+                    error: userError,
+                    errorName: userError instanceof Error ? userError.name : 'Unknown',
+                    errorMessage: userError instanceof Error ? userError.message : String(userError),
+                    email: normalizedEmail
+                });
+            }
+            const secretHash = this.calculateSecretHash(normalizedEmail, this.clientId);
+            console.log('SECRET_HASH generated successfully for authentication', {
+                email: normalizedEmail,
+                secretHashLength: secretHash ? secretHash.length : 0
+            });
             const command = new client_cognito_identity_provider_1.InitiateAuthCommand({
                 AuthFlow: client_cognito_identity_provider_1.AuthFlowType.USER_PASSWORD_AUTH,
                 ClientId: this.clientId,
                 AuthParameters: {
-                    USERNAME: credentials.email,
+                    USERNAME: normalizedEmail,
                     PASSWORD: credentials.password,
                     SECRET_HASH: secretHash
                 }
             });
+            console.log('Sending InitiateAuthCommand to Cognito', {
+                email: normalizedEmail,
+                authFlow: client_cognito_identity_provider_1.AuthFlowType.USER_PASSWORD_AUTH,
+                clientId: this.clientId,
+                hasSecretHash: !!secretHash
+            });
             const response = await this.client.send(command);
+            console.log('InitiateAuthCommand response received', {
+                hasResponse: !!response,
+                hasAuthResult: !!response.AuthenticationResult,
+                hasChallenge: !!response.ChallengeName,
+                challengeName: response.ChallengeName,
+                timestamp: new Date().toISOString()
+            });
             if (!response.AuthenticationResult) {
+                console.error('No AuthenticationResult in response', {
+                    email: normalizedEmail,
+                    response: JSON.stringify(response),
+                    challengeName: response.ChallengeName,
+                    challengeParameters: response.ChallengeParameters
+                });
+                if (response.ChallengeName) {
+                    console.log('Authentication challenge required', {
+                        email: normalizedEmail,
+                        challengeName: response.ChallengeName,
+                        challengeParameters: response.ChallengeParameters
+                    });
+                    throw new errors_1.AuthenticationError(`Authentication challenge required: ${response.ChallengeName}`);
+                }
                 throw new errors_1.AuthenticationError('Authentication failed: No tokens received');
+            }
+            if (!response.AuthenticationResult.AccessToken ||
+                !response.AuthenticationResult.IdToken ||
+                !response.AuthenticationResult.RefreshToken) {
+                console.error('Missing tokens in AuthenticationResult', {
+                    email: normalizedEmail,
+                    hasAccessToken: !!response.AuthenticationResult.AccessToken,
+                    hasIdToken: !!response.AuthenticationResult.IdToken,
+                    hasRefreshToken: !!response.AuthenticationResult.RefreshToken
+                });
+                throw new errors_1.AuthenticationError('Authentication failed: Incomplete tokens received');
             }
             const tokens = {
                 accessToken: response.AuthenticationResult.AccessToken,
@@ -183,20 +257,40 @@ class CognitoService {
                 expiresIn: response.AuthenticationResult.ExpiresIn || 3600
             };
             console.log('User authenticated successfully', {
-                email: credentials.email
+                email: normalizedEmail,
+                accessTokenLength: tokens.accessToken.length,
+                idTokenLength: tokens.idToken.length,
+                refreshTokenLength: tokens.refreshToken.length,
+                expiresIn: tokens.expiresIn
             });
             return tokens;
         }
         catch (error) {
-            console.log('Error authenticating user', {
+            console.error('Error authenticating user', {
                 error,
+                errorName: error instanceof Error ? error.name : 'Unknown',
+                errorMessage: error instanceof Error ? error.message : String(error),
+                stack: error instanceof Error ? error.stack : 'No stack trace',
                 email: credentials.email
             });
-            if (error.name === 'NotAuthorizedException') {
-                throw new errors_1.AuthenticationError('Invalid credentials');
-            }
-            if (error.name === 'UserNotFoundException') {
-                throw new errors_1.AuthenticationError('User not found');
+            if (error instanceof Error) {
+                switch (error.name) {
+                    case 'NotAuthorizedException':
+                        if (error.message.includes('not confirmed')) {
+                            throw new errors_1.AuthenticationError('User is not confirmed. Please verify your email before logging in.');
+                        }
+                        throw new errors_1.AuthenticationError('Invalid credentials');
+                    case 'UserNotFoundException':
+                        throw new errors_1.AuthenticationError('User not found');
+                    case 'UserNotConfirmedException':
+                        throw new errors_1.AuthenticationError('User is not confirmed. Please verify your email before logging in.');
+                    case 'PasswordResetRequiredException':
+                        throw new errors_1.AuthenticationError('Password reset required. Please use the forgot password feature.');
+                    case 'LimitExceededException':
+                        throw new errors_1.AuthenticationError('Too many attempts. Please try again after some time.');
+                    default:
+                        throw new errors_1.AuthenticationError('Authentication failed: ' + (error.message || 'Unknown error'));
+                }
             }
             throw new errors_1.AuthenticationError('Authentication failed: ' + (error.message || 'Unknown error'));
         }
@@ -274,25 +368,66 @@ class CognitoService {
     }
     async getUserByEmail(email) {
         try {
+            const normalizedEmail = email.toLowerCase().trim();
+            console.log('CognitoService.getUserByEmail called', {
+                email: normalizedEmail,
+                userPoolId: this.userPoolId,
+                timestamp: new Date().toISOString()
+            });
             const command = new client_cognito_identity_provider_1.AdminGetUserCommand({
                 UserPoolId: this.userPoolId,
-                Username: email
+                Username: normalizedEmail
+            });
+            console.log('Sending AdminGetUserCommand to Cognito', {
+                email: normalizedEmail,
+                userPoolId: this.userPoolId
             });
             const response = await this.client.send(command);
-            if (!response.UserAttributes) {
-                throw new Error('No user attributes found');
+            console.log('AdminGetUserCommand response received', {
+                hasResponse: !!response,
+                hasUserAttributes: !!response.UserAttributes,
+                userStatus: response.UserStatus,
+                enabled: response.Enabled,
+                timestamp: new Date().toISOString()
+            });
+            const attributes = {
+                UserStatus: response.UserStatus,
+                Enabled: response.Enabled,
+                UserCreateDate: response.UserCreateDate,
+                UserLastModifiedDate: response.UserLastModifiedDate
+            };
+            if (response.UserAttributes) {
+                response.UserAttributes.forEach(attr => {
+                    if (attr.Name && attr.Value !== undefined) {
+                        attributes[attr.Name] = attr.Value;
+                    }
+                });
             }
-            const attributes = {};
-            response.UserAttributes.forEach(attr => {
-                if (attr.Name && attr.Value) {
-                    attributes[attr.Name] = attr.Value;
-                }
+            else {
+                console.warn('No user attributes found in response', {
+                    email: normalizedEmail,
+                    userStatus: response.UserStatus
+                });
+            }
+            console.log('User retrieved successfully from Cognito', {
+                email: normalizedEmail,
+                userStatus: attributes.UserStatus,
+                enabled: attributes.Enabled,
+                sub: attributes.sub,
+                emailVerified: attributes['email_verified']
             });
             return attributes;
         }
         catch (error) {
-            console.log('Error getting user from Cognito', { error, email });
+            console.error('Error getting user from Cognito', {
+                error,
+                errorName: error instanceof Error ? error.name : 'Unknown',
+                errorMessage: error instanceof Error ? error.message : String(error),
+                stack: error instanceof Error ? error.stack : 'No stack trace',
+                email
+            });
             if (error.name === 'UserNotFoundException') {
+                console.log('User not found in Cognito', { email });
                 throw new errors_1.AuthenticationError('User not found');
             }
             throw new errors_1.AuthenticationError('Failed to get user: ' + (error.message || 'Unknown error'));
@@ -300,15 +435,70 @@ class CognitoService {
     }
     async signOut(accessToken) {
         try {
+            console.log('CognitoService.signOut called', {
+                accessTokenLength: accessToken ? accessToken.length : 0,
+                accessTokenFirstChars: accessToken ? accessToken.substring(0, 10) + '...' : 'null',
+                timestamp: new Date().toISOString()
+            });
+            if (!accessToken) {
+                console.error('No access token provided for sign out');
+                throw new errors_1.AuthenticationError('No access token provided');
+            }
+            if (!accessToken.includes('.') || accessToken.split('.').length !== 3) {
+                console.error('Invalid token format', {
+                    accessTokenLength: accessToken.length,
+                    accessTokenFirstChars: accessToken.substring(0, 10) + '...'
+                });
+                throw new errors_1.AuthenticationError('Invalid token format');
+            }
             const command = new client_cognito_identity_provider_1.GlobalSignOutCommand({
                 AccessToken: accessToken
             });
-            await this.client.send(command);
+            console.log('Sending GlobalSignOutCommand to Cognito');
+            try {
+                const response = await this.client.send(command);
+                console.log('GlobalSignOutCommand response received', {
+                    success: true,
+                    responseType: typeof response,
+                    hasResponse: !!response,
+                    timestamp: new Date().toISOString()
+                });
+            }
+            catch (signOutError) {
+                console.error('Error from Cognito during sign out', {
+                    error: signOutError,
+                    errorName: signOutError instanceof Error ? signOutError.name : 'Unknown',
+                    errorMessage: signOutError instanceof Error ? signOutError.message : String(signOutError),
+                    stack: signOutError instanceof Error ? signOutError.stack : 'No stack trace'
+                });
+                if (signOutError instanceof Error) {
+                    if (signOutError.name === 'NotAuthorizedException') {
+                        throw new errors_1.AuthenticationError('Invalid or expired access token');
+                    }
+                    if (signOutError.name === 'InvalidParameterException') {
+                        throw new errors_1.AuthenticationError('Invalid token parameter: ' + signOutError.message);
+                    }
+                    throw new errors_1.AuthenticationError('Failed to sign out: ' + signOutError.message);
+                }
+                throw signOutError;
+            }
             this.logger.info('User signed out successfully');
+            console.log('User signed out successfully');
         }
         catch (error) {
-            this.logger.error('Error signing out user', { error });
-            throw new errors_1.AuthenticationError('Failed to sign out: ' + (error.message || 'Unknown error'));
+            this.logger.error('Error signing out user', {
+                error,
+                errorName: error instanceof Error ? error.name : 'Unknown',
+                errorMessage: error instanceof Error ? error.message : String(error),
+                stack: error instanceof Error ? error.stack : 'No stack trace'
+            });
+            console.error('Error signing out user', {
+                error,
+                errorName: error instanceof Error ? error.name : 'Unknown',
+                errorMessage: error instanceof Error ? error.message : String(error),
+                stack: error instanceof Error ? error.stack : 'No stack trace'
+            });
+            throw error instanceof errors_1.AuthenticationError ? error : new errors_1.AuthenticationError('Failed to sign out: ' + (error.message || 'Unknown error'));
         }
     }
     async forgotPassword(email) {
@@ -322,15 +512,27 @@ class CognitoService {
             });
             const secretHash = this.calculateSecretHash(normalizedEmail, this.clientId);
             console.log('SECRET_HASH generated successfully');
+            let userStatus = 'UNKNOWN';
             try {
                 console.log('Verifying if user exists in Cognito', { email: normalizedEmail });
                 const userInfo = await this.getUserByEmail(normalizedEmail);
+                userStatus = userInfo.UserStatus || 'UNKNOWN';
                 console.log('User exists in Cognito', {
                     email: normalizedEmail,
                     userStatus: userInfo.UserStatus,
                     userCreatedAt: userInfo.UserCreateDate,
                     userLastModified: userInfo.UserLastModifiedDate
                 });
+                if (userStatus !== 'CONFIRMED') {
+                    console.warn('User is not confirmed in Cognito, this may affect password reset', {
+                        email: normalizedEmail,
+                        userStatus
+                    });
+                    this.logger.warn('User is not confirmed in Cognito, this may affect password reset', {
+                        email: normalizedEmail,
+                        userStatus
+                    });
+                }
             }
             catch (userError) {
                 if (userError.name === 'UserNotFoundException') {
@@ -350,29 +552,53 @@ class CognitoService {
                 Username: normalizedEmail,
                 SecretHash: secretHash
             });
-            console.log('Sending ForgotPasswordCommand to Cognito');
+            console.log('Sending ForgotPasswordCommand to Cognito', {
+                clientId: this.clientId,
+                username: normalizedEmail,
+                timestamp: new Date().toISOString()
+            });
             const response = await this.client.send(command);
+            const deliveryDetails = response && response.CodeDeliveryDetails ? {
+                destination: response.CodeDeliveryDetails.Destination,
+                deliveryMedium: response.CodeDeliveryDetails.DeliveryMedium,
+                attributeName: response.CodeDeliveryDetails.AttributeName
+            } : { destination: 'unknown', deliveryMedium: 'unknown' };
             console.log('ForgotPasswordCommand response received', {
                 success: true,
-                responseType: typeof response,
-                hasResponse: !!response,
                 timestamp: new Date().toISOString(),
-                deliveryDetails: response.CodeDeliveryDetails ? {
+                deliveryDetails
+            });
+            if (!response || !response.CodeDeliveryDetails) {
+                console.warn('No code delivery details in Cognito response', {
+                    email: normalizedEmail,
+                    timestamp: new Date().toISOString()
+                });
+            }
+            else {
+                console.log('Code delivery details from Cognito', {
                     destination: response.CodeDeliveryDetails.Destination,
                     deliveryMedium: response.CodeDeliveryDetails.DeliveryMedium,
-                    attributeName: response.CodeDeliveryDetails.AttributeName
-                } : 'No delivery details'
-            });
+                    attributeName: response.CodeDeliveryDetails.AttributeName,
+                    timestamp: new Date().toISOString()
+                });
+            }
+            console.log('IMPORTANT: A password reset code has been sent. This code:');
+            console.log('1. Is valid for a limited time (usually 1 hour)');
+            console.log('2. Must be entered exactly as received (6 digits)');
+            console.log('3. Should be used with the /auth/reset-password endpoint');
+            console.log('4. Will replace any previously sent codes');
             this.logger.info('Password recovery code sent successfully', {
                 email: normalizedEmail,
                 timestamp: new Date().toISOString(),
-                deliveryDetails: response.CodeDeliveryDetails ? {
-                    destination: response.CodeDeliveryDetails.Destination,
-                    deliveryMedium: response.CodeDeliveryDetails.DeliveryMedium,
-                    attributeName: response.CodeDeliveryDetails.AttributeName
-                } : 'No delivery details'
+                deliveryDetails
             });
-            console.log('Password recovery code sent successfully', { email: normalizedEmail, timestamp: new Date().toISOString() });
+            console.log('Password recovery code sent successfully', {
+                email: normalizedEmail,
+                timestamp: new Date().toISOString(),
+                destination: deliveryDetails.destination,
+                deliveryMedium: deliveryDetails.deliveryMedium
+            });
+            return deliveryDetails;
         }
         catch (error) {
             this.logger.error('Error sending password recovery code', {
@@ -388,26 +614,35 @@ class CognitoService {
                 stack: error instanceof Error ? error.stack : 'No stack trace',
                 email
             });
-            if (error instanceof Error && error.name === 'UserNotFoundException') {
-                this.logger.info('Password recovery requested for non-existent user', { email });
-                console.log('Password recovery requested for non-existent user (handled silently)', { email });
-                return;
-            }
-            if (error instanceof Error &&
-                (error.name === 'InvalidParameterException' ||
-                    error.name === 'InvalidEmailRoleAccessPolicyException' ||
-                    error.message.includes('email'))) {
-                console.error('Possible SES configuration issue', {
-                    error,
-                    message: error.message,
-                    email
-                });
-                if (error.message.includes('not verified') ||
-                    error.message.includes('identity') ||
-                    error.message.includes('verification')) {
-                    throw new errors_1.AuthenticationError('Email delivery configuration error: The sender email is not verified in SES. Please verify the email in the AWS SES console.');
+            if (error instanceof Error) {
+                switch (error.name) {
+                    case 'UserNotFoundException':
+                        this.logger.info('Password recovery requested for non-existent user', { email });
+                        console.log('Password recovery requested for non-existent user (handled silently)', { email });
+                        return { destination: email, deliveryMedium: 'EMAIL' };
+                    case 'LimitExceededException':
+                        throw new errors_1.AuthenticationError('Too many attempts. Please wait a few minutes before requesting a new code.');
+                    case 'InvalidParameterException':
+                        if (error.message.includes('Password reset required')) {
+                            throw new errors_1.AuthenticationError('This account requires a password reset through the AWS Console. Please contact support.');
+                        }
+                        throw new errors_1.AuthenticationError('Invalid parameters: ' + error.message);
+                    case 'InvalidEmailRoleAccessPolicyException':
+                    case 'EmailSendingException':
+                        console.error('Email sending configuration issue', {
+                            error,
+                            message: error.message,
+                            email
+                        });
+                        if (error.message.includes('not verified') ||
+                            error.message.includes('identity') ||
+                            error.message.includes('verification')) {
+                            throw new errors_1.AuthenticationError('Email delivery configuration error: The sender email is not verified in SES. Please verify the email in the AWS SES console.');
+                        }
+                        throw new errors_1.AuthenticationError('Email delivery configuration error: ' + error.message);
+                    default:
+                        throw new errors_1.AuthenticationError('Failed to send password recovery code: ' + (error.message || 'Unknown error'));
                 }
-                throw new errors_1.AuthenticationError('Email delivery configuration error: ' + error.message);
             }
             throw new errors_1.AuthenticationError('Failed to send password recovery code: ' + (error.message || 'Unknown error'));
         }
@@ -420,18 +655,23 @@ class CognitoService {
                 email: normalizedEmail,
                 codeLength: normalizedCode.length,
                 codeMasked: normalizedCode.substring(0, 2) + '****' + normalizedCode.substring(normalizedCode.length - 2),
-                userPoolId: this.userPoolId,
-                clientId: this.clientId
+                timestamp: new Date().toISOString()
             });
             if (normalizedCode.length !== 6 || !/^\d+$/.test(normalizedCode)) {
                 console.warn('Confirmation code format may be invalid', {
                     email: normalizedEmail,
                     codeLength: normalizedCode.length,
-                    isNumeric: /^\d+$/.test(normalizedCode)
+                    isNumeric: /^\d+$/.test(normalizedCode),
+                    timestamp: new Date().toISOString()
                 });
+                if (normalizedCode.length !== 6) {
+                    throw new errors_1.AuthenticationError(`Invalid confirmation code format: Code must be 6 digits. Received code with ${normalizedCode.length} characters.`);
+                }
+                if (!/^\d+$/.test(normalizedCode)) {
+                    throw new errors_1.AuthenticationError('Invalid confirmation code format: Code must contain only digits.');
+                }
             }
             const secretHash = this.calculateSecretHash(normalizedEmail, this.clientId);
-            console.log('SECRET_HASH generated successfully');
             const command = new client_cognito_identity_provider_1.ConfirmForgotPasswordCommand({
                 ClientId: this.clientId,
                 Username: normalizedEmail,
@@ -439,46 +679,57 @@ class CognitoService {
                 Password: newPassword,
                 SecretHash: secretHash
             });
-            console.log('Sending ConfirmForgotPasswordCommand to Cognito');
-            await this.client.send(command);
-            console.log('ConfirmForgotPasswordCommand response received successfully');
-            this.logger.info('Password reset completed successfully', { email: normalizedEmail });
+            console.log('Sending ConfirmForgotPasswordCommand to Cognito', {
+                email: normalizedEmail,
+                timestamp: new Date().toISOString()
+            });
+            const response = await this.client.send(command);
+            console.log('ConfirmForgotPasswordCommand response received successfully', {
+                email: normalizedEmail,
+                timestamp: new Date().toISOString(),
+                response: response
+            });
+            this.logger.info('Password reset completed successfully', {
+                email: normalizedEmail,
+                timestamp: new Date().toISOString()
+            });
         }
         catch (error) {
             this.logger.error('Error confirming password reset', {
                 error,
                 email,
                 errorName: error instanceof Error ? error.name : 'Unknown',
-                errorMessage: error instanceof Error ? error.message : String(error),
-                stack: error instanceof Error ? error.stack : 'No stack trace'
+                errorMessage: error instanceof Error ? error.message : String(error)
             });
             console.error('Detailed error confirming password reset', {
                 error,
                 errorName: error instanceof Error ? error.name : 'Unknown',
                 errorMessage: error instanceof Error ? error.message : String(error),
-                stack: error instanceof Error ? error.stack : 'No stack trace',
-                email
+                email,
+                timestamp: new Date().toISOString()
             });
-            if (error instanceof Error &&
-                (error.name === 'ExpiredCodeException' ||
-                    error.message.includes('Invalid code provided'))) {
-                try {
-                    const userInfo = await this.getUserByEmail(email);
-                    console.log('User info retrieved for debugging expired code issue', {
-                        email,
-                        userStatus: userInfo.UserStatus,
-                        userCreatedAt: userInfo.UserCreateDate,
-                        userLastModified: userInfo.UserLastModifiedDate
-                    });
-                }
-                catch (userError) {
-                    console.error('Failed to retrieve user info for debugging', {
-                        email,
-                        error: userError
-                    });
+            if (error instanceof Error) {
+                switch (error.name) {
+                    case 'CodeMismatchException':
+                        throw new errors_1.AuthenticationError('The confirmation code is incorrect. Please check the code and try again.');
+                    case 'ExpiredCodeException':
+                        throw new errors_1.AuthenticationError('The confirmation code has expired. Please request a new code using the forgot password feature.');
+                    case 'InvalidParameterException':
+                        if (error.message.includes('password') || error.message.includes('Password')) {
+                            throw new errors_1.AuthenticationError('The password does not meet the requirements: ' + error.message);
+                        }
+                        throw new errors_1.AuthenticationError('Invalid parameters: ' + error.message);
+                    case 'LimitExceededException':
+                        throw new errors_1.AuthenticationError('Too many attempts. Please wait a few minutes before trying again.');
+                    case 'UserNotFoundException':
+                        throw new errors_1.AuthenticationError('User not found. Please check your email address and try again.');
+                    case 'NotAuthorizedException':
+                        throw new errors_1.AuthenticationError('Not authorized: ' + error.message);
+                    default:
+                        throw new errors_1.AuthenticationError('Failed to reset password: ' + (error.message || 'Unknown error'));
                 }
             }
-            throw error;
+            throw new errors_1.AuthenticationError('Failed to reset password: ' + (error.message || 'Unknown error'));
         }
     }
     async confirmSignUpWithCode(email, confirmationCode) {
@@ -500,16 +751,29 @@ class CognitoService {
                     isNumeric: /^\d+$/.test(normalizedCode),
                     code: normalizedCode
                 });
+                if (normalizedCode.length !== 6) {
+                    throw new errors_1.AuthenticationError(`Invalid verification code format: Code must be 6 digits. Received code with ${normalizedCode.length} characters.`);
+                }
+                if (!/^\d+$/.test(normalizedCode)) {
+                    throw new errors_1.AuthenticationError('Invalid verification code format: Code must contain only digits.');
+                }
             }
+            let userStatus = 'UNKNOWN';
             try {
                 console.log('Verifying if user exists in Cognito', { email: normalizedEmail });
                 const userInfo = await this.getUserByEmail(normalizedEmail);
+                userStatus = userInfo.UserStatus || 'UNKNOWN';
                 console.log('User exists in Cognito', {
                     email: normalizedEmail,
                     userStatus: userInfo.UserStatus,
                     userCreatedAt: userInfo.UserCreateDate,
                     userLastModified: userInfo.UserLastModifiedDate
                 });
+                if (userStatus === 'CONFIRMED') {
+                    console.log('User is already confirmed', { email: normalizedEmail });
+                    this.logger.info('User is already confirmed', { email: normalizedEmail });
+                    return;
+                }
             }
             catch (userError) {
                 console.error('Error verifying user existence', {
@@ -518,6 +782,9 @@ class CognitoService {
                     errorMessage: userError instanceof Error ? userError.message : String(userError),
                     email: normalizedEmail
                 });
+                if (userError.name === 'UserNotFoundException') {
+                    throw new errors_1.AuthenticationError('User not found. Please register first.');
+                }
             }
             const secretHash = this.calculateSecretHash(normalizedEmail, this.clientId);
             console.log('SECRET_HASH generated successfully');
@@ -525,7 +792,8 @@ class CognitoService {
                 clientId: this.clientId,
                 username: normalizedEmail,
                 confirmationCodeLength: normalizedCode.length,
-                hasSecretHash: !!secretHash
+                hasSecretHash: !!secretHash,
+                userStatus
             });
             const command = new client_cognito_identity_provider_1.ConfirmSignUpCommand({
                 ClientId: this.clientId,
@@ -547,12 +815,39 @@ class CognitoService {
                 email
             });
             this.logger.error('Error confirming email verification', { error, email });
-            if (error instanceof Error && error.name === 'CodeMismatchException') {
-                console.log('Code mismatch error details', {
-                    email,
-                    errorMessage: error.message,
-                    timestamp: new Date().toISOString()
-                });
+            if (error instanceof Error) {
+                switch (error.name) {
+                    case 'CodeMismatchException':
+                        console.log('Code mismatch error details', {
+                            email,
+                            errorMessage: error.message,
+                            timestamp: new Date().toISOString()
+                        });
+                        throw new errors_1.AuthenticationError('The verification code is incorrect. Please check the code and try again, or request a new code.');
+                    case 'ExpiredCodeException':
+                        console.log('Code expired error details', {
+                            email,
+                            errorMessage: error.message,
+                            timestamp: new Date().toISOString()
+                        });
+                        throw new errors_1.AuthenticationError('The verification code has expired. Please request a new code using the /auth/resend-verification-code endpoint.');
+                    case 'NotAuthorizedException':
+                        if (error.message.includes('already been confirmed')) {
+                            console.log('User already confirmed', {
+                                email,
+                                errorMessage: error.message,
+                                timestamp: new Date().toISOString()
+                            });
+                            return;
+                        }
+                        throw new errors_1.AuthenticationError('Authorization error: ' + error.message);
+                    case 'UserNotFoundException':
+                        throw new errors_1.AuthenticationError('User not found. Please register first.');
+                    case 'LimitExceededException':
+                        throw new errors_1.AuthenticationError('Too many attempts. Please wait a few minutes before trying again.');
+                    default:
+                        throw new errors_1.AuthenticationError('Failed to verify email: ' + (error.message || 'Unknown error'));
+                }
             }
             throw new errors_1.AuthenticationError('Failed to verify email: ' + (error.message || 'Unknown error'));
         }
@@ -568,21 +863,32 @@ class CognitoService {
             });
             const secretHash = this.calculateSecretHash(normalizedEmail, this.clientId);
             console.log('SECRET_HASH generated successfully');
+            let userStatus = 'UNKNOWN';
             try {
                 console.log('Verifying if user exists in Cognito', { email: normalizedEmail });
                 const userInfo = await this.getUserByEmail(normalizedEmail);
+                userStatus = userInfo.UserStatus || 'UNKNOWN';
                 console.log('User exists in Cognito', {
                     email: normalizedEmail,
                     userStatus: userInfo.UserStatus,
                     userCreatedAt: userInfo.UserCreateDate,
                     userLastModified: userInfo.UserLastModifiedDate
                 });
+                if (userStatus === 'CONFIRMED') {
+                    console.log('User is already confirmed, no need to resend code', { email: normalizedEmail });
+                    this.logger.info('User is already confirmed, no need to resend code', { email: normalizedEmail });
+                    return {
+                        destination: normalizedEmail,
+                        deliveryMedium: 'EMAIL',
+                        userStatus: 'CONFIRMED'
+                    };
+                }
             }
             catch (userError) {
                 if (userError.name === 'UserNotFoundException') {
                     console.log('User not found in Cognito, cannot resend verification code', { email: normalizedEmail });
                     this.logger.info('User not found in Cognito, cannot resend verification code', { email: normalizedEmail });
-                    return;
+                    throw new errors_1.AuthenticationError('User not found. Please register first.');
                 }
                 else {
                     console.error('Error verifying user existence', {
@@ -596,34 +902,44 @@ class CognitoService {
             console.log('Creating ResendConfirmationCodeCommand', {
                 clientId: this.clientId,
                 username: normalizedEmail,
-                hasSecretHash: !!secretHash
+                hasSecretHash: !!secretHash,
+                userStatus
             });
             const command = new client_cognito_identity_provider_1.ResendConfirmationCodeCommand({
                 ClientId: this.clientId,
                 Username: normalizedEmail,
-                SecretHash: secretHash
+                SecretHash: secretHash,
+                ClientMetadata: {
+                    'PreferredMfa': 'EMAIL'
+                }
             });
             console.log('Sending ResendConfirmationCodeCommand to Cognito');
             const response = await this.client.send(command);
+            const deliveryDetails = response && response.CodeDeliveryDetails ? {
+                destination: response.CodeDeliveryDetails.Destination,
+                deliveryMedium: response.CodeDeliveryDetails.DeliveryMedium,
+                attributeName: response.CodeDeliveryDetails.AttributeName
+            } : { destination: 'unknown', deliveryMedium: 'unknown' };
             console.log('ResendConfirmationCodeCommand response received', {
                 success: true,
                 responseType: typeof response,
                 hasResponse: !!response,
                 timestamp: new Date().toISOString(),
-                deliveryDetails: response && response.CodeDeliveryDetails ? {
-                    destination: response.CodeDeliveryDetails.Destination,
-                    deliveryMedium: response.CodeDeliveryDetails.DeliveryMedium,
-                    attributeName: response.CodeDeliveryDetails.AttributeName
-                } : 'No delivery details'
+                deliveryDetails
             });
             this.logger.info('Confirmation code resent successfully', {
                 email: normalizedEmail,
-                deliveryDetails: response && response.CodeDeliveryDetails ? {
-                    destination: response.CodeDeliveryDetails.Destination,
-                    deliveryMedium: response.CodeDeliveryDetails.DeliveryMedium,
-                    attributeName: response.CodeDeliveryDetails.AttributeName
-                } : 'No delivery details'
+                deliveryDetails
             });
+            console.log('IMPORTANT: A new verification code has been sent. This code:');
+            console.log('1. Is valid for a limited time (usually 24 hours)');
+            console.log('2. Must be entered exactly as received (6 digits)');
+            console.log('3. Should be used with the /auth/verify-email endpoint');
+            console.log('4. Will replace any previously sent codes');
+            return {
+                destination: deliveryDetails.destination,
+                deliveryMedium: deliveryDetails.deliveryMedium
+            };
         }
         catch (error) {
             console.error('Error resending confirmation code', {
@@ -640,9 +956,26 @@ class CognitoService {
                 errorMessage: error instanceof Error ? error.message : String(error),
                 stack: error instanceof Error ? error.stack : 'No stack trace'
             });
-            if (error.name === 'UserNotFoundException') {
-                this.logger.info('Confirmation code requested for non-existent user', { email });
-                return;
+            if (error instanceof Error) {
+                switch (error.name) {
+                    case 'UserNotFoundException':
+                        throw new errors_1.AuthenticationError('User not found. Please register first.');
+                    case 'LimitExceededException':
+                        throw new errors_1.AuthenticationError('Too many attempts. Please wait a few minutes before requesting a new code.');
+                    case 'InvalidParameterException':
+                        throw new errors_1.AuthenticationError('Invalid parameters: ' + error.message);
+                    case 'NotAuthorizedException':
+                        if (error.message.includes('already been confirmed')) {
+                            return {
+                                destination: email,
+                                deliveryMedium: 'EMAIL',
+                                userStatus: 'CONFIRMED'
+                            };
+                        }
+                        throw new errors_1.AuthenticationError('Authorization error: ' + error.message);
+                    default:
+                        throw new errors_1.AuthenticationError('Failed to resend confirmation code: ' + (error.message || 'Unknown error'));
+                }
             }
             throw new errors_1.AuthenticationError('Failed to resend confirmation code: ' + (error.message || 'Unknown error'));
         }

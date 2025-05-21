@@ -64,7 +64,14 @@ const resetPasswordSchema = Joi.object({
 });
 const logger = new logger_1.Logger('ResetPasswordHandler');
 const resetPasswordHandler = async (event) => {
-    logger.info('Processing reset password request');
+    logger.info('Processing reset password request', {
+        headers: event.headers,
+        timestamp: new Date().toISOString()
+    });
+    console.log('Processing reset password request', {
+        headers: event.headers,
+        timestamp: new Date().toISOString()
+    });
     const authService = new authentication_service_1.AuthenticationService();
     try {
         const { email, password, confirmationCode } = JSON.parse(event.body);
@@ -72,16 +79,44 @@ const resetPasswordHandler = async (event) => {
             parsedBody: {
                 email,
                 password: '********',
-                confirmationCode
+                confirmationCodeLength: confirmationCode ? confirmationCode.length : 0,
+                confirmationCodeMasked: confirmationCode ?
+                    confirmationCode.substring(0, 2) + '****' + confirmationCode.substring(confirmationCode.length - 2) : 'null'
             }
         });
+        console.log('Parsed body before validation', {
+            parsedBody: {
+                email,
+                password: '********',
+                confirmationCodeLength: confirmationCode ? confirmationCode.length : 0,
+                confirmationCodeMasked: confirmationCode ?
+                    confirmationCode.substring(0, 2) + '****' + confirmationCode.substring(confirmationCode.length - 2) : 'null'
+            },
+            timestamp: new Date().toISOString()
+        });
         logger.info('Starting password reset process', { email });
+        console.log('Starting password reset process', {
+            email,
+            timestamp: new Date().toISOString()
+        });
         const result = await authService.resetPassword(email, password, confirmationCode);
         if (result && typeof result === 'object' && 'message' in result) {
             logger.info('Password reset process returned a message', {
                 email,
                 message: result.message
             });
+            console.log('Password reset process returned a message', {
+                email,
+                message: result.message,
+                timestamp: new Date().toISOString()
+            });
+            const deliveryDetails = result.deliveryDetails || { destination: email, deliveryMedium: 'EMAIL' };
+            console.log('IMPORTANT INFORMATION FOR THE CLIENT:');
+            console.log('1. The old code has expired and a new code has been sent');
+            console.log('2. The client should check their email for the new code');
+            console.log('3. The client should try again with the new code');
+            console.log('4. The new code is valid for approximately 1 hour');
+            console.log('5. The new code has been sent to: ' + (deliveryDetails.destination || email));
             return {
                 statusCode: 200,
                 headers: {
@@ -94,12 +129,24 @@ const resetPasswordHandler = async (event) => {
                     success: false,
                     message: result.message,
                     code: 'CODE_EXPIRED_NEW_CODE_SENT',
-                    data: null,
+                    data: {
+                        email,
+                        newCodeSent: true,
+                        expirationTime: '1 hour',
+                        destination: deliveryDetails.destination || email,
+                        deliveryMedium: deliveryDetails.deliveryMedium || 'EMAIL',
+                        instructions: 'Please check your email for a new 6-digit verification code and try again with the new code.',
+                        codeFormat: '6 digits (e.g., 123456)'
+                    },
                     errors: null
                 })
             };
         }
         logger.info('Password reset successfully', { email });
+        console.log('Password reset successfully', {
+            email,
+            timestamp: new Date().toISOString()
+        });
         return {
             statusCode: 200,
             headers: {
@@ -111,7 +158,11 @@ const resetPasswordHandler = async (event) => {
             body: JSON.stringify({
                 success: true,
                 message: 'Password reset successfully',
-                data: null,
+                data: {
+                    email,
+                    canLogin: true,
+                    message: 'You can now login with your new password'
+                },
                 errors: null
             })
         };

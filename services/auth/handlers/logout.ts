@@ -9,16 +9,30 @@ import { AuthenticationError } from '@shared/utils/errors';
 const logger = new Logger('LogoutHandler');
 
 const logoutHandler: APIGatewayProxyHandler = async (event) => {
+  // Log directo a CloudWatch para verificar que los logs se están enviando
+  console.log(JSON.stringify({
+    message: 'CLOUDWATCH TEST: Processing logout request',
+    timestamp: new Date().toISOString(),
+    requestId: event.requestContext?.requestId,
+    path: event.path,
+    method: event.httpMethod,
+    stage: event.requestContext?.stage,
+    headers: event.headers,
+    hasAuthorization: !!(event.headers.Authorization || event.headers.authorization)
+  }));
+
   logger.info('Processing logout request', {
     headers: event.headers,
     hasAuthorization: !!(event.headers.Authorization || event.headers.authorization),
-    timestamp: new Date().toISOString()
+    timestamp: new Date().toISOString(),
+    requestId: event.requestContext?.requestId
   });
 
   console.log('Processing logout request', {
     headers: event.headers,
     hasAuthorization: !!(event.headers.Authorization || event.headers.authorization),
-    timestamp: new Date().toISOString()
+    timestamp: new Date().toISOString(),
+    requestId: event.requestContext?.requestId
   });
 
   const authService = new AuthenticationService();
@@ -26,35 +40,76 @@ const logoutHandler: APIGatewayProxyHandler = async (event) => {
   try {
     // Obtener el token de autorización
     const authHeader = event.headers.Authorization || event.headers.authorization;
+
+    // Log directo a CloudWatch con información del header de autorización
+    console.log(JSON.stringify({
+      message: 'CLOUDWATCH TEST: Authorization header check',
+      hasAuthHeader: !!authHeader,
+      authHeaderType: typeof authHeader,
+      timestamp: new Date().toISOString(),
+      requestId: event.requestContext?.requestId
+    }));
+
     if (!authHeader) {
       logger.error('No authorization header provided');
       console.error('No authorization header provided');
       throw new AuthenticationError('No authorization token provided');
     }
 
+    // Log detallado del header de autorización
+    console.log(JSON.stringify({
+      message: 'CLOUDWATCH TEST: Authorization header found',
+      authHeaderLength: authHeader.length,
+      authHeaderStartsWith: authHeader.substring(0, 20) + '...',
+      authHeaderType: typeof authHeader,
+      timestamp: new Date().toISOString(),
+      requestId: event.requestContext?.requestId
+    }));
+
     logger.info('Authorization header found', {
       authHeaderLength: authHeader.length,
-      authHeaderStartsWith: authHeader.substring(0, 10) + '...'
+      authHeaderStartsWith: authHeader.substring(0, 20) + '...',
+      authHeaderType: typeof authHeader,
+      timestamp: new Date().toISOString()
     });
 
     console.log('Authorization header found', {
       authHeaderLength: authHeader.length,
-      authHeaderStartsWith: authHeader.substring(0, 10) + '...'
+      authHeaderStartsWith: authHeader.substring(0, 20) + '...',
+      authHeaderType: typeof authHeader,
+      timestamp: new Date().toISOString()
     });
 
     // Extraer el token del header
-    const token = authHeader.replace('Bearer ', '');
+    let token = authHeader;
+
+    // Verificar si el token comienza con 'Bearer ' y extraerlo
+    if (typeof authHeader === 'string' && authHeader.startsWith('Bearer ')) {
+      token = authHeader.substring(7); // Extraer el token después de 'Bearer '
+    }
+
+    // Log directo a CloudWatch con información del token extraído
+    console.log(JSON.stringify({
+      message: 'CLOUDWATCH TEST: Token extracted from header',
+      tokenLength: token.length,
+      tokenStartsWith: token.substring(0, 20) + '...',
+      isBearerToken: typeof authHeader === 'string' && authHeader.startsWith('Bearer '),
+      timestamp: new Date().toISOString(),
+      requestId: event.requestContext?.requestId
+    }));
 
     logger.info('Token extracted from header', {
       tokenLength: token.length,
-      tokenStartsWith: token.substring(0, 10) + '...',
-      isBearerToken: authHeader.startsWith('Bearer ')
+      tokenStartsWith: token.substring(0, 20) + '...',
+      isBearerToken: typeof authHeader === 'string' && authHeader.startsWith('Bearer '),
+      timestamp: new Date().toISOString()
     });
 
     console.log('Token extracted from header', {
       tokenLength: token.length,
-      tokenStartsWith: token.substring(0, 10) + '...',
-      isBearerToken: authHeader.startsWith('Bearer ')
+      tokenStartsWith: token.substring(0, 20) + '...',
+      isBearerToken: typeof authHeader === 'string' && authHeader.startsWith('Bearer '),
+      timestamp: new Date().toISOString()
     });
 
     // Ejecutar el logout
@@ -95,23 +150,71 @@ const logoutHandler: APIGatewayProxyHandler = async (event) => {
     };
 
   } catch (error) {
+    // Log directo a CloudWatch con información del error
+    console.log(JSON.stringify({
+      message: 'CLOUDWATCH TEST: Error in logout handler',
+      errorName: error instanceof Error ? error.name : 'Unknown',
+      errorMessage: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : 'No stack trace',
+      timestamp: new Date().toISOString(),
+      requestId: event.requestContext?.requestId
+    }));
+
     logger.error('Error in logout handler', {
       error,
       errorName: error instanceof Error ? error.name : 'Unknown',
       errorMessage: error instanceof Error ? error.message : String(error),
-      stack: error instanceof Error ? error.stack : 'No stack trace'
+      stack: error instanceof Error ? error.stack : 'No stack trace',
+      timestamp: new Date().toISOString(),
+      requestId: event.requestContext?.requestId
     });
 
     console.error('Error in logout handler', {
       error,
       errorName: error instanceof Error ? error.name : 'Unknown',
       errorMessage: error instanceof Error ? error.message : String(error),
-      stack: error instanceof Error ? error.stack : 'No stack trace'
+      stack: error instanceof Error ? error.stack : 'No stack trace',
+      timestamp: new Date().toISOString(),
+      requestId: event.requestContext?.requestId
     });
 
-    // Propagar el error para que sea manejado por el middleware de manejo de errores
+    // Si el error es de autenticación, devolver una respuesta con código 401
+    if (error instanceof AuthenticationError) {
+      return {
+        statusCode: 401,
+        headers: {
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*',
+          'Access-Control-Allow-Methods': 'OPTIONS,POST,GET',
+          'Access-Control-Allow-Headers': 'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'
+        },
+        body: JSON.stringify({
+          success: false,
+          message: error.message || 'Authentication error',
+          code: 'AUTHENTICATION_ERROR',
+          data: null,
+          errors: {
+            auth: [error.message || 'Authentication error']
+          }
+        })
+      };
+    }
+
+    // Para otros errores, propagar el error para que sea manejado por el middleware de manejo de errores
     throw error;
   } finally {
+    // Log directo a CloudWatch para indicar que el proceso ha finalizado
+    console.log(JSON.stringify({
+      message: 'CLOUDWATCH TEST: Logout process completed',
+      timestamp: new Date().toISOString(),
+      requestId: event.requestContext?.requestId
+    }));
+
+    logger.info('Logout process completed', {
+      timestamp: new Date().toISOString(),
+      requestId: event.requestContext?.requestId
+    });
+
     await authService.cleanup();
   }
 };

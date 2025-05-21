@@ -62,8 +62,31 @@ const resendVerificationCodeHandler = async (event) => {
             cognitoUserPoolId: process.env.COGNITO_USER_POOL_ID,
             cognitoClientId: process.env.COGNITO_CLIENT_ID
         });
-        await authService.resendVerificationCode(email);
-        logger.info('Verification code resent successfully', { email });
+        const deliveryDetails = await authService.resendVerificationCode(email);
+        logger.info('Verification code resent successfully', {
+            email,
+            deliveryDetails
+        });
+        if (deliveryDetails.userStatus === 'CONFIRMED') {
+            return {
+                statusCode: 200,
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Access-Control-Allow-Origin': '*',
+                    'Access-Control-Allow-Methods': 'OPTIONS,POST,GET',
+                    'Access-Control-Allow-Headers': 'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'
+                },
+                body: JSON.stringify({
+                    success: true,
+                    message: 'Your email is already verified. You can proceed to login.',
+                    data: {
+                        userStatus: 'CONFIRMED',
+                        nextStep: 'You can now log in with your credentials using the /auth/login endpoint'
+                    },
+                    errors: null
+                })
+            };
+        }
         return {
             statusCode: 200,
             headers: {
@@ -75,7 +98,11 @@ const resendVerificationCodeHandler = async (event) => {
             body: JSON.stringify({
                 success: true,
                 message: 'Verification code resent successfully. Please check your email.',
-                data: null,
+                data: {
+                    destination: deliveryDetails.destination || email,
+                    deliveryMedium: deliveryDetails.deliveryMedium || 'EMAIL',
+                    nextStep: 'Use the code sent to your email with the /auth/verify-email endpoint to confirm your account'
+                },
                 errors: null
             })
         };

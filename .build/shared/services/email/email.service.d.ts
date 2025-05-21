@@ -17,6 +17,7 @@ export declare class EmailService {
     sendEmail(options: EmailOptions): Promise<string>;
     sendPasswordResetEmail(to: string, resetCode: string, isBackup?: boolean): Promise<string>;
     sendVerificationEmail(to: string, verificationCode: string, isBackup?: boolean): Promise<string>;
+    sendPasswordResetInstructions(to: string): Promise<string>;
     verifyEmailIdentity(email: string): Promise<void>;
 }
 //# sourceMappingURL=email.service.d.ts.map

@@ -21,6 +21,16 @@ const forgotPasswordSchema = Joi.object({
 const logger = new Logger('ForgotPasswordHandler');
 
 const forgotPasswordHandler: APIGatewayProxyHandler = async (event) => {
+  // Log directo a CloudWatch para verificar que los logs se están enviando
+  console.log(JSON.stringify({
+    message: 'CLOUDWATCH TEST: Processing forgot password request',
+    timestamp: new Date().toISOString(),
+    requestId: event.requestContext?.requestId,
+    path: event.path,
+    method: event.httpMethod,
+    stage: event.requestContext?.stage
+  }));
+
   logger.info('Processing forgot password request');
 
   const authService = new AuthenticationService();
@@ -28,6 +38,14 @@ const forgotPasswordHandler: APIGatewayProxyHandler = async (event) => {
   try {
     // El body ya está validado por el middleware
     const { email } = JSON.parse(event.body!);
+
+    // Log directo a CloudWatch con información del email
+    console.log(JSON.stringify({
+      message: 'CLOUDWATCH TEST: Forgot password request received',
+      email,
+      timestamp: new Date().toISOString(),
+      requestId: event.requestContext?.requestId
+    }));
 
     logger.info('Forgot password request received', { email });
 
@@ -37,19 +55,25 @@ const forgotPasswordHandler: APIGatewayProxyHandler = async (event) => {
       environment: process.env.NODE_ENV,
       region: process.env.REGION,
       cognitoUserPoolId: process.env.COGNITO_USER_POOL_ID,
-      cognitoClientId: process.env.COGNITO_CLIENT_ID
+      cognitoClientId: process.env.COGNITO_CLIENT_ID,
+      requestId: event.requestContext?.requestId,
+      timestamp: new Date().toISOString()
     });
 
     try {
       // Solicitar recuperación de contraseña
       const deliveryDetails = await authService.forgotPassword(email);
 
-      logger.info('Password reset requested successfully', {
+      // Log directo a CloudWatch con información del resultado
+      console.log(JSON.stringify({
+        message: 'CLOUDWATCH TEST: Password reset requested successfully',
         email,
-        deliveryDetails
-      });
+        deliveryDetails,
+        timestamp: new Date().toISOString(),
+        requestId: event.requestContext?.requestId
+      }));
 
-      console.log('Password reset requested successfully', {
+      logger.info('Password reset requested successfully', {
         email,
         deliveryDetails,
         timestamp: new Date().toISOString()
@@ -75,18 +99,40 @@ const forgotPasswordHandler: APIGatewayProxyHandler = async (event) => {
         })
       };
     } catch (serviceError) {
+      // Log directo a CloudWatch con información del error
+      console.error(JSON.stringify({
+        message: 'CLOUDWATCH TEST: Error in forgot password service',
+        email,
+        errorName: serviceError instanceof Error ? serviceError.name : 'Unknown',
+        errorMessage: serviceError instanceof Error ? serviceError.message : String(serviceError),
+        stack: serviceError instanceof Error ? serviceError.stack : 'No stack trace',
+        timestamp: new Date().toISOString(),
+        requestId: event.requestContext?.requestId
+      }));
+
       logger.error('Error in forgot password service', {
         error: serviceError,
         email,
         errorName: serviceError instanceof Error ? serviceError.name : 'Unknown',
         errorMessage: serviceError instanceof Error ? serviceError.message : String(serviceError),
-        stack: serviceError instanceof Error ? serviceError.stack : 'No stack trace'
+        stack: serviceError instanceof Error ? serviceError.stack : 'No stack trace',
+        timestamp: new Date().toISOString(),
+        requestId: event.requestContext?.requestId
       });
 
       // Manejar errores específicos
       if (serviceError instanceof Error) {
         // Error de configuración de SES
         if (serviceError.message.includes('Email delivery configuration error')) {
+          // Log específico para error de SES
+          console.error(JSON.stringify({
+            message: 'CLOUDWATCH TEST: Email delivery configuration error',
+            email,
+            errorMessage: serviceError.message,
+            timestamp: new Date().toISOString(),
+            requestId: event.requestContext?.requestId
+          }));
+
           return {
             statusCode: 500,
             headers: {
@@ -111,6 +157,15 @@ const forgotPasswordHandler: APIGatewayProxyHandler = async (event) => {
         if (serviceError.message.includes('not verified') ||
             serviceError.message.includes('identity') ||
             serviceError.message.includes('verification')) {
+          // Log específico para error de verificación de email
+          console.error(JSON.stringify({
+            message: 'CLOUDWATCH TEST: Email verification issue',
+            email,
+            errorMessage: serviceError.message,
+            timestamp: new Date().toISOString(),
+            requestId: event.requestContext?.requestId
+          }));
+
           return {
             statusCode: 500,
             headers: {
@@ -131,6 +186,16 @@ const forgotPasswordHandler: APIGatewayProxyHandler = async (event) => {
           };
         }
       }
+
+      // Log genérico para otros errores
+      console.error(JSON.stringify({
+        message: 'CLOUDWATCH TEST: Generic error in forgot password service',
+        email,
+        errorName: serviceError instanceof Error ? serviceError.name : 'Unknown',
+        errorMessage: serviceError instanceof Error ? serviceError.message : String(serviceError),
+        timestamp: new Date().toISOString(),
+        requestId: event.requestContext?.requestId
+      }));
 
       // Para otros errores, devolver un mensaje genérico con detalles para depuración
       return {
@@ -153,6 +218,18 @@ const forgotPasswordHandler: APIGatewayProxyHandler = async (event) => {
       };
     }
   } finally {
+    // Log directo a CloudWatch para indicar que el proceso ha finalizado
+    console.log(JSON.stringify({
+      message: 'CLOUDWATCH TEST: Forgot password process completed',
+      timestamp: new Date().toISOString(),
+      requestId: event.requestContext?.requestId
+    }));
+
+    logger.info('Forgot password process completed', {
+      timestamp: new Date().toISOString(),
+      requestId: event.requestContext?.requestId
+    });
+
     await authService.cleanup();
   }
 };

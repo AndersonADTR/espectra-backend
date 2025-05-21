@@ -9,13 +9,21 @@ export declare class AuthenticationService {
     private readonly observability;
     private readonly anomalyDetection;
     constructor();
-    forgotPassword(email: string): Promise<void>;
+    forgotPassword(email: string): Promise<{
+        destination?: string;
+        deliveryMedium?: string;
+    }>;
     private updateUserSub;
     resetPassword(email: string, newPassword: string, confirmationCode: string): Promise<void | {
         message: string;
+        deliveryDetails?: any;
     }>;
     verifyEmail(email: string, code: string): Promise<void>;
-    resendVerificationCode(email: string): Promise<void>;
+    resendVerificationCode(email: string): Promise<{
+        destination?: string;
+        deliveryMedium?: string;
+        userStatus?: string;
+    }>;
     private updateUserStatus;
     registerUser(credentials: RegisterCredentials): Promise<AuthenticatedUser>;
     login(credentials: LoginCredentials): Promise<AuthenticationResult>;
@@ -29,5 +37,7 @@ export declare class AuthenticationService {
     private updateLastLogin;
     refreshTokens(userSub: string, refreshToken: string): Promise<AuthenticationResult>;
     cleanup(): Promise<void>;
+    private sendVerificationEmail;
+    private sendInstructionalEmail;
 }
 //# sourceMappingURL=authentication.service.d.ts.map

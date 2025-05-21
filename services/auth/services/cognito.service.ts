@@ -545,6 +545,14 @@ export class CognitoService {
 
   async signOut(accessToken: string): Promise<void> {
     try {
+      // Log directo a CloudWatch para verificar que los logs se están enviando
+      console.log(JSON.stringify({
+        message: 'CLOUDWATCH TEST: CognitoService.signOut called',
+        accessTokenLength: accessToken ? accessToken.length : 0,
+        accessTokenFirstChars: accessToken ? accessToken.substring(0, 10) + '...' : 'null',
+        timestamp: new Date().toISOString()
+      }));
+
       console.log('CognitoService.signOut called', {
         accessTokenLength: accessToken ? accessToken.length : 0,
         accessTokenFirstChars: accessToken ? accessToken.substring(0, 10) + '...' : 'null',
@@ -552,12 +560,22 @@ export class CognitoService {
       });
 
       if (!accessToken) {
+        console.log(JSON.stringify({
+          message: 'CLOUDWATCH TEST: No access token provided for sign out',
+          timestamp: new Date().toISOString()
+        }));
         console.error('No access token provided for sign out');
         throw new AuthenticationError('No access token provided');
       }
 
       // Verificar que el token tenga un formato válido (JWT)
       if (!accessToken.includes('.') || accessToken.split('.').length !== 3) {
+        console.log(JSON.stringify({
+          message: 'CLOUDWATCH TEST: Invalid token format',
+          accessTokenLength: accessToken.length,
+          accessTokenFirstChars: accessToken.substring(0, 10) + '...',
+          timestamp: new Date().toISOString()
+        }));
         console.error('Invalid token format', {
           accessTokenLength: accessToken.length,
           accessTokenFirstChars: accessToken.substring(0, 10) + '...'
@@ -569,10 +587,21 @@ export class CognitoService {
         AccessToken: accessToken
       });
 
+      console.log(JSON.stringify({
+        message: 'CLOUDWATCH TEST: Sending GlobalSignOutCommand to Cognito',
+        timestamp: new Date().toISOString()
+      }));
       console.log('Sending GlobalSignOutCommand to Cognito');
 
       try {
         const response = await this.client.send(command);
+        console.log(JSON.stringify({
+          message: 'CLOUDWATCH TEST: GlobalSignOutCommand response received',
+          success: true,
+          responseType: typeof response,
+          hasResponse: !!response,
+          timestamp: new Date().toISOString()
+        }));
         console.log('GlobalSignOutCommand response received', {
           success: true,
           responseType: typeof response,
@@ -580,6 +609,12 @@ export class CognitoService {
           timestamp: new Date().toISOString()
         });
       } catch (signOutError) {
+        console.log(JSON.stringify({
+          message: 'CLOUDWATCH TEST: Error from Cognito during sign out',
+          errorName: signOutError instanceof Error ? signOutError.name : 'Unknown',
+          errorMessage: signOutError instanceof Error ? signOutError.message : String(signOutError),
+          timestamp: new Date().toISOString()
+        }));
         console.error('Error from Cognito during sign out', {
           error: signOutError,
           errorName: signOutError instanceof Error ? signOutError.name : 'Unknown',
@@ -590,23 +625,48 @@ export class CognitoService {
         // Manejar errores específicos
         if (signOutError instanceof Error) {
           if (signOutError.name === 'NotAuthorizedException') {
+            console.log(JSON.stringify({
+              message: 'CLOUDWATCH TEST: Invalid or expired access token',
+              timestamp: new Date().toISOString()
+            }));
             throw new AuthenticationError('Invalid or expired access token');
           }
 
           if (signOutError.name === 'InvalidParameterException') {
+            console.log(JSON.stringify({
+              message: 'CLOUDWATCH TEST: Invalid token parameter',
+              errorMessage: signOutError.message,
+              timestamp: new Date().toISOString()
+            }));
             throw new AuthenticationError('Invalid token parameter: ' + signOutError.message);
           }
 
+          console.log(JSON.stringify({
+            message: 'CLOUDWATCH TEST: Failed to sign out',
+            errorMessage: signOutError.message,
+            timestamp: new Date().toISOString()
+          }));
           throw new AuthenticationError('Failed to sign out: ' + signOutError.message);
         }
 
         throw signOutError;
       }
 
+      console.log(JSON.stringify({
+        message: 'CLOUDWATCH TEST: User signed out successfully',
+        timestamp: new Date().toISOString()
+      }));
       this.logger.info('User signed out successfully');
       console.log('User signed out successfully');
 
     } catch (error) {
+      console.log(JSON.stringify({
+        message: 'CLOUDWATCH TEST: Error signing out user',
+        errorName: error instanceof Error ? error.name : 'Unknown',
+        errorMessage: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : 'No stack trace',
+        timestamp: new Date().toISOString()
+      }));
       this.logger.error('Error signing out user', {
         error,
         errorName: error instanceof Error ? error.name : 'Unknown',
@@ -702,15 +762,15 @@ export class CognitoService {
       const command = new ForgotPasswordCommand({
         ClientId: this.clientId,
         Username: normalizedEmail,
-        SecretHash: secretHash,
-        ClientMetadata: {
-          // Esto puede ayudar a personalizar el comportamiento
-          'Source': 'SPECTRUM_PLATFORM',
-          'UserStatus': userStatus
-        }
+        SecretHash: secretHash
       });
 
-      console.log('Sending ForgotPasswordCommand to Cognito');
+      console.log('Sending ForgotPasswordCommand to Cognito', {
+        clientId: this.clientId,
+        username: normalizedEmail,
+        timestamp: new Date().toISOString()
+      });
+
       const response = await this.client.send(command);
 
       // Extraer detalles de entrega
@@ -722,11 +782,24 @@ export class CognitoService {
 
       console.log('ForgotPasswordCommand response received', {
         success: true,
-        responseType: typeof response,
-        hasResponse: !!response,
         timestamp: new Date().toISOString(),
         deliveryDetails
       });
+
+      // Verificar si tenemos detalles de entrega
+      if (!response || !response.CodeDeliveryDetails) {
+        console.warn('No code delivery details in Cognito response', {
+          email: normalizedEmail,
+          timestamp: new Date().toISOString()
+        });
+      } else {
+        console.log('Code delivery details from Cognito', {
+          destination: response.CodeDeliveryDetails.Destination,
+          deliveryMedium: response.CodeDeliveryDetails.DeliveryMedium,
+          attributeName: response.CodeDeliveryDetails.AttributeName,
+          timestamp: new Date().toISOString()
+        });
+      }
 
       // Agregar información importante sobre el código
       console.log('IMPORTANT: A password reset code has been sent. This code:');
@@ -850,8 +923,6 @@ export class CognitoService {
         email: normalizedEmail,
         codeLength: normalizedCode.length,
         codeMasked: normalizedCode.substring(0, 2) + '****' + normalizedCode.substring(normalizedCode.length - 2),
-        userPoolId: this.userPoolId,
-        clientId: this.clientId,
         timestamp: new Date().toISOString()
       });
 
@@ -860,7 +931,8 @@ export class CognitoService {
         console.warn('Confirmation code format may be invalid', {
           email: normalizedEmail,
           codeLength: normalizedCode.length,
-          isNumeric: /^\d+$/.test(normalizedCode)
+          isNumeric: /^\d+$/.test(normalizedCode),
+          timestamp: new Date().toISOString()
         });
 
         // Si el código no tiene el formato correcto, lanzar un error más descriptivo
@@ -877,38 +949,11 @@ export class CognitoService {
         }
       }
 
-      // Verificar si el usuario existe en Cognito antes de intentar confirmar
-      try {
-        console.log('Verifying if user exists in Cognito', { email: normalizedEmail });
-        const userInfo = await this.getUserByEmail(normalizedEmail);
-        console.log('User exists in Cognito', {
-          email: normalizedEmail,
-          userStatus: userInfo.UserStatus,
-          userCreatedAt: userInfo.UserCreateDate,
-          userLastModified: userInfo.UserLastModifiedDate
-        });
-      } catch (userError) {
-        if ((userError as Error).name === 'UserNotFoundException') {
-          console.error('User not found in Cognito, cannot reset password', { email: normalizedEmail });
-          throw new AuthenticationError('User not found. Please check your email address and try again.');
-        } else {
-          console.error('Error verifying user existence', {
-            error: userError,
-            errorName: userError instanceof Error ? userError.name : 'Unknown',
-            errorMessage: userError instanceof Error ? userError.message : String(userError),
-            email: normalizedEmail
-          });
-          // Continuamos con el proceso a pesar del error
-        }
-      }
-
       // Generar SECRET_HASH
       const secretHash = this.calculateSecretHash(
         normalizedEmail,
         this.clientId
       );
-
-      console.log('SECRET_HASH generated successfully');
 
       // Crear el comando con los valores normalizados
       const command = new ConfirmForgotPasswordCommand({
@@ -916,25 +961,24 @@ export class CognitoService {
         Username: normalizedEmail,
         ConfirmationCode: normalizedCode,
         Password: newPassword,
-        SecretHash: secretHash,
-        ClientMetadata: {
-          // Esto puede ayudar a personalizar el comportamiento
-          'Source': 'SPECTRUM_PLATFORM'
-        }
+        SecretHash: secretHash
       });
 
-      console.log('Sending ConfirmForgotPasswordCommand to Cognito');
-
-      // Intentar confirmar la contraseña olvidada
-      await this.client.send(command);
-      console.log('ConfirmForgotPasswordCommand response received successfully');
-
-      this.logger.info('Password reset completed successfully', {
+      console.log('Sending ConfirmForgotPasswordCommand to Cognito', {
         email: normalizedEmail,
         timestamp: new Date().toISOString()
       });
 
-      console.log('Password reset completed successfully', {
+      // Intentar confirmar la contraseña olvidada
+      const response = await this.client.send(command);
+
+      console.log('ConfirmForgotPasswordCommand response received successfully', {
+        email: normalizedEmail,
+        timestamp: new Date().toISOString(),
+        response: response
+      });
+
+      this.logger.info('Password reset completed successfully', {
         email: normalizedEmail,
         timestamp: new Date().toISOString()
       });
@@ -944,54 +988,26 @@ export class CognitoService {
         error,
         email,
         errorName: error instanceof Error ? error.name : 'Unknown',
-        errorMessage: error instanceof Error ? error.message : String(error),
-        stack: error instanceof Error ? error.stack : 'No stack trace'
+        errorMessage: error instanceof Error ? error.message : String(error)
       });
 
       console.error('Detailed error confirming password reset', {
         error,
         errorName: error instanceof Error ? error.name : 'Unknown',
         errorMessage: error instanceof Error ? error.message : String(error),
-        stack: error instanceof Error ? error.stack : 'No stack trace',
-        email
+        email,
+        timestamp: new Date().toISOString()
       });
 
       // Mejorar los mensajes de error para casos específicos
       if (error instanceof Error) {
         switch (error.name) {
           case 'CodeMismatchException':
-            console.log('Code mismatch error details', {
-              email,
-              errorMessage: error.message,
-              timestamp: new Date().toISOString()
-            });
             throw new AuthenticationError(
               'The confirmation code is incorrect. Please check the code and try again.'
             );
 
           case 'ExpiredCodeException':
-            console.log('Code expired error details', {
-              email,
-              errorMessage: error.message,
-              timestamp: new Date().toISOString()
-            });
-
-            // Intentar obtener más información sobre el usuario
-            try {
-              const userInfo = await this.getUserByEmail(email);
-              console.log('User info retrieved for debugging expired code issue', {
-                email,
-                userStatus: userInfo.UserStatus,
-                userCreatedAt: userInfo.UserCreateDate,
-                userLastModified: userInfo.UserLastModifiedDate
-              });
-            } catch (userError) {
-              console.error('Failed to retrieve user info for debugging', {
-                email,
-                error: userError
-              });
-            }
-
             throw new AuthenticationError(
               'The confirmation code has expired. Please request a new code using the forgot password feature.'
             );
@@ -1028,7 +1044,6 @@ export class CognitoService {
         }
       }
 
-      // Propagar el error original para que sea manejado por el servicio de autenticación
       throw new AuthenticationError(
         'Failed to reset password: ' + ((error as Error).message || 'Unknown error')
       );

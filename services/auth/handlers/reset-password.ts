@@ -100,6 +100,17 @@ const resetPasswordHandler: APIGatewayProxyHandler = async (event) => {
         timestamp: new Date().toISOString()
       });
 
+      // Obtener detalles de entrega si están disponibles
+      const deliveryDetails = result.deliveryDetails || { destination: email, deliveryMedium: 'EMAIL' };
+
+      // Agregar información importante sobre el nuevo código
+      console.log('IMPORTANT INFORMATION FOR THE CLIENT:');
+      console.log('1. The old code has expired and a new code has been sent');
+      console.log('2. The client should check their email for the new code');
+      console.log('3. The client should try again with the new code');
+      console.log('4. The new code is valid for approximately 1 hour');
+      console.log('5. The new code has been sent to: ' + (deliveryDetails.destination || email));
+
       // Devolver un mensaje informativo al cliente
       return {
         statusCode: 200,
@@ -116,7 +127,11 @@ const resetPasswordHandler: APIGatewayProxyHandler = async (event) => {
           data: {
             email,
             newCodeSent: true,
-            expirationTime: '1 hour'
+            expirationTime: '1 hour',
+            destination: deliveryDetails.destination || email,
+            deliveryMedium: deliveryDetails.deliveryMedium || 'EMAIL',
+            instructions: 'Please check your email for a new 6-digit verification code and try again with the new code.',
+            codeFormat: '6 digits (e.g., 123456)'
           },
           errors: null
         })
