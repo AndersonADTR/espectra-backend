@@ -34,6 +34,17 @@ const verifyEmailHandler: APIGatewayProxyHandler = async (event) => {
     // El body ya está validado por el middleware
     const { email, code } = JSON.parse(event.body!);
 
+    // Agregar logs detallados para depuración
+    logger.info('Starting email verification process', {
+      email,
+      codeLength: code.length,
+      codeMasked: code.substring(0, 2) + '****' + code.substring(code.length - 2),
+      environment: process.env.NODE_ENV,
+      region: process.env.REGION,
+      cognitoUserPoolId: process.env.COGNITO_USER_POOL_ID,
+      cognitoClientId: process.env.COGNITO_CLIENT_ID
+    });
+
     // Verificar email
     await authService.verifyEmail(email, code);
 
@@ -43,12 +54,18 @@ const verifyEmailHandler: APIGatewayProxyHandler = async (event) => {
       statusCode: 200,
       headers: {
         'Content-Type': 'application/json',
-        'Access-Control-Allow-Origin': '*'
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Methods': 'OPTIONS,POST,GET',
+        'Access-Control-Allow-Headers': 'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'
       },
       body: JSON.stringify({
         success: true,
-        message: 'Email verified successfully',
-        data: null,
+        message: 'Email verified successfully. Your account is now active.',
+        data: {
+          email: email,
+          status: 'ACTIVE',
+          nextStep: 'You can now log in with your credentials using the /auth/login endpoint'
+        },
         errors: null
       })
     };

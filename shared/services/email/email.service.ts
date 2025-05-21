@@ -366,6 +366,112 @@ export class EmailService {
   }
 
   /**
+   * Envía un correo con instrucciones para el restablecimiento de contraseña
+   * @param to - Dirección de correo electrónico del destinatario
+   * @returns Promise<string> - ID del mensaje enviado
+   */
+  public async sendPasswordResetInstructions(to: string): Promise<string> {
+    console.log('Preparing password reset instructions email', { to });
+
+    const subject = 'Instrucciones para restablecer tu contraseña - SPECTRUM Platform';
+
+    const html = `
+      <html>
+        <head>
+          <style>
+            body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+            .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+            .header { background-color: #4a90e2; color: white; padding: 10px 20px; text-align: center; }
+            .content { padding: 20px; border: 1px solid #ddd; border-top: none; }
+            .instructions { background-color: #f9f9f9; padding: 15px; border-radius: 4px; margin: 15px 0; }
+            .important { color: #d9534f; font-weight: bold; }
+            .footer { text-align: center; margin-top: 20px; font-size: 12px; color: #999; }
+          </style>
+        </head>
+        <body>
+          <div class="container">
+            <div class="header">
+              <h1>SPECTRUM Platform</h1>
+            </div>
+            <div class="content">
+              <p>Hola,</p>
+
+              <p>Has solicitado restablecer tu contraseña en la plataforma SPECTRUM. Te hemos enviado un código de verificación a través de nuestro sistema de autenticación.</p>
+
+              <div class="instructions">
+                <h3>Instrucciones importantes:</h3>
+                <ol>
+                  <li>Revisa tu bandeja de entrada para encontrar un correo con el código de verificación de 6 dígitos.</li>
+                  <li>El código es válido por un tiempo limitado (generalmente 1 hora).</li>
+                  <li>Ingresa el código exactamente como aparece, sin espacios adicionales.</li>
+                  <li>Si no recibes el código en unos minutos, revisa tu carpeta de spam o correo no deseado.</li>
+                  <li>Si el código ha expirado, puedes solicitar uno nuevo a través de la opción "Olvidé mi contraseña".</li>
+                </ol>
+              </div>
+
+              <p class="important">IMPORTANTE: No compartas este código con nadie. El equipo de SPECTRUM nunca te pedirá este código por teléfono o correo electrónico.</p>
+
+              <p>Si no solicitaste restablecer tu contraseña, puedes ignorar este correo o contactar a nuestro equipo de soporte.</p>
+
+              <p>Saludos,<br>El equipo de SPECTRUM</p>
+            </div>
+            <div class="footer">
+              <p>Este es un correo automático, por favor no respondas a este mensaje.</p>
+              <p>&copy; ${new Date().getFullYear()} SPECTRUM Platform. Todos los derechos reservados.</p>
+            </div>
+          </div>
+        </body>
+      </html>
+    `;
+
+    const text = `
+      Instrucciones para restablecer tu contraseña - SPECTRUM Platform
+
+      Hola,
+
+      Has solicitado restablecer tu contraseña en la plataforma SPECTRUM. Te hemos enviado un código de verificación a través de nuestro sistema de autenticación.
+
+      Instrucciones importantes:
+      1. Revisa tu bandeja de entrada para encontrar un correo con el código de verificación de 6 dígitos.
+      2. El código es válido por un tiempo limitado (generalmente 1 hora).
+      3. Ingresa el código exactamente como aparece, sin espacios adicionales.
+      4. Si no recibes el código en unos minutos, revisa tu carpeta de spam o correo no deseado.
+      5. Si el código ha expirado, puedes solicitar uno nuevo a través de la opción "Olvidé mi contraseña".
+
+      IMPORTANTE: No compartas este código con nadie. El equipo de SPECTRUM nunca te pedirá este código por teléfono o correo electrónico.
+
+      Si no solicitaste restablecer tu contraseña, puedes ignorar este correo o contactar a nuestro equipo de soporte.
+
+      Saludos,
+      El equipo de SPECTRUM
+
+      Este es un correo automático, por favor no respondas a este mensaje.
+      © ${new Date().getFullYear()} SPECTRUM Platform. Todos los derechos reservados.
+    `;
+
+    try {
+      console.log('Calling sendEmail method for password reset instructions');
+      const messageId = await this.sendEmail({
+        to,
+        subject,
+        text,
+        html
+      });
+      console.log('Password reset instructions email sent successfully', { to, messageId });
+      return messageId;
+    } catch (error) {
+      console.error('Error sending password reset instructions email', {
+        error,
+        errorName: error instanceof Error ? error.name : 'Unknown',
+        errorMessage: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : 'No stack trace',
+        to
+      });
+      throw error;
+    }
+  }
+
+  /**
    * Verifica una dirección de correo electrónico en SES
    */
   public async verifyEmailIdentity(email: string): Promise<void> {

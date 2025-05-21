@@ -68,6 +68,14 @@ const registerHandler: APIGatewayProxyHandler = async (event) => {
       userType: credentials.userType
     });
 
+    // Determinar si el usuario fue auto-confirmado
+    const isAutoConfirmed = user.status === 'ACTIVE';
+
+    // Preparar el mensaje según el estado de confirmación
+    const message = isAutoConfirmed
+      ? 'User registered and confirmed successfully. You can now log in.'
+      : 'User registered successfully. Please check your email for a verification code and use it to confirm your account.';
+
     return {
       statusCode: 201,
       headers: {
@@ -76,14 +84,18 @@ const registerHandler: APIGatewayProxyHandler = async (event) => {
       },
       body: JSON.stringify({
         success: true,
-        message: 'User registered successfully',
+        message,
         data: {
           user: {
             userId: user.userId,
             email: user.email,
             name: user.name,
-            userType: user.userType
-          }
+            userType: user.userType,
+            status: user.status
+          },
+          nextStep: isAutoConfirmed
+            ? 'You can now log in with your credentials'
+            : 'Check your email for a verification code and use it with the /auth/verify-email endpoint to confirm your account'
         },
         errors: null
       })

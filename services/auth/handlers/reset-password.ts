@@ -34,8 +34,22 @@ const resetPasswordSchema = Joi.object({
 
 const logger = new Logger('ResetPasswordHandler');
 
+/**
+ * Handler para el endpoint de restablecimiento de contraseña
+ *
+ * Este endpoint verifica el código de confirmación enviado al usuario y establece
+ * la nueva contraseña.
+ */
 const resetPasswordHandler: APIGatewayProxyHandler = async (event) => {
-  logger.info('Processing reset password request');
+  logger.info('Processing reset password request', {
+    headers: event.headers,
+    timestamp: new Date().toISOString()
+  });
+
+  console.log('Processing reset password request', {
+    headers: event.headers,
+    timestamp: new Date().toISOString()
+  });
 
   const authService = new AuthenticationService();
 
@@ -47,11 +61,28 @@ const resetPasswordHandler: APIGatewayProxyHandler = async (event) => {
       parsedBody: {
         email,
         password: '********', // No mostrar la contraseña completa por seguridad
-        confirmationCode
+        confirmationCodeLength: confirmationCode ? confirmationCode.length : 0,
+        confirmationCodeMasked: confirmationCode ?
+          confirmationCode.substring(0, 2) + '****' + confirmationCode.substring(confirmationCode.length - 2) : 'null'
       }
     });
 
+    console.log('Parsed body before validation', {
+      parsedBody: {
+        email,
+        password: '********', // No mostrar la contraseña completa por seguridad
+        confirmationCodeLength: confirmationCode ? confirmationCode.length : 0,
+        confirmationCodeMasked: confirmationCode ?
+          confirmationCode.substring(0, 2) + '****' + confirmationCode.substring(confirmationCode.length - 2) : 'null'
+      },
+      timestamp: new Date().toISOString()
+    });
+
     logger.info('Starting password reset process', { email });
+    console.log('Starting password reset process', {
+      email,
+      timestamp: new Date().toISOString()
+    });
 
     // Restablecer contraseña
     const result = await authService.resetPassword(email, password, confirmationCode);
@@ -61,6 +92,12 @@ const resetPasswordHandler: APIGatewayProxyHandler = async (event) => {
       logger.info('Password reset process returned a message', {
         email,
         message: result.message
+      });
+
+      console.log('Password reset process returned a message', {
+        email,
+        message: result.message,
+        timestamp: new Date().toISOString()
       });
 
       // Devolver un mensaje informativo al cliente
@@ -76,13 +113,21 @@ const resetPasswordHandler: APIGatewayProxyHandler = async (event) => {
           success: false,
           message: result.message,
           code: 'CODE_EXPIRED_NEW_CODE_SENT',
-          data: null,
+          data: {
+            email,
+            newCodeSent: true,
+            expirationTime: '1 hour'
+          },
           errors: null
         })
       };
     }
 
     logger.info('Password reset successfully', { email });
+    console.log('Password reset successfully', {
+      email,
+      timestamp: new Date().toISOString()
+    });
 
     return {
       statusCode: 200,
@@ -95,7 +140,11 @@ const resetPasswordHandler: APIGatewayProxyHandler = async (event) => {
       body: JSON.stringify({
         success: true,
         message: 'Password reset successfully',
-        data: null,
+        data: {
+          email,
+          canLogin: true,
+          message: 'You can now login with your new password'
+        },
         errors: null
       })
     };

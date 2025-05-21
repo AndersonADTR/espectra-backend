@@ -9,19 +9,25 @@ Resources:
         InviteMessageTemplate:
           EmailMessage: "Your username is {username} and temporary password is {####}."
           EmailSubject: "Welcome to Espectra Platform"
-          SMSMessage: "Your username is {username} and temporary password is {####}"
-      SmsConfiguration:
-        SnsCallerArn: !GetAtt CognitoSMSRole.Arn
-        ExternalId: ${self:custom.resourcePrefix}-external
+          #SMSMessage: "Your username is {username} and temporary password is {####}"
+      # SmsConfiguration:
+      #   SnsCallerArn: !GetAtt CognitoSMSRole.Arn
+      #   ExternalId: ${self:custom.resourcePrefix}-external
+      VerificationMessageTemplate:
+        DefaultEmailOption: CONFIRM_WITH_CODE  # O CONFIRM_WITH_LINK
+        EmailMessage: "Tu código de verificación para Espectra Platform es {####}."
+        EmailSubject: "Verifica tu cuenta en Espectra Platform"
+        #SmsMessage: "Tu código de verificación para Espectra Platform es {####}."
       AutoVerifiedAttributes:
         - email
-        - phone_number
+        #- phone_number
       UsernameAttributes:
         - email
-        - phone_number
+        #- phone_number
       MfaConfiguration: ${self:custom.cognito.userPool.mfaConfiguration}
       EnabledMfas:
-        - SMS_MFA
+        - EMAIL_OTP 
+        #- SMS_MFA
         - SOFTWARE_TOKEN_MFA
       AccountRecoverySetting:
         RecoveryMechanisms:
@@ -230,7 +236,11 @@ Resources:
             Statement:
               - Effect: Allow
                 Action:
-                  - sns:Publish
+                  - sns:*
+                Resource: '*'
+              - Effect: Allow
+                Action:
+                  - ses:*
                 Resource: '*'
       Tags:
         - Key: Project

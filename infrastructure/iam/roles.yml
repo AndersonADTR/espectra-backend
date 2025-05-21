@@ -57,20 +57,22 @@ Resources:
                 Resource: "*"
               - Effect: Allow
                 Action:
-                  - cognito-idp:SignUp
-                  - cognito-idp:AdminInitiateAuth
-                  - cognito-idp:AdminConfirmSignUp
-                  - cognito-idp:AdminCreateUser
-                  - cognito-idp:AdminSetUserPassword
-                  - cognito-idp:AdminUpdateUserAttributes
-                  - cognito-idp:ConfirmForgotPassword
-                  - cognito-idp:ForgotPassword
-                  - cognito-idp:ConfirmSignUp
-                  - cognito-idp:ChangePassword
-                  - cognito-idp:AdminResetUserPassword
-                  - cognito-idp:AdminDeleteUser
-                  - cognito-idp:AdminGetUser
-                  - cognito-idp:ListUsers
+                  - cognito-idp:*
+                  # - cognito-idp:SignUp
+                  # - cognito-idp:AdminInitiateAuth
+                  # - cognito-idp:AdminConfirmSignUp
+                  # - cognito-idp:AdminCreateUser
+                  # - cognito-idp:AdminSetUserPassword
+                  # - cognito-idp:AdminUpdateUserAttributes
+                  # - cognito-idp:ResendConfirmationCode
+                  # - cognito-idp:ConfirmForgotPassword
+                  # - cognito-idp:ForgotPassword
+                  # - cognito-idp:ConfirmSignUp
+                  # - cognito-idp:ChangePassword
+                  # - cognito-idp:AdminResetUserPassword
+                  # - cognito-idp:AdminDeleteUser
+                  # - cognito-idp:AdminGetUser
+                  # - cognito-idp:ListUsers
                 Resource:
                   - Fn::Sub: arn:aws:cognito-idp:${AWS::Region}:${AWS::AccountId}:userpool/*
               - Effect: Allow
@@ -97,9 +99,12 @@ Resources:
                   - ses:SendEmail
                   - ses:SendRawEmail
                   - ses:SendTemplatedEmail
+                  - ses:SendBulkTemplatedEmail
                   - ses:GetIdentityVerificationAttributes
                   - ses:ListIdentities
                   - ses:VerifyEmailIdentity
+                  - ses:GetSendQuota
+                  - ses:GetSendStatistics
                 Resource: "*"
               # Agregar permisos de Secrets Manager
               - Effect: Allow

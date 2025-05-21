@@ -15,6 +15,12 @@ const testEmailSchema = Joi.object({
     .messages({
       'string.email': 'Invalid email format',
       'any.required': 'Email is required'
+    }),
+  type: Joi.string()
+    .valid('verification', 'reset', 'test')
+    .default('test')
+    .messages({
+      'any.only': 'Type must be one of: verification, reset, test'
     })
 });
 
@@ -25,38 +31,81 @@ const testEmailHandler: APIGatewayProxyHandler = async (event) => {
 
   try {
     // El body ya está validado por el middleware
-    const { email } = JSON.parse(event.body!);
+    const { email, type = 'test' } = JSON.parse(event.body!);
 
-    logger.info('Test email request received', { email });
+    logger.info('Test email request received', { email, type });
 
     // Agregar logs detallados para depuración
-    logger.info('Starting test email process', { 
+    logger.info('Starting test email process', {
       email,
+      type,
       environment: process.env.NODE_ENV,
       region: process.env.REGION,
       sesFromEmail: process.env.SES_FROM_EMAIL || 'soporte@spectrumai.com.co'
     });
-    
+
     try {
+      // Generar un código de prueba
+      const testCode = Math.floor(100000 + Math.random() * 900000).toString();
+
       // Enviar correo de prueba
       const emailService = EmailService.getInstance();
-      const messageId = await emailService.sendEmail({
-        to: email,
-        subject: 'Test Email from SPECTRUM Platform',
-        text: 'This is a test email from the SPECTRUM platform.',
-        html: `
-          <html>
-            <body>
-              <h1>Test Email from SPECTRUM</h1>
-              <p>This is a test email from the SPECTRUM platform.</p>
-              <p>If you received this email, it means that SES is correctly configured.</p>
-              <p>Time sent: ${new Date().toISOString()}</p>
-            </body>
-          </html>
-        `
-      });
+      let messageId: string;
 
-      logger.info('Test email sent successfully', { email, messageId });
+      // Enviar el tipo de correo solicitado
+      switch (type) {
+        case 'verification':
+          messageId = await emailService.sendVerificationEmail(email, testCode);
+          logger.info('Verification test email sent', { email, messageId, testCode });
+          break;
+        case 'reset':
+          messageId = await emailService.sendPasswordResetEmail(email, testCode);
+          logger.info('Password reset test email sent', { email, messageId, testCode });
+          break;
+        case 'test':
+        default:
+          messageId = await emailService.sendEmail({
+            to: email,
+            subject: 'SPECTRUM Platform - Test Email',
+            text: `This is a test email from SPECTRUM Platform.\nTest code: ${testCode}`,
+            html: `
+              <html>
+                <head>
+                  <style>
+                    body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+                    .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+                    .header { background-color: #4a90e2; color: white; padding: 10px 20px; text-align: center; }
+                    .content { padding: 20px; border: 1px solid #ddd; border-top: none; }
+                    .code { font-size: 24px; font-weight: bold; text-align: center; margin: 20px 0; padding: 10px; background-color: #f5f5f5; border-radius: 4px; }
+                    .footer { text-align: center; margin-top: 20px; font-size: 12px; color: #999; }
+                  </style>
+                </head>
+                <body>
+                  <div class="container">
+                    <div class="header">
+                      <h1>SPECTRUM Platform</h1>
+                    </div>
+                    <div class="content">
+                      <p>This is a test email from SPECTRUM Platform.</p>
+                      <p>If you received this email, it means that the email delivery system is working correctly.</p>
+                      <div class="code">Test Code: ${testCode}</div>
+                      <p>This code is for testing purposes only and is not valid for any actual verification or password reset.</p>
+                      <p>Time sent: ${new Date().toISOString()}</p>
+                    </div>
+                    <div class="footer">
+                      <p>This is an automated message, please do not reply to this email.</p>
+                      <p>&copy; ${new Date().getFullYear()} SPECTRUM Platform. All rights reserved.</p>
+                    </div>
+                  </div>
+                </body>
+              </html>
+            `
+          });
+          logger.info('General test email sent', { email, messageId, testCode });
+          break;
+      }
+
+      logger.info('Test email sent successfully', { email, type, messageId, testCode });
 
       return {
         statusCode: 200,
@@ -68,8 +117,14 @@ const testEmailHandler: APIGatewayProxyHandler = async (event) => {
         },
         body: JSON.stringify({
           success: true,
-          message: 'Test email sent successfully',
-          data: { messageId },
+          message: `Test email of type '${type}' sent successfully to ${email}. Please check your inbox (and spam folder).`,
+          data: {
+            email,
+            type,
+            messageId,
+            testCode,
+            sentAt: new Date().toISOString()
+          },
           errors: null
         })
       };
@@ -85,8 +140,8 @@ const testEmailHandler: APIGatewayProxyHandler = async (event) => {
       // Manejar errores específicos
       if (serviceError instanceof Error) {
         // Error de verificación de email
-        if (serviceError.message.includes('not verified') || 
-            serviceError.message.includes('identity') || 
+        if (serviceError.message.includes('not verified') ||
+            serviceError.message.includes('identity') ||
             serviceError.message.includes('verification')) {
           return {
             statusCode: 500,

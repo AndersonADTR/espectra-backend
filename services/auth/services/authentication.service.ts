@@ -62,159 +62,160 @@ export class AuthenticationService {
    * Inicia el proceso de recuperación de contraseña para un usuario
    *
    * Este método verifica si el usuario existe y envía un código de recuperación
-   * a su dirección de correo electrónico. Por razones de seguridad, no se revela
-   * si el email existe o no en la respuesta.
+   * a su dirección de correo electrónico a través de Cognito. Por razones de seguridad,
+   * no se revela si el email existe o no en la respuesta.
    *
    * @param email - La dirección de correo electrónico del usuario
-   * @returns Promise<void> - No devuelve ningún valor
+   * @returns Promise<{destination?: string, deliveryMedium?: string}> - Detalles de la entrega del código
    * @throws AuthenticationError - Si ocurre un error durante el proceso
    */
-  async forgotPassword(email: string): Promise<void> {
+  async forgotPassword(email: string): Promise<{destination?: string, deliveryMedium?: string}> {
     try {
       this.logger.info('Starting password recovery process', { email });
-      console.log('Starting password recovery process', { email });
-
-      // Verificar que el usuario existe
-      const user = await this.getUserByEmail(email);
-      console.log('User lookup result:', {
-        userExists: !!user,
+      console.log('Starting password recovery process', {
         email,
+        timestamp: new Date().toISOString()
+      });
+
+      // Normalizar el email (convertir a minúsculas y eliminar espacios)
+      const normalizedEmail = email.toLowerCase().trim();
+
+      // Verificar que el usuario existe en DynamoDB
+      const user = await this.getUserByEmail(normalizedEmail);
+      console.log('User lookup result in DynamoDB:', {
+        userExists: !!user,
+        email: normalizedEmail,
         userId: user?.userId,
         userSub: user?.userSub,
-        userStatus: user?.status
+        userStatus: user?.status,
+        timestamp: new Date().toISOString()
       });
 
       if (!user) {
         // No informamos al cliente si el email existe o no por seguridad
-        this.logger.info('Password recovery requested for non-existent user', { email });
-        console.log('Password recovery requested for non-existent user', { email });
-        return;
-      }
+        this.logger.info('Password recovery requested for non-existent user in DynamoDB', { email: normalizedEmail });
+        console.log('Password recovery requested for non-existent user in DynamoDB', { email: normalizedEmail });
 
-      // Verificar que el usuario tenga un userSub válido (necesario para Cognito)
-      if (!user.userSub) {
-        this.logger.warn('User does not have a valid userSub', { email, userId: user.userId });
-        console.log('User does not have a valid userSub', { email, userId: user.userId });
-        // Intentamos recuperar el userSub de Cognito
+        // Intentamos verificar si existe en Cognito de todas formas
         try {
-          const cognitoUser = await this.cognitoService.getUserByEmail(email);
-          if (cognitoUser && cognitoUser.sub) {
-            // Actualizar el userSub en la base de datos
-            await this.updateUserSub(user.userId, cognitoUser.sub);
-            user.userSub = cognitoUser.sub;
-            this.logger.info('Updated user with Cognito sub', { email, userId: user.userId, sub: cognitoUser.sub });
-            console.log('Updated user with Cognito sub', { email, userId: user.userId, sub: cognitoUser.sub });
+          console.log('Checking if user exists in Cognito despite not being in DynamoDB', { email: normalizedEmail });
+          await this.cognitoService.getUserByEmail(normalizedEmail);
+          console.log('User exists in Cognito but not in DynamoDB', { email: normalizedEmail });
+        } catch (cognitoCheckError) {
+          console.log('User does not exist in Cognito either', {
+            email: normalizedEmail,
+            errorName: cognitoCheckError instanceof Error ? cognitoCheckError.name : 'Unknown'
+          });
+
+          // Continuamos con el proceso para mantener el comportamiento consistente
+          // y no revelar si el usuario existe o no
+        }
+      } else {
+        // Verificar que el usuario tenga un userSub válido (necesario para Cognito)
+        if (!user.userSub) {
+          this.logger.warn('User does not have a valid userSub', { email: normalizedEmail, userId: user.userId });
+          console.log('User does not have a valid userSub', { email: normalizedEmail, userId: user.userId });
+
+          // Intentamos recuperar el userSub de Cognito
+          try {
+            const cognitoUser = await this.cognitoService.getUserByEmail(normalizedEmail);
+            if (cognitoUser && cognitoUser.sub) {
+              // Actualizar el userSub en la base de datos
+              await this.updateUserSub(user.userId, cognitoUser.sub);
+              user.userSub = cognitoUser.sub;
+              this.logger.info('Updated user with Cognito sub', {
+                email: normalizedEmail,
+                userId: user.userId,
+                sub: cognitoUser.sub
+              });
+              console.log('Updated user with Cognito sub', {
+                email: normalizedEmail,
+                userId: user.userId,
+                sub: cognitoUser.sub
+              });
+            }
+          } catch (subError) {
+            this.logger.error('Error retrieving userSub from Cognito', {
+              error: subError,
+              email: normalizedEmail,
+              userId: user.userId
+            });
+            console.error('Error retrieving userSub from Cognito', {
+              error: subError,
+              email: normalizedEmail,
+              userId: user.userId
+            });
+            // Continuamos con el proceso a pesar del error
           }
-        } catch (subError) {
-          this.logger.error('Error retrieving userSub from Cognito', {
-            error: subError,
-            email,
-            userId: user.userId
-          });
-          console.error('Error retrieving userSub from Cognito', {
-            error: subError,
-            email,
-            userId: user.userId
-          });
         }
       }
 
+      // Enviar el código de recuperación a través de Cognito
+      console.log('Sending password reset code via Cognito', { email: normalizedEmail });
+
+      let deliveryDetails;
       try {
-        // Usar directamente nuestro servicio de correo personalizado
-        console.log('Sending password reset email via direct SES', { email });
+        deliveryDetails = await this.cognitoService.forgotPassword(normalizedEmail);
 
-        // Intentar primero con Cognito para mantener la compatibilidad con el flujo de reset-password
-        try {
-          console.log('Trying to send password reset code via Cognito first', { email });
-          await this.cognitoService.forgotPassword(email);
-          console.log('Cognito forgotPassword call successful', { email });
-          this.logger.info('Password recovery code sent successfully via Cognito', { email });
-
-          // Enviar también un correo personalizado con SES como respaldo
-          console.log('Also sending a custom email via SES as backup', { email });
-
-          // Generar un código de 6 dígitos (solo para el correo personalizado)
-          const resetCode = Math.floor(100000 + Math.random() * 900000).toString();
-
-          try {
-            const emailService = EmailService.getInstance();
-            console.log('EmailService instance created', {
-              defaultSender: process.env.SES_FROM_EMAIL || 'soporte@spectrumai.com.co',
-              region: process.env.REGION || 'us-east-1'
-            });
-
-            // Enviar correo personalizado con instrucciones claras
-            await emailService.sendPasswordResetEmail(email, resetCode, true);
-
-            console.log('Custom password reset email sent successfully via direct SES', { email });
-            this.logger.info('Custom password reset email sent successfully via direct SES', { email });
-          } catch (sesError) {
-            // Si falla el envío del correo personalizado, solo registramos el error pero continuamos
-            console.error('Error sending custom email via direct SES (non-blocking):', {
-              error: sesError,
-              name: sesError instanceof Error ? sesError.name : 'Unknown',
-              message: sesError instanceof Error ? sesError.message : String(sesError),
-              stack: sesError instanceof Error ? sesError.stack : 'No stack trace'
-            });
-            // No propagamos este error ya que el flujo principal con Cognito ya funcionó
-          }
-
-        } catch (cognitoError) {
-          console.error('Error sending password reset code via Cognito:', {
-            error: cognitoError,
-            name: cognitoError instanceof Error ? cognitoError.name : 'Unknown',
-            message: cognitoError instanceof Error ? cognitoError.message : String(cognitoError),
-            stack: cognitoError instanceof Error ? cognitoError.stack : 'No stack trace'
-          });
-
-          // Si falla Cognito, usar exclusivamente nuestro servicio de correo
-          console.log('Cognito failed, using only direct SES as fallback', { email });
-
-          // Generar un código de 6 dígitos
-          const resetCode = Math.floor(100000 + Math.random() * 900000).toString();
-
-          // Guardar el código en Redis para validarlo después
-          // TODO: Implementar almacenamiento del código
-
-          // Enviar correo con el código
-          try {
-            const emailService = EmailService.getInstance();
-            console.log('EmailService instance created', {
-              defaultSender: process.env.SES_FROM_EMAIL || 'soporte@spectrumai.com.co',
-              region: process.env.REGION || 'us-east-1'
-            });
-
-            await emailService.sendPasswordResetEmail(email, resetCode);
-
-            console.log('Password reset email sent successfully via direct SES', { email });
-            this.logger.info('Password reset email sent successfully via direct SES', { email });
-          } catch (sesError) {
-            console.error('Error sending email via direct SES:', {
-              error: sesError,
-              name: sesError instanceof Error ? sesError.name : 'Unknown',
-              message: sesError instanceof Error ? sesError.message : String(sesError),
-              stack: sesError instanceof Error ? sesError.stack : 'No stack trace'
-            });
-
-            // Propagar el error original de Cognito si SES también falla
-            throw cognitoError;
-          }
-        }
-
-        await this.metrics.incrementCounter('PasswordRecoveryRequested');
-        await this.observability.trackAuthEvent('PasswordRecoveryRequested', { email });
-
-      } catch (emailError) {
-        console.error('All email delivery methods failed:', {
-          error: emailError,
-          name: emailError instanceof Error ? emailError.name : 'Unknown',
-          message: emailError instanceof Error ? emailError.message : String(emailError),
-          stack: emailError instanceof Error ? emailError.stack : 'No stack trace'
+        console.log('Cognito forgotPassword call successful', {
+          email: normalizedEmail,
+          deliveryDetails
         });
 
-        throw new AuthenticationError(
-          'Failed to send password recovery email: ' + ((emailError as Error).message || 'Unknown error')
-        );
+        this.logger.info('Password recovery code sent successfully via Cognito', {
+          email: normalizedEmail,
+          deliveryDetails
+        });
+
+        // Mostrar información importante sobre el código
+        console.log('IMPORTANT INFORMATION ABOUT THE RESET CODE:');
+        console.log('1. The code has been sent to: ' + (deliveryDetails.destination || normalizedEmail));
+        console.log('2. The code is valid for a limited time (usually 1 hour)');
+        console.log('3. The code must be used with the /auth/reset-password endpoint');
+        console.log('4. The code format is 6 digits (e.g., 123456)');
+        console.log('5. The code is case-sensitive and must be entered exactly as received');
+
+        // Enviar también un correo personalizado con SES como respaldo e instrucciones adicionales
+        try {
+          console.log('Also sending a custom email via SES with additional instructions', { email: normalizedEmail });
+
+          const emailService = EmailService.getInstance();
+
+          // No enviamos un código personalizado, sino instrucciones sobre cómo usar el código de Cognito
+          await emailService.sendPasswordResetInstructions(normalizedEmail);
+
+          console.log('Custom password reset instructions email sent successfully via SES', { email: normalizedEmail });
+        } catch (sesError) {
+          // Si falla el envío del correo personalizado, solo registramos el error pero continuamos
+          console.error('Error sending custom instructions email via SES (non-blocking):', {
+            error: sesError,
+            name: sesError instanceof Error ? sesError.name : 'Unknown',
+            message: sesError instanceof Error ? sesError.message : String(sesError),
+            stack: sesError instanceof Error ? sesError.stack : 'No stack trace'
+          });
+          // No propagamos este error ya que el flujo principal con Cognito ya funcionó
+        }
+
+        // Registrar métricas
+        await this.metrics.incrementCounter('PasswordRecoveryRequested');
+        await this.observability.trackAuthEvent('PasswordRecoveryRequested', {
+          email: normalizedEmail,
+          deliveryMedium: deliveryDetails.deliveryMedium
+        });
+
+        return deliveryDetails;
+
+      } catch (cognitoError) {
+        console.error('Error sending password reset code via Cognito:', {
+          error: cognitoError,
+          name: cognitoError instanceof Error ? cognitoError.name : 'Unknown',
+          message: cognitoError instanceof Error ? cognitoError.message : String(cognitoError),
+          stack: cognitoError instanceof Error ? cognitoError.stack : 'No stack trace',
+          email: normalizedEmail
+        });
+
+        // Propagar el error para que sea manejado adecuadamente
+        throw cognitoError;
       }
 
     } catch (error) {
@@ -224,18 +225,49 @@ export class AuthenticationService {
         errorMessage: error instanceof Error ? error.message : String(error),
         email
       });
+
       console.error('Error in password recovery process', {
         error,
         errorName: error instanceof Error ? error.name : 'Unknown',
         errorMessage: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : 'No stack trace',
         email
       });
+
       await this.metrics.incrementCounter('PasswordRecoveryFailed');
 
-      // No propagamos el error para no revelar si el email existe
-      if (error instanceof Error && error.name === 'UserNotFoundException') {
-        console.log('UserNotFoundException handled silently', { email });
-        return;
+      // Mejorar los mensajes de error para casos específicos
+      if (error instanceof Error) {
+        // No propagamos el error para no revelar si el email existe
+        if (error.name === 'UserNotFoundException') {
+          console.log('UserNotFoundException handled silently', { email });
+          return { destination: email, deliveryMedium: 'EMAIL' };
+        }
+
+        // Errores de límite de intentos
+        if (error.name === 'LimitExceededException') {
+          throw new AuthenticationError(
+            'Too many attempts. Please wait a few minutes before requesting a new code.'
+          );
+        }
+
+        // Errores de configuración de email
+        if (error.name === 'InvalidParameterException' ||
+            error.name === 'InvalidEmailRoleAccessPolicyException' ||
+            error.message.includes('email')) {
+
+          if (error.message.includes('not verified') ||
+              error.message.includes('identity') ||
+              error.message.includes('verification')) {
+            throw new AuthenticationError(
+              'Email delivery configuration error: The sender email is not verified in SES. Please contact support.'
+            );
+          }
+
+          throw new AuthenticationError(
+            'Email delivery configuration error: ' + error.message
+          );
+        }
       }
 
       throw new AuthenticationError(
@@ -287,19 +319,193 @@ export class AuthenticationService {
   async resetPassword(email: string, newPassword: string, confirmationCode: string): Promise<void | { message: string }> {
     try {
       this.logger.info('Starting password reset process', { email });
+      console.log('Starting password reset process', {
+        email,
+        confirmationCodeLength: confirmationCode ? confirmationCode.length : 0,
+        timestamp: new Date().toISOString()
+      });
+
+      // Normalizar el email (convertir a minúsculas y eliminar espacios)
+      const normalizedEmail = email.toLowerCase().trim();
+
+      // Normalizar el código de confirmación (eliminar espacios y otros caracteres no válidos)
+      const normalizedCode = confirmationCode.trim().replace(/\s+/g, '');
+
+      console.log('Normalized inputs', {
+        email: normalizedEmail,
+        codeLength: normalizedCode.length,
+        codeMasked: normalizedCode.substring(0, 2) + '****' + normalizedCode.substring(normalizedCode.length - 2),
+        timestamp: new Date().toISOString()
+      });
+
+      // Verificar que el usuario existe en DynamoDB antes de intentar restablecer la contraseña
+      const user = await this.getUserByEmail(normalizedEmail);
+      console.log('User lookup result in DynamoDB:', {
+        userExists: !!user,
+        email: normalizedEmail,
+        userId: user?.userId,
+        userSub: user?.userSub,
+        userStatus: user?.status,
+        timestamp: new Date().toISOString()
+      });
 
       // Confirmar el código y establecer la nueva contraseña
-      await this.cognitoService.confirmForgotPassword(email, confirmationCode, newPassword);
+      console.log('Calling Cognito to confirm forgot password', {
+        email: normalizedEmail,
+        codeLength: normalizedCode.length
+      });
+
+      await this.cognitoService.confirmForgotPassword(normalizedEmail, normalizedCode, newPassword);
+
+      console.log('Cognito confirmForgotPassword call successful', {
+        email: normalizedEmail,
+        timestamp: new Date().toISOString()
+      });
 
       // Actualizar el estado del usuario si es necesario
-      const user = await this.getUserByEmail(email);
-      if (user && user.status === UserStatus.PENDING_PASSWORD_RESET) {
-        await this.updateUserStatus(user.userId, UserStatus.ACTIVE);
+      if (user) {
+        if (user.status === UserStatus.PENDING_PASSWORD_RESET ||
+            user.status === UserStatus.PENDING_VERIFICATION) {
+          console.log('Updating user status to ACTIVE', {
+            email: normalizedEmail,
+            userId: user.userId,
+            currentStatus: user.status
+          });
+
+          await this.updateUserStatus(user.userId, UserStatus.ACTIVE);
+
+          console.log('User status updated to ACTIVE', {
+            email: normalizedEmail,
+            userId: user.userId
+          });
+        } else {
+          console.log('No need to update user status, already active', {
+            email: normalizedEmail,
+            userId: user.userId,
+            status: user.status
+          });
+        }
+      } else {
+        console.log('User not found in DynamoDB, but password reset in Cognito was successful', {
+          email: normalizedEmail
+        });
+
+        // Intentar obtener información del usuario de Cognito
+        try {
+          const cognitoUser = await this.cognitoService.getUserByEmail(normalizedEmail);
+          console.log('User exists in Cognito but not in DynamoDB', {
+            email: normalizedEmail,
+            cognitoStatus: cognitoUser.UserStatus,
+            sub: cognitoUser.sub
+          });
+
+          // Crear el usuario en DynamoDB si existe en Cognito
+          if (cognitoUser && cognitoUser.sub) {
+            console.log('Creating user record in DynamoDB based on Cognito data', {
+              email: normalizedEmail,
+              sub: cognitoUser.sub
+            });
+
+            await this.getOrCreateUserRecord(cognitoUser);
+
+            console.log('User record created in DynamoDB', {
+              email: normalizedEmail
+            });
+          }
+        } catch (cognitoError) {
+          console.error('Error getting user from Cognito after password reset', {
+            error: cognitoError,
+            email: normalizedEmail,
+            errorName: cognitoError instanceof Error ? cognitoError.name : 'Unknown',
+            errorMessage: cognitoError instanceof Error ? cognitoError.message : String(cognitoError)
+          });
+          // Continuamos con el proceso a pesar del error
+        }
       }
 
-      this.logger.info('Password reset completed successfully', { email });
+      // Enviar un correo de confirmación
+      try {
+        console.log('Sending password reset confirmation email', { email: normalizedEmail });
+
+        const emailService = EmailService.getInstance();
+        await emailService.sendEmail({
+          to: normalizedEmail,
+          subject: 'Contraseña restablecida con éxito - SPECTRUM Platform',
+          html: `
+            <html>
+              <head>
+                <style>
+                  body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+                  .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+                  .header { background-color: #4a90e2; color: white; padding: 10px 20px; text-align: center; }
+                  .content { padding: 20px; border: 1px solid #ddd; border-top: none; }
+                  .success { color: #5cb85c; font-weight: bold; }
+                  .footer { text-align: center; margin-top: 20px; font-size: 12px; color: #999; }
+                </style>
+              </head>
+              <body>
+                <div class="container">
+                  <div class="header">
+                    <h1>SPECTRUM Platform</h1>
+                  </div>
+                  <div class="content">
+                    <p>Hola,</p>
+
+                    <p class="success">¡Tu contraseña ha sido restablecida con éxito!</p>
+
+                    <p>Ya puedes iniciar sesión en la plataforma SPECTRUM con tu nueva contraseña.</p>
+
+                    <p>Si no realizaste esta acción, por favor contacta inmediatamente a nuestro equipo de soporte.</p>
+
+                    <p>Saludos,<br>El equipo de SPECTRUM</p>
+                  </div>
+                  <div class="footer">
+                    <p>Este es un correo automático, por favor no respondas a este mensaje.</p>
+                    <p>&copy; ${new Date().getFullYear()} SPECTRUM Platform. Todos los derechos reservados.</p>
+                  </div>
+                </div>
+              </body>
+            </html>
+          `,
+          text: `
+            Contraseña restablecida con éxito - SPECTRUM Platform
+
+            Hola,
+
+            ¡Tu contraseña ha sido restablecida con éxito!
+
+            Ya puedes iniciar sesión en la plataforma SPECTRUM con tu nueva contraseña.
+
+            Si no realizaste esta acción, por favor contacta inmediatamente a nuestro equipo de soporte.
+
+            Saludos,
+            El equipo de SPECTRUM
+
+            Este es un correo automático, por favor no respondas a este mensaje.
+            © ${new Date().getFullYear()} SPECTRUM Platform. Todos los derechos reservados.
+          `
+        });
+
+        console.log('Password reset confirmation email sent successfully', { email: normalizedEmail });
+      } catch (emailError) {
+        // Si falla el envío del correo, solo registramos el error pero continuamos
+        console.error('Error sending password reset confirmation email (non-blocking):', {
+          error: emailError,
+          email: normalizedEmail,
+          errorName: emailError instanceof Error ? emailError.name : 'Unknown',
+          errorMessage: emailError instanceof Error ? emailError.message : String(emailError)
+        });
+        // No propagamos este error ya que el restablecimiento de contraseña ya fue exitoso
+      }
+
+      this.logger.info('Password reset completed successfully', { email: normalizedEmail });
+      console.log('Password reset completed successfully', {
+        email: normalizedEmail,
+        timestamp: new Date().toISOString()
+      });
+
       await this.metrics.incrementCounter('PasswordResetSuccess');
-      await this.observability.trackAuthEvent('PasswordResetCompleted', { email });
+      await this.observability.trackAuthEvent('PasswordResetCompleted', { email: normalizedEmail });
 
     } catch (error) {
       this.logger.error('Error in password reset process', {
@@ -309,61 +515,170 @@ export class AuthenticationService {
         errorMessage: error instanceof Error ? error.message : String(error),
         stack: error instanceof Error ? error.stack : 'No stack trace'
       });
+
+      console.error('Error in password reset process', {
+        error,
+        email,
+        errorName: error instanceof Error ? error.name : 'Unknown',
+        errorMessage: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : 'No stack trace'
+      });
+
       await this.metrics.incrementCounter('PasswordResetFailed');
 
       // Manejar errores específicos
-      if ((error as Error).name === 'CodeMismatchException') {
-        // Código incorrecto
-        throw new ValidationError(
-          'The confirmation code is incorrect. Please check the code and try again.'
-        );
-      }
+      if (error instanceof Error) {
+        switch (error.name) {
+          case 'CodeMismatchException':
+            // Código incorrecto
+            throw new ValidationError(
+              'The confirmation code is incorrect. Please check the code and try again.'
+            );
 
-      // Verificar si es un error de código expirado
-      if ((error as Error).name === 'ExpiredCodeException' ||
-          ((error as Error).message && (error as Error).message.includes('Invalid code provided'))) {
+          case 'ExpiredCodeException':
+            // Código expirado - sugerir solicitar un nuevo código
+            this.logger.info('Confirmation code has expired, suggesting to request a new code', {
+              email,
+              errorName: error.name,
+              errorMessage: error.message
+            });
 
-        // Código expirado - sugerir solicitar un nuevo código
-        this.logger.info('Confirmation code has expired or is invalid, suggesting to request a new code', {
-          email,
-          errorName: (error as Error).name,
-          errorMessage: (error as Error).message
-        });
+            console.log('Confirmation code has expired, attempting to send a new code', {
+              email,
+              errorName: error.name,
+              errorMessage: error.message
+            });
 
-        // Intentar enviar un nuevo código automáticamente
-        try {
-          this.logger.info('Attempting to send a new confirmation code', { email });
+            // Intentar enviar un nuevo código automáticamente
+            try {
+              this.logger.info('Attempting to send a new confirmation code', { email });
+              console.log('Attempting to send a new confirmation code', { email });
 
-          // Enviar un nuevo código
-          await this.forgotPassword(email);
+              // Enviar un nuevo código
+              const deliveryDetails = await this.forgotPassword(email);
 
-          // Registrar el éxito
-          this.logger.info('New confirmation code sent successfully', {
-            email,
-            message: 'The confirmation code has expired. We have sent a new code to your email. Please check your inbox and try again with the new code.'
-          });
+              // Registrar el éxito
+              this.logger.info('New confirmation code sent successfully', {
+                email,
+                deliveryDetails
+              });
 
-          // Devolver un objeto con el mensaje para que el handler pueda responder adecuadamente
-          return {
-            message: 'The confirmation code has expired. We have sent a new code to your email. Please check your inbox and try again with the new code.'
-          };
-        } catch (sendError) {
-          this.logger.error('Failed to send a new confirmation code', {
-            error: sendError,
-            email,
-            originalError: error
-          });
+              console.log('New confirmation code sent successfully', {
+                email,
+                deliveryDetails,
+                timestamp: new Date().toISOString()
+              });
 
-          throw new ValidationError(
-            'The confirmation code has expired. Please request a new code using the forgot password feature.'
-          );
+              // Devolver un objeto con el mensaje para que el handler pueda responder adecuadamente
+              return {
+                message: 'The confirmation code has expired. We have sent a new code to your email. Please check your inbox and try again with the new code.'
+              };
+            } catch (sendError) {
+              this.logger.error('Failed to send a new confirmation code', {
+                error: sendError,
+                email,
+                originalError: error
+              });
+
+              console.error('Failed to send a new confirmation code', {
+                error: sendError,
+                email,
+                originalError: error,
+                errorName: sendError instanceof Error ? sendError.name : 'Unknown',
+                errorMessage: sendError instanceof Error ? sendError.message : String(sendError)
+              });
+
+              throw new ValidationError(
+                'The confirmation code has expired. Please request a new code using the forgot password feature.'
+              );
+            }
+
+          case 'InvalidParameterException':
+            // Verificar si es un error de código inválido
+            if (error.message.includes('Invalid code provided')) {
+              // Código inválido - sugerir solicitar un nuevo código
+              this.logger.info('Invalid code provided, suggesting to request a new code', {
+                email,
+                errorName: error.name,
+                errorMessage: error.message
+              });
+
+              console.log('Invalid code provided, attempting to send a new code', {
+                email,
+                errorName: error.name,
+                errorMessage: error.message
+              });
+
+              // Intentar enviar un nuevo código automáticamente
+              try {
+                this.logger.info('Attempting to send a new confirmation code', { email });
+                console.log('Attempting to send a new confirmation code', { email });
+
+                // Enviar un nuevo código
+                const deliveryDetails = await this.forgotPassword(email);
+
+                // Registrar el éxito
+                this.logger.info('New confirmation code sent successfully', {
+                  email,
+                  deliveryDetails
+                });
+
+                console.log('New confirmation code sent successfully', {
+                  email,
+                  deliveryDetails,
+                  timestamp: new Date().toISOString()
+                });
+
+                // Devolver un objeto con el mensaje para que el handler pueda responder adecuadamente
+                return {
+                  message: 'The confirmation code is invalid. We have sent a new code to your email. Please check your inbox and try again with the new code.'
+                };
+              } catch (sendError) {
+                this.logger.error('Failed to send a new confirmation code', {
+                  error: sendError,
+                  email,
+                  originalError: error
+                });
+
+                console.error('Failed to send a new confirmation code', {
+                  error: sendError,
+                  email,
+                  originalError: error,
+                  errorName: sendError instanceof Error ? sendError.name : 'Unknown',
+                  errorMessage: sendError instanceof Error ? sendError.message : String(sendError)
+                });
+
+                throw new ValidationError(
+                  'The confirmation code is invalid. Please request a new code using the forgot password feature.'
+                );
+              }
+            }
+
+            // Otros errores de parámetros inválidos
+            throw new ValidationError(
+              'Invalid parameters: ' + error.message
+            );
+
+          case 'LimitExceededException':
+            throw new ValidationError(
+              'Too many attempts. Please try again after some time.'
+            );
+
+          case 'UserNotFoundException':
+            throw new ValidationError(
+              'User not found. Please check your email address and try again.'
+            );
+
+          case 'NotAuthorizedException':
+            throw new ValidationError(
+              'Not authorized: ' + error.message
+            );
+
+          default:
+            throw new AuthenticationError(
+              'Password reset failed: ' + (error.message || 'Unknown error')
+            );
         }
-      }
-
-      if ((error as Error).name === 'LimitExceededException') {
-        throw new ValidationError(
-          'Too many attempts. Please try again after some time.'
-        );
       }
 
       throw new AuthenticationError(
@@ -423,13 +738,13 @@ export class AuthenticationService {
    * Reenvía el código de verificación de correo electrónico
    *
    * Este método solicita a Cognito que envíe un nuevo código de verificación
-   * al correo electrónico del usuario.
+   * al correo electrónico del usuario y devuelve información sobre la entrega del código.
    *
    * @param email - La dirección de correo electrónico a verificar
-   * @returns Promise<void> - No devuelve ningún valor
+   * @returns Promise<{destination?: string, deliveryMedium?: string, userStatus?: string}> - Detalles de la entrega del código
    * @throws AuthenticationError - Si ocurre un error durante el proceso
    */
-  async resendVerificationCode(email: string): Promise<void> {
+  async resendVerificationCode(email: string): Promise<{destination?: string, deliveryMedium?: string, userStatus?: string}> {
     try {
       this.logger.info('Starting resend verification code process', { email });
       console.log('Starting resend verification code process', { email });
@@ -437,104 +752,79 @@ export class AuthenticationService {
       // Verificar que el usuario existe
       const user = await this.getUserByEmail(email);
 
-      if (!user) {
-        // No informamos al cliente si el email existe o no por seguridad
-        this.logger.info('Verification code requested for non-existent user', { email });
-        console.log('Verification code requested for non-existent user', { email });
-        return;
+      // Verificar si el usuario ya está activo en DynamoDB
+      if (user && user.status === UserStatus.ACTIVE) {
+        console.log('User is already active in DynamoDB, checking Cognito status', { email });
       }
 
-      // Verificar si el usuario ya está verificado
-      if (user.status === UserStatus.ACTIVE) {
-        this.logger.info('User is already verified', { email, userId: user.userId });
-        console.log('User is already verified', { email, userId: user.userId });
-        throw new ValidationError('Email is already verified');
-      }
+      // Reenviar el código a través de Cognito
+      const deliveryDetails = await this.cognitoService.resendConfirmationCode(email);
 
-      try {
-        // Intentar primero con Cognito
-        console.log('Trying to resend verification code via Cognito', { email });
-        await this.cognitoService.resendConfirmationCode(email);
-        console.log('Cognito resendConfirmationCode call successful', { email });
-        this.logger.info('Verification code resent successfully via Cognito', { email });
+      // Verificar si el usuario ya está confirmado en Cognito
+      if (deliveryDetails.userStatus === 'CONFIRMED') {
+        console.log('User is already confirmed in Cognito', { email });
 
-        // Enviar también un correo personalizado con SES como respaldo
-        console.log('Also sending a custom verification email via SES as backup', { email });
+        // Si el usuario existe en DynamoDB pero no está activo, actualizarlo
+        if (user && user.status !== UserStatus.ACTIVE) {
+          console.log('Updating user status in DynamoDB to ACTIVE', { email, userId: user.userId });
 
-        // Generar un código de 6 dígitos (solo para el correo personalizado)
-        const verificationCode = Math.floor(100000 + Math.random() * 900000).toString();
+          // Usar la variable de entorno USERS_TABLE si está disponible, o construir el nombre de la tabla
+          const tableName = process.env.USERS_TABLE || `${process.env.RESOURCE_PREFIX}-users`;
 
-        try {
-          const emailService = EmailService.getInstance();
-          console.log('EmailService instance created', {
-            defaultSender: process.env.SES_FROM_EMAIL || 'soporte@spectrumai.com.co',
-            region: process.env.REGION || 'us-east-1'
-          });
+          await this.dynamodb.send(new UpdateCommand({
+            TableName: tableName,
+            Key: {
+              userId: user.userId
+            },
+            UpdateExpression: 'SET #status = :status',
+            ExpressionAttributeNames: {
+              '#status': 'status'
+            },
+            ExpressionAttributeValues: {
+              ':status': UserStatus.ACTIVE
+            }
+          }));
 
-          // Enviar correo personalizado con instrucciones claras
-          await emailService.sendVerificationEmail(email, verificationCode);
-
-          console.log('Custom verification email sent successfully via direct SES', { email });
-          this.logger.info('Custom verification email sent successfully via direct SES', { email });
-        } catch (sesError) {
-          // Si falla el envío del correo personalizado, solo registramos el error pero continuamos
-          console.error('Error sending custom email via direct SES (non-blocking):', {
-            error: sesError,
-            name: sesError instanceof Error ? sesError.name : 'Unknown',
-            message: sesError instanceof Error ? sesError.message : String(sesError),
-            stack: sesError instanceof Error ? sesError.stack : 'No stack trace'
-          });
-          // No propagamos este error ya que el flujo principal con Cognito ya funcionó
+          this.logger.info('User status updated to ACTIVE', { email, userId: user.userId });
         }
 
-      } catch (cognitoError) {
-        console.error('Error resending verification code via Cognito:', {
-          error: cognitoError,
-          name: cognitoError instanceof Error ? cognitoError.name : 'Unknown',
-          message: cognitoError instanceof Error ? cognitoError.message : String(cognitoError),
-          stack: cognitoError instanceof Error ? cognitoError.stack : 'No stack trace'
+        return {
+          destination: email,
+          deliveryMedium: 'EMAIL',
+          userStatus: 'CONFIRMED'
+        };
+      }
+
+      // Enviar un correo con instrucciones como respaldo
+      /*try {
+        console.log('Sending backup instructional email', { email });
+        await this.sendInstructionalEmail(email);
+        console.log('Backup instructional email sent successfully', { email });
+      } catch (sesError) {
+        // No fallamos si el correo de respaldo falla
+        console.error('Error sending backup instructional email', {
+          error: sesError,
+          email,
+          errorName: sesError instanceof Error ? sesError.name : 'Unknown',
+          errorMessage: sesError instanceof Error ? sesError.message : String(sesError)
         });
-
-        // Si falla Cognito, usar exclusivamente nuestro servicio de correo
-        console.log('Cognito failed, using only direct SES as fallback', { email });
-
-        // Generar un código de 6 dígitos
-        const verificationCode = Math.floor(100000 + Math.random() * 900000).toString();
-
-        // Guardar el código en Redis para validarlo después
-        // TODO: Implementar almacenamiento del código
-
-        // Enviar correo con el código
-        try {
-          const emailService = EmailService.getInstance();
-          console.log('EmailService instance created', {
-            defaultSender: process.env.SES_FROM_EMAIL || 'soporte@spectrumai.com.co',
-            region: process.env.REGION || 'us-east-1'
-          });
-
-          await emailService.sendVerificationEmail(email, verificationCode);
-
-          console.log('Verification email sent successfully via direct SES', { email });
-          this.logger.info('Verification email sent successfully via direct SES', { email });
-        } catch (sesError) {
-          console.error('Error sending email via direct SES:', {
-            error: sesError,
-            name: sesError instanceof Error ? sesError.name : 'Unknown',
-            message: sesError instanceof Error ? sesError.message : String(sesError),
-            stack: sesError instanceof Error ? sesError.stack : 'No stack trace'
-          });
-
-          // Propagar el error original de Cognito si SES también falla
-          throw cognitoError;
-        }
       }
 
-      this.logger.info('Verification code resent successfully', { email });
-      await this.metrics.incrementCounter('VerificationCodeResent');
-      await this.observability.trackAuthEvent('VerificationCodeResent', { email });
+      this.logger.info('Verification code resent successfully', {
+        email,
+        destination: deliveryDetails.destination,
+        deliveryMedium: deliveryDetails.deliveryMedium
+      });*/
 
+      return deliveryDetails;
     } catch (error) {
-      this.logger.error('Error resending verification code', { error, email });
+      this.logger.error('Error resending verification code', {
+        error,
+        email,
+        errorName: error instanceof Error ? error.name : 'Unknown',
+        errorMessage: error instanceof Error ? error.message : String(error)
+      });
+
       console.error('Error in verification code resend process', {
         error,
         errorName: error instanceof Error ? error.name : 'Unknown',
@@ -546,7 +836,11 @@ export class AuthenticationService {
       // No propagamos el error si el usuario no existe para no revelar información
       if (error instanceof Error && error.name === 'UserNotFoundException') {
         this.logger.info('Verification code requested for non-existent user', { email });
-        return;
+        return {
+          destination: email,
+          deliveryMedium: 'EMAIL',
+          userStatus: 'UNKNOWN'
+        };
       }
 
       // Si es un error de validación, lo propagamos
@@ -699,10 +993,47 @@ export class AuthenticationService {
         email: credentials.email,
         duration: Date.now() - startTime
       });
-      // Auto-confirmar en desarrollo
-      if (process.env.STAGE === 'dev') {
-        await this.cognitoService.confirmSignUp(credentials.email);
-        user.status = UserStatus.ACTIVE;
+
+      // Verificar configuración de auto-confirmación
+      const shouldAutoConfirm = process.env.STAGE === 'dev' && process.env.AUTO_CONFIRM_USERS === 'true';
+      console.log('Checking auto-confirmation settings', {
+        stage: process.env.STAGE,
+        autoConfirmUsers: process.env.AUTO_CONFIRM_USERS,
+        shouldAutoConfirm
+      });
+
+      if (shouldAutoConfirm) {
+        // Auto-confirmar en desarrollo si está habilitado
+        try {
+          console.log('Auto-confirming user in development environment', { email: credentials.email });
+          await this.cognitoService.confirmSignUp(credentials.email);
+          user.status = UserStatus.ACTIVE;
+          this.logger.info('User auto-confirmed in development environment', { email: credentials.email });
+
+          // Informar al usuario que la cuenta ha sido auto-confirmada
+          console.log('IMPORTANTE: La cuenta ha sido auto-confirmada automáticamente porque AUTO_CONFIRM_USERS=true');
+          console.log('Para probar el flujo de verificación, establece AUTO_CONFIRM_USERS=false');
+        } catch (confirmError) {
+          console.error('Error auto-confirming user', {
+            error: confirmError,
+            email: credentials.email,
+            errorName: confirmError instanceof Error ? confirmError.name : 'Unknown',
+            errorMessage: confirmError instanceof Error ? confirmError.message : String(confirmError)
+          });
+
+          // Intentar enviar correo de verificación como fallback
+          console.log('Auto-confirmation failed, falling back to sending verification email', { email: credentials.email });
+          await this.sendVerificationEmail(credentials.email);
+        }
+      } else {
+        // Enviar correo de verificación
+        console.log('Auto-confirmation disabled, sending verification email', { email: credentials.email });
+        await this.sendVerificationEmail(credentials.email);
+
+        // Informar al usuario sobre el siguiente paso
+        console.log('IMPORTANTE: Se ha enviado un correo de verificación a ' + credentials.email);
+        console.log('El usuario debe usar el código recibido en el endpoint /auth/verify-email para confirmar su cuenta');
+        console.log('Hasta que la cuenta no sea confirmada, el usuario no podrá iniciar sesión');
       }
 
 
@@ -753,17 +1084,138 @@ export class AuthenticationService {
 
   async login(credentials: LoginCredentials): Promise<AuthenticationResult> {
     try {
+      this.logger.info('Starting login process', {
+        email: credentials.email,
+        timestamp: new Date().toISOString()
+      });
+
+      console.log('Starting login process', {
+        email: credentials.email,
+        timestamp: new Date().toISOString()
+      });
+
+      // Normalizar el email (convertir a minúsculas y eliminar espacios)
+      const normalizedEmail = credentials.email.toLowerCase().trim();
+
+      // Verificar si el usuario existe en DynamoDB antes de intentar autenticar
+      try {
+        console.log('Checking if user exists in DynamoDB', { email: normalizedEmail });
+        const existingUser = await this.getUserByEmail(normalizedEmail);
+
+        if (existingUser) {
+          console.log('User exists in DynamoDB', {
+            email: normalizedEmail,
+            userId: existingUser.userId,
+            status: existingUser.status
+          });
+
+          // Verificar si el usuario está activo en DynamoDB
+          if (existingUser.status !== UserStatus.ACTIVE) {
+            console.log('User is not active in DynamoDB', {
+              email: normalizedEmail,
+              status: existingUser.status
+            });
+
+            // Si el usuario no está activo, verificar su estado en Cognito
+            try {
+              const cognitoAttributes = await this.cognitoService.getUserByEmail(normalizedEmail);
+              console.log('User status in Cognito', {
+                email: normalizedEmail,
+                cognitoStatus: cognitoAttributes.UserStatus
+              });
+
+              // Si el usuario está confirmado en Cognito pero no activo en DynamoDB, actualizarlo
+              if (cognitoAttributes.UserStatus === 'CONFIRMED' && existingUser.status !== UserStatus.ACTIVE) {
+                console.log('User is confirmed in Cognito but not active in DynamoDB, updating status', {
+                  email: normalizedEmail,
+                  cognitoStatus: cognitoAttributes.UserStatus,
+                  dynamoStatus: existingUser.status
+                });
+
+                // Actualizar el estado del usuario en DynamoDB
+                const tableName = process.env.USERS_TABLE || `${process.env.RESOURCE_PREFIX}-users`;
+                await this.dynamodb.send(new UpdateCommand({
+                  TableName: tableName,
+                  Key: {
+                    userId: existingUser.userId
+                  },
+                  UpdateExpression: 'SET #status = :status',
+                  ExpressionAttributeNames: {
+                    '#status': 'status'
+                  },
+                  ExpressionAttributeValues: {
+                    ':status': UserStatus.ACTIVE
+                  }
+                }));
+
+                console.log('User status updated to ACTIVE in DynamoDB', {
+                  email: normalizedEmail,
+                  userId: existingUser.userId
+                });
+              }
+            } catch (cognitoError) {
+              console.error('Error checking user status in Cognito', {
+                error: cognitoError,
+                email: normalizedEmail
+              });
+              // Continuamos con el proceso a pesar del error
+            }
+          }
+        } else {
+          console.log('User does not exist in DynamoDB, will be created after successful authentication', {
+            email: normalizedEmail
+          });
+        }
+      } catch (dbError) {
+        console.error('Error checking user in DynamoDB', {
+          error: dbError,
+          email: normalizedEmail
+        });
+        // Continuamos con el proceso a pesar del error
+      }
+
       // Autenticar con Cognito
-      const tokens = await this.cognitoService.authenticateUser(credentials);
+      console.log('Authenticating with Cognito', { email: normalizedEmail });
+      const tokens = await this.cognitoService.authenticateUser({
+        email: normalizedEmail,
+        password: credentials.password
+      });
+
+      console.log('Authentication successful, tokens received', {
+        email: normalizedEmail,
+        accessTokenLength: tokens.accessToken.length,
+        idTokenLength: tokens.idToken.length,
+        refreshTokenLength: tokens.refreshToken.length
+      });
 
       // Obtener información del usuario
-      const userAttributes = await this.cognitoService.getUserByEmail(credentials.email);
+      console.log('Getting user attributes from Cognito', { email: normalizedEmail });
+      const userAttributes = await this.cognitoService.getUserByEmail(normalizedEmail);
+
+      console.log('User attributes received from Cognito', {
+        email: normalizedEmail,
+        userStatus: userAttributes.UserStatus,
+        emailVerified: userAttributes['email_verified']
+      });
 
       // Actualizar último login en DynamoDB
+      console.log('Creating or updating user record in DynamoDB', { email: normalizedEmail });
       const user = await this.getOrCreateUserRecord(userAttributes);
+
+      console.log('User record created or updated', {
+        email: normalizedEmail,
+        userId: user.userId,
+        status: user.status
+      });
 
       await this.observability.trackAuthEvent('LoginSuccess', {
         userId: user.userId
+      });
+
+      this.logger.info('Login successful', {
+        email: normalizedEmail,
+        userId: user.userId,
+        timestamp: new Date().toISOString()
       });
 
       return {
@@ -772,12 +1224,46 @@ export class AuthenticationService {
       };
 
     } catch (error) {
-      console.log('Error in login', { error });
-      await this.observability.trackAuthEvent('LoginFailure');
+      this.logger.error('Error in login', {
+        error,
+        errorName: error instanceof Error ? error.name : 'Unknown',
+        errorMessage: error instanceof Error ? error.message : String(error),
+        email: credentials.email
+      });
+
+      console.error('Error in login', {
+        error,
+        errorName: error instanceof Error ? error.name : 'Unknown',
+        errorMessage: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : 'No stack trace',
+        email: credentials.email
+      });
+
+      await this.observability.trackAuthEvent('LoginFailure', {
+        email: credentials.email,
+        errorMessage: error instanceof Error ? error.message : String(error)
+      });
+
       await this.anomalyDetection.trackMetric(
         credentials.email,
         'failedLogins'
       );
+
+      // Mejorar el mensaje de error según el tipo de error
+      if (error instanceof Error) {
+        if (error.message.includes('not confirmed')) {
+          throw new AuthenticationError('User is not confirmed. Please verify your email before logging in.');
+        }
+
+        if (error.message.includes('Invalid credentials')) {
+          throw new AuthenticationError('Invalid email or password. Please check your credentials and try again.');
+        }
+
+        if (error.message.includes('No tokens received')) {
+          throw new AuthenticationError('Authentication failed: Unable to generate authentication tokens. Please try again or contact support.');
+        }
+      }
+
       throw error instanceof AuthenticationError ? error : new AuthenticationError(
         'Login failed: ' + ((error as Error).message || 'Unknown error')
       );
@@ -786,14 +1272,105 @@ export class AuthenticationService {
 
   async logout(accessToken: string): Promise<void> {
     try {
-      // Invalidar el token en Cognito
-      await this.cognitoService.signOut(accessToken);
+      this.logger.info('Starting logout process');
+      console.log('Starting logout process', {
+        accessTokenLength: accessToken ? accessToken.length : 0,
+        accessTokenFirstChars: accessToken ? accessToken.substring(0, 10) + '...' : 'null',
+        timestamp: new Date().toISOString()
+      });
 
-      // Agregar el token a la blacklist
-      await this.tokenService.invalidateToken(accessToken);
+      if (!accessToken) {
+        console.error('No access token provided for logout');
+        throw new AuthenticationError('No access token provided');
+      }
+
+      // Verificar que el token tenga un formato válido (JWT)
+      if (!accessToken.includes('.') || accessToken.split('.').length !== 3) {
+        console.error('Invalid token format', {
+          accessTokenLength: accessToken.length,
+          accessTokenFirstChars: accessToken.substring(0, 10) + '...'
+        });
+        throw new AuthenticationError('Invalid token format');
+      }
+
+      try {
+        // Intentar obtener información del usuario a partir del token
+        console.log('Verifying token before logout');
+        const payload = await this.tokenService.verifyToken(accessToken);
+        console.log('Token verified successfully', {
+          sub: payload.sub,
+          username: payload.username,
+          hasEmail: !!payload.email
+        });
+      } catch (verifyError) {
+        // Si hay un error al verificar el token, lo registramos pero continuamos con el proceso
+        console.error('Error verifying token before logout', {
+          error: verifyError,
+          errorName: verifyError instanceof Error ? verifyError.name : 'Unknown',
+          errorMessage: verifyError instanceof Error ? verifyError.message : String(verifyError)
+        });
+        // No lanzamos el error para permitir que el proceso de logout continúe
+      }
+
+      // Invalidar el token en Cognito
+      console.log('Invalidating token in Cognito');
+      try {
+        await this.cognitoService.signOut(accessToken);
+        console.log('Token invalidated successfully in Cognito');
+      } catch (cognitoError) {
+        console.error('Error invalidating token in Cognito', {
+          error: cognitoError,
+          errorName: cognitoError instanceof Error ? cognitoError.name : 'Unknown',
+          errorMessage: cognitoError instanceof Error ? cognitoError.message : String(cognitoError)
+        });
+
+        // Si el error es de token inválido o expirado, continuamos con el proceso
+        if (cognitoError instanceof Error &&
+            (cognitoError.name === 'NotAuthorizedException' ||
+             cognitoError.message.includes('expired'))) {
+          console.log('Token already invalid or expired in Cognito, continuing with local invalidation');
+        } else {
+          // Para otros errores, lanzamos la excepción
+          throw cognitoError;
+        }
+      }
+
+      // Agregar el token a la blacklist local
+      console.log('Adding token to local blacklist');
+      try {
+        await this.tokenService.invalidateToken(accessToken);
+        console.log('Token added to local blacklist successfully');
+      } catch (blacklistError) {
+        console.error('Error adding token to local blacklist', {
+          error: blacklistError,
+          errorName: blacklistError instanceof Error ? blacklistError.name : 'Unknown',
+          errorMessage: blacklistError instanceof Error ? blacklistError.message : String(blacklistError)
+        });
+
+        // Si hay un error al agregar el token a la blacklist, lo registramos pero no lanzamos excepción
+        // ya que el token ya fue invalidado en Cognito
+      }
+
+      this.logger.info('Logout completed successfully');
+      console.log('Logout completed successfully', {
+        timestamp: new Date().toISOString()
+      });
 
     } catch (error) {
-      this.logger.error('Error in logout', { error });
+      this.logger.error('Error in logout', {
+        error,
+        errorName: error instanceof Error ? error.name : 'Unknown',
+        errorMessage: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : 'No stack trace'
+      });
+
+      console.error('Error in logout', {
+        error,
+        errorName: error instanceof Error ? error.name : 'Unknown',
+        errorMessage: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : 'No stack trace'
+      });
+
       throw error instanceof AuthenticationError ? error : new AuthenticationError(
         'Logout failed: ' + ((error as Error).message || 'Unknown error')
       );
@@ -935,43 +1512,151 @@ export class AuthenticationService {
     }
   }
 
-  private async getOrCreateUserRecord(attributes: Record<string, string>): Promise<AuthenticatedUser> {
+  private async getOrCreateUserRecord(attributes: Record<string, any>): Promise<AuthenticatedUser> {
     try {
-      const email = attributes.email;
+      console.log('getOrCreateUserRecord called with attributes', {
+        hasAttributes: !!attributes,
+        attributeKeys: attributes ? Object.keys(attributes) : []
+      });
+
+      // Verificar que tengamos atributos
+      if (!attributes || Object.keys(attributes).length === 0) {
+        throw new Error('No user attributes provided');
+      }
+
+      // Obtener el email del usuario
+      const email = attributes.email || attributes['email'];
       if (!email) {
+        console.error('Email not found in user attributes', { attributes });
         throw new Error('Email not found in user attributes');
       }
 
+      // Normalizar el email
+      const normalizedEmail = email.toLowerCase().trim();
+
+      console.log('Looking for existing user record', { email: normalizedEmail });
+
       // Intentar obtener el usuario existente
-      const existingUser = await this.getUserByEmail(email);
+      const existingUser = await this.getUserByEmail(normalizedEmail);
 
       if (existingUser) {
+        console.log('Existing user found, updating last login', {
+          email: normalizedEmail,
+          userId: existingUser.userId,
+          status: existingUser.status
+        });
+
+        // Verificar si el usuario está activo
+        if (existingUser.status !== UserStatus.ACTIVE && attributes.UserStatus === 'CONFIRMED') {
+          console.log('User is confirmed in Cognito but not active in DynamoDB, updating status', {
+            email: normalizedEmail,
+            cognitoStatus: attributes.UserStatus,
+            dynamoStatus: existingUser.status
+          });
+
+          // Actualizar el estado del usuario en DynamoDB
+          const tableName = process.env.USERS_TABLE || `${process.env.RESOURCE_PREFIX}-users`;
+          await this.dynamodb.send(new UpdateCommand({
+            TableName: tableName,
+            Key: {
+              userId: existingUser.userId
+            },
+            UpdateExpression: 'SET #status = :status',
+            ExpressionAttributeNames: {
+              '#status': 'status'
+            },
+            ExpressionAttributeValues: {
+              ':status': UserStatus.ACTIVE
+            }
+          }));
+
+          console.log('User status updated to ACTIVE', {
+            email: normalizedEmail,
+            userId: existingUser.userId
+          });
+
+          // Actualizar el objeto existingUser
+          existingUser.status = UserStatus.ACTIVE;
+        }
+
         // Actualizar último login
         await this.updateLastLogin(existingUser.userId);
+
+        console.log('Last login updated successfully', {
+          email: normalizedEmail,
+          userId: existingUser.userId
+        });
+
         return existingUser;
       }
 
+      console.log('User not found, creating new record', { email: normalizedEmail });
+
+      // Extraer el sub (identificador único de Cognito)
+      const userSub = attributes.sub || '';
+
+      // Verificar si el email está verificado en Cognito
+      const emailVerified = attributes['email_verified'] === 'true' || attributes.UserStatus === 'CONFIRMED';
+
+      // Determinar el estado del usuario
+      let userStatus = UserStatus.PENDING_VERIFICATION;
+      if (emailVerified || attributes.UserStatus === 'CONFIRMED') {
+        userStatus = UserStatus.ACTIVE;
+      }
+
+      console.log('Creating new user with status', {
+        email: normalizedEmail,
+        userStatus,
+        emailVerified,
+        cognitoStatus: attributes.UserStatus
+      });
+
       // Si no existe, crear nuevo registro
       const newUser = new UserModel({
-        email: email,
+        email: normalizedEmail,
         name: attributes.name || '',
         userType: attributes['custom:userType'] || 'basic',
-        status: UserStatus.ACTIVE
+        status: userStatus,
+        userSub: userSub
+      });
+
+      console.log('New user model created', {
+        email: normalizedEmail,
+        userId: newUser.userId,
+        status: newUser.status,
+        userSub: newUser.userSub
       });
 
       // Usar la variable de entorno USERS_TABLE si está disponible, o construir el nombre de la tabla
       const tableName = process.env.USERS_TABLE || `${process.env.RESOURCE_PREFIX}-users`;
       this.logger.debug('Using table name for creating user record:', { tableName });
 
+      console.log('Saving new user to DynamoDB', {
+        email: normalizedEmail,
+        tableName
+      });
+
       await this.dynamodb.send(new PutCommand({
         TableName: tableName,
         Item: newUser.toDynamoDB()
       }));
 
+      console.log('New user saved successfully', {
+        email: normalizedEmail,
+        userId: newUser.userId,
+        status: newUser.status
+      });
+
       return newUser;
 
     } catch (error) {
-      console.log('Error in getOrCreateUserRecord', { error });
+      console.error('Error in getOrCreateUserRecord', {
+        error,
+        errorName: error instanceof Error ? error.name : 'Unknown',
+        errorMessage: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : 'No stack trace'
+      });
+
       throw new AuthenticationError(
         'Failed to process user record: ' + ((error as Error).message || 'Unknown error')
       );
@@ -1209,5 +1894,235 @@ export class AuthenticationService {
 
   async cleanup(): Promise<void> {
     await this.tokenService.cleanup();
+  }
+
+  /**
+   * Envía un correo de verificación al usuario
+   *
+   * Este método intenta enviar un correo de verificación utilizando Cognito, que es el método oficial
+   * para confirmar cuentas. El código enviado por Cognito es el único que funcionará con
+   * el endpoint /auth/verify-email.
+   *
+   * Si Cognito falla en enviar el correo, se intenta enviar un correo personalizado con SES
+   * que incluye instrucciones para solicitar un nuevo código a través del endpoint /auth/resend-verification-code.
+   *
+   * @param email - La dirección de correo electrónico del usuario
+   * @returns Promise<void>
+   */
+  private async sendVerificationEmail(email: string): Promise<void> {
+    try {
+      this.logger.info('Sending verification email', { email });
+      console.log('Sending verification email', { email });
+
+      // Intentar enviar el código de verificación a través de Cognito
+      console.log('Sending verification code via Cognito', { email });
+
+      try {
+        const deliveryDetails = await this.cognitoService.resendConfirmationCode(email);
+        console.log('Cognito resendConfirmationCode call successful', {
+          email,
+          deliveryDetails
+        });
+
+        // Verificar si el usuario ya está confirmado
+        if (deliveryDetails.userStatus === 'CONFIRMED') {
+          console.log('User is already confirmed, no need to send verification code', { email });
+          this.logger.info('User is already confirmed, no need to send verification code', { email });
+          return;
+        }
+
+        this.logger.info('Verification code sent successfully via Cognito', {
+          email,
+          destination: deliveryDetails.destination,
+          deliveryMedium: deliveryDetails.deliveryMedium
+        });
+
+        // Agregar mensaje informativo para el usuario
+        console.log('IMPORTANTE: El código de verificación ha sido enviado por Cognito a ' +
+          (deliveryDetails.destination || email) + ' via ' + (deliveryDetails.deliveryMedium || 'EMAIL') + '. ' +
+          'Este código debe ser utilizado en el endpoint /auth/verify-email para confirmar la cuenta.');
+
+        // También enviar un correo personalizado con SES como respaldo
+        // Este correo no incluye un código, solo instrucciones para solicitar uno nuevo
+        try {
+          console.log('Sending backup email with instructions via SES', { email });
+
+          // Enviar correo con instrucciones (sin código)
+          await this.sendInstructionalEmail(email);
+
+          console.log('Backup instructional email sent successfully via SES', { email });
+        } catch (sesError) {
+          // No fallamos si el correo de respaldo falla
+          console.error('Error sending backup instructional email', {
+            error: sesError,
+            email,
+            errorName: sesError instanceof Error ? sesError.name : 'Unknown',
+            errorMessage: sesError instanceof Error ? sesError.message : String(sesError)
+          });
+        }
+
+      } catch (cognitoError) {
+        console.error('Error sending verification code via Cognito', {
+          error: cognitoError,
+          email,
+          errorName: cognitoError instanceof Error ? cognitoError.name : 'Unknown',
+          errorMessage: cognitoError instanceof Error ? cognitoError.message : String(cognitoError)
+        });
+
+        // Si falla Cognito, enviar un correo con instrucciones para solicitar un nuevo código
+        console.log('Cognito failed, sending instructional email via SES', { email });
+
+        try {
+          await this.sendInstructionalEmail(email);
+          console.log('Instructional email sent successfully via SES after Cognito failure', { email });
+        } catch (sesError) {
+          console.error('Error sending instructional email via SES', {
+            error: sesError,
+            email,
+            errorName: sesError instanceof Error ? sesError.name : 'Unknown',
+            errorMessage: sesError instanceof Error ? sesError.message : String(sesError)
+          });
+
+          // Propagar el error original de Cognito
+          throw cognitoError;
+        }
+      }
+    } catch (error) {
+      this.logger.error('Error sending verification email', {
+        error,
+        email,
+        errorName: error instanceof Error ? error.name : 'Unknown',
+        errorMessage: error instanceof Error ? error.message : String(error)
+      });
+      console.error('Failed to send verification email', {
+        error,
+        email,
+        errorName: error instanceof Error ? error.name : 'Unknown',
+        errorMessage: error instanceof Error ? error.message : String(error)
+      });
+
+      // No propagamos el error para no interrumpir el flujo de registro
+      // El usuario puede solicitar reenvío del código más tarde
+    }
+  }
+
+  /**
+   * Envía un correo con instrucciones para verificar la cuenta
+   *
+   * Este método envía un correo con instrucciones para solicitar un nuevo código
+   * de verificación a través del endpoint /auth/resend-verification-code.
+   *
+   * @param email - La dirección de correo electrónico del usuario
+   * @returns Promise<void>
+   */
+  private async sendInstructionalEmail(email: string): Promise<void> {
+    try {
+      console.log('Preparing instructional email', { email });
+
+      const emailService = EmailService.getInstance();
+      const subject = 'Instrucciones para verificar tu cuenta - SPECTRUM Platform';
+
+      // IMPORTANTE: Este código NO es el código de Cognito y NO funcionará para verificar la cuenta
+      // Solo se incluye para que el usuario sepa cómo se ve un código de verificación
+      const sampleCode = Math.floor(100000 + Math.random() * 900000).toString();
+
+      const html = `
+        <html>
+          <head>
+            <style>
+              body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+              .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+              .header { background-color: #4a90e2; color: white; padding: 10px 20px; text-align: center; }
+              .content { padding: 20px; border: 1px solid #ddd; border-top: none; }
+              .instructions { background-color: #f5f5f5; padding: 15px; border-radius: 4px; margin: 20px 0; }
+              .code { font-size: 24px; font-weight: bold; text-align: center; margin: 20px 0; padding: 10px; background-color: #f5f5f5; border-radius: 4px; }
+              .warning { color: #e74c3c; font-weight: bold; }
+              .footer { text-align: center; margin-top: 20px; font-size: 12px; color: #999; }
+              .button { display: inline-block; background-color: #4a90e2; color: white; padding: 10px 20px; text-decoration: none; border-radius: 4px; margin-top: 15px; }
+            </style>
+          </head>
+          <body>
+            <div class="container">
+              <div class="header">
+                <h1>SPECTRUM Platform</h1>
+              </div>
+              <div class="content">
+                <p>Hola,</p>
+                <p>Gracias por registrarte en la plataforma SPECTRUM. Para completar tu registro, necesitas verificar tu dirección de correo electrónico.</p>
+
+                <div class="instructions">
+                  <h3>Instrucciones para verificar tu cuenta:</h3>
+                  <p>1. Deberías haber recibido un correo de AWS Cognito con un código de verificación de 6 dígitos.</p>
+                  <p>2. Si no has recibido el código, puedes solicitar uno nuevo utilizando el endpoint <strong>/auth/resend-verification-code</strong>.</p>
+                  <p>3. Una vez que tengas el código, utilízalo con el endpoint <strong>/auth/verify-email</strong> para confirmar tu cuenta.</p>
+                </div>
+
+                <p><strong>¿No recibiste el código de AWS Cognito?</strong> Revisa tu carpeta de spam o solicita un nuevo código.</p>
+
+                <p class="warning">IMPORTANTE: El código de verificación debe venir de un correo de AWS Cognito, no de este correo.</p>
+
+                <p>Un código de verificación se ve así (este es solo un ejemplo y NO funcionará para verificar tu cuenta):</p>
+                <div class="code">${sampleCode}</div>
+
+                <p><strong>¿Problemas para verificar tu cuenta?</strong> Contacta a nuestro equipo de soporte.</p>
+
+                <p>Saludos,<br>El equipo de SPECTRUM</p>
+              </div>
+              <div class="footer">
+                <p>Este es un correo automático, por favor no respondas a este mensaje.</p>
+                <p>&copy; ${new Date().getFullYear()} SPECTRUM Platform. Todos los derechos reservados.</p>
+              </div>
+            </div>
+          </body>
+        </html>
+      `;
+
+      const text = `
+        Instrucciones para verificar tu cuenta - SPECTRUM Platform
+
+        Hola,
+
+        Gracias por registrarte en la plataforma SPECTRUM. Para completar tu registro, necesitas verificar tu dirección de correo electrónico.
+
+        Instrucciones para verificar tu cuenta:
+
+        1. Deberías haber recibido un correo de AWS Cognito con un código de verificación de 6 dígitos.
+        2. Si no has recibido el código, puedes solicitar uno nuevo utilizando el endpoint /auth/resend-verification-code.
+        3. Una vez que tengas el código, utilízalo con el endpoint /auth/verify-email para confirmar tu cuenta.
+
+        IMPORTANTE: El código de verificación debe venir de un correo de AWS Cognito, no de este correo.
+
+        Un código de verificación se ve así (este es solo un ejemplo y NO funcionará para verificar tu cuenta):
+        ${sampleCode}
+
+        ¿No recibiste el código? Revisa tu carpeta de spam o solicita un nuevo código.
+        ¿Problemas para verificar tu cuenta? Contacta a nuestro equipo de soporte.
+
+        Saludos,
+        El equipo de SPECTRUM
+
+        Este es un correo automático, por favor no respondas a este mensaje.
+        © ${new Date().getFullYear()} SPECTRUM Platform. Todos los derechos reservados.
+      `;
+
+      await emailService.sendEmail({
+        to: email,
+        subject,
+        text,
+        html
+      });
+
+      console.log('Instructional email sent successfully', { email });
+
+    } catch (error) {
+      console.error('Error sending instructional email', {
+        error,
+        email,
+        errorName: error instanceof Error ? error.name : 'Unknown',
+        errorMessage: error instanceof Error ? error.message : String(error)
+      });
+
+      throw error;
+    }
   }
 }

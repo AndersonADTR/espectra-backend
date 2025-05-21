@@ -76,7 +76,7 @@ provider:
       Fn::ImportValue: ${self:custom.resourcePrefix}-tokens-table-name
     REGISTRATION_REQUESTS_TABLE:
       Fn::ImportValue: ${self:custom.resourcePrefix}-registration-requests-table-name
-    USERS_TABLE: 
+    USERS_TABLE:
       Fn::ImportValue: ${self:custom.resourcePrefix}-users-table-name
     # HANDOFF_TABLE:
     #   Fn::ImportValue: ${self:custom.resourcePrefix}-handoff-table-name
@@ -253,6 +253,8 @@ functions:
       COGNITO_CLIENT_ID:
         Fn::ImportValue: ${self:custom.resourcePrefix}-cognito-UserPoolClientId
       COGNITO_CLIENT_SECRET: ${ssm:/espectra/dev/cognito/client-secret}
+      SES_FROM_EMAIL: 'soporte@spectrumai.com.co'
+      AUTO_CONFIRM_USERS: 'false'
 
   contactRequest:
     handler: services/auth/handlers/contactRequest.handler
@@ -367,6 +369,7 @@ functions:
       COGNITO_CLIENT_ID:
         Fn::ImportValue: ${self:custom.resourcePrefix}-cognito-UserPoolClientId
       COGNITO_CLIENT_SECRET: ${ssm:/espectra/${self:provider.stage}/cognito/client-secret}
+      SES_FROM_EMAIL: 'soporte@spectrumai.com.co'
 
   resendVerificationCode:
     handler: services/auth/handlers/resend-verification-code.handler
@@ -383,6 +386,7 @@ functions:
       COGNITO_CLIENT_ID:
         Fn::ImportValue: ${self:custom.resourcePrefix}-cognito-UserPoolClientId
       COGNITO_CLIENT_SECRET: ${ssm:/espectra/${self:provider.stage}/cognito/client-secret}
+      SES_FROM_EMAIL: 'soporte@spectrumai.com.co'
 
   testEmail:
     handler: services/auth/handlers/test-email.handler

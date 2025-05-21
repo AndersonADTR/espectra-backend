@@ -42,9 +42,18 @@ const forgotPasswordHandler: APIGatewayProxyHandler = async (event) => {
 
     try {
       // Solicitar recuperación de contraseña
-      await authService.forgotPassword(email);
+      const deliveryDetails = await authService.forgotPassword(email);
 
-      logger.info('Password reset requested successfully', { email });
+      logger.info('Password reset requested successfully', {
+        email,
+        deliveryDetails
+      });
+
+      console.log('Password reset requested successfully', {
+        email,
+        deliveryDetails,
+        timestamp: new Date().toISOString()
+      });
 
       return {
         statusCode: 200,
@@ -57,7 +66,11 @@ const forgotPasswordHandler: APIGatewayProxyHandler = async (event) => {
         body: JSON.stringify({
           success: true,
           message: 'Password reset instructions sent to your email',
-          data: null,
+          data: {
+            destination: deliveryDetails?.destination || 'your email',
+            deliveryMedium: deliveryDetails?.deliveryMedium || 'EMAIL',
+            message: 'Please check your email for a 6-digit verification code'
+          },
           errors: null
         })
       };
