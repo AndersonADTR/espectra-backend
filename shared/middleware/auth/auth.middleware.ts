@@ -10,18 +10,17 @@ const logger = new Logger('AuthMiddleware');
 export const withAuth = (handler: APIGatewayProxyHandler): APIGatewayProxyHandler => {
   return async (event: APIGatewayProxyEvent, context): Promise<APIGatewayProxyResult> => {
     const authService = new AuthenticationService();
-    
+
     try {
       // Extraer el token del header de autorización
       const authHeader = event.headers.Authorization || event.headers.authorization;
-      
+
       if (!authHeader) {
         logger.warn('No authorization header provided');
         return {
           statusCode: 401,
           headers: {
-            'Content-Type': 'application/json',
-            'Access-Control-Allow-Origin': '*'
+            'Content-Type': 'application/json'
           },
           body: JSON.stringify({
             success: false,
@@ -36,23 +35,23 @@ export const withAuth = (handler: APIGatewayProxyHandler): APIGatewayProxyHandle
 
       // Extraer el token del header (Bearer token)
       const token = authHeader.replace('Bearer ', '');
-      
+
       // Validar el token y obtener la información del usuario
       const user = await authService.validateToken(token);
-      
+
       // Agregar la información del usuario al evento para que esté disponible en el handler
       if (!event.requestContext.authorizer) {
         event.requestContext.authorizer = {};
       }
-      
+
       event.requestContext.authorizer.user = user;
-      
+
       // Continuar con el handler
       return await handler(event, context);
-      
+
     } catch (error) {
       logger.error('Authentication error', { error });
-      
+
       if (error instanceof AuthenticationError) {
         return {
           statusCode: 401,
@@ -70,7 +69,7 @@ export const withAuth = (handler: APIGatewayProxyHandler): APIGatewayProxyHandle
           })
         };
       }
-      
+
       return {
         statusCode: 500,
         headers: {

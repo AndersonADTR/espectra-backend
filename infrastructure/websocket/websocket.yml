@@ -293,13 +293,13 @@ Outputs:
   WebSocketApiEndpoint:
     Description: WebSocket API Endpoint
     Value:
-      Fn::Sub: 'https://${WebSocketApi}.execute-api.${AWS::Region}.amazonaws.com/dev'
+      Fn::Sub: 'https://${WebSocketApi}.execute-api.${AWS::Region}.amazonaws.com/ws-${self:provider.stage}'
     Export:
       Name: ${self:custom.resourcePrefix}-websocket-endpoint
 
   WebSocketStageArn:
     Description: WebSocket Stage ARN
     Value:
-      Fn::Sub: 'arn:aws:apigateway:${AWS::Region}::/apis/${WebSocketApi}/stages/dev'
+      Fn::Sub: 'arn:aws:apigateway:${AWS::Region}::/apis/${WebSocketApi}/stages/ws-${self:provider.stage}'
     Export:
       Name: ${self:custom.resourcePrefix}-websocket-stage-arn

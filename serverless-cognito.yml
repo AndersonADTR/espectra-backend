@@ -49,27 +49,27 @@ custom:
 resources:
   - ${file(infrastructure/cognito/cognito.yml)}
 
-outputs:
-  UserPoolId:
-    Value:
-      Ref: SpectraUserPool
-    Export:
-      Name: ${self:custom.resourcePrefix}-cognito-UserPoolId
+# outputs:
+#   UserPoolId:
+#     Value:
+#       Ref: SpectraUserPool
+#     Export:
+#       Name: ${self:custom.resourcePrefix}-cognito-UserPoolId
 
-  UserPoolClientId:
-    Value:
-      Ref: SpectraUserPoolClient
-    Export:
-      Name: ${self:custom.resourcePrefix}-cognito-UserPoolClientId
+#   UserPoolClientId:
+#     Value:
+#       Ref: SpectraUserPoolClient
+#     Export:
+#       Name: ${self:custom.resourcePrefix}-cognito-UserPoolClientId
 
-  UserPoolArn:
-    Value:
-      Fn::GetAtt: [SpectraUserPool, Arn]
-    Export:
-      Name: ${self:custom.resourcePrefix}-cognito-UserPoolArn
+#   UserPoolArn:
+#     Value:
+#       Fn::GetAtt: [SpectraUserPool, Arn]
+#     Export:
+#       Name: ${self:custom.resourcePrefix}-cognito-UserPoolArn
 
-  UserPoolDomain:
-    Value:
-      Fn::Sub: "${self:custom.resourcePrefix}-auth.auth.${AWS::Region}.amazoncognito.com"
-    Export:
-      Name: ${self:custom.resourcePrefix}-cognito-UserPoolDomain
+#   UserPoolDomain:
+#     Value:
+#       Fn::Sub: "${self:custom.resourcePrefix}-auth.auth.${AWS::Region}.amazoncognito.com"
+#     Export:
+#       Name: ${self:custom.resourcePrefix}-cognito-UserPoolDomain

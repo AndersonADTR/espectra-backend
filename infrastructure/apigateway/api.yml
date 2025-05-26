@@ -16,9 +16,9 @@ Resources:
         Version: '2012-10-17'
         Statement:
           - Effect: Allow
-            Principal: '*'
+            Principal: "*"
             Action: execute-api:Invoke
-            Resource: '*'
+            Resource: "*"
       ApiKeySourceType: HEADER
       DisableExecuteApiEndpoint: false
       Tags:
@@ -46,12 +46,10 @@ Resources:
       AuthorizerUri:
         Fn::Sub:
           - arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${FunctionArn}/invocations
-          - FunctionArn:
-              Fn::GetAtt: [RestAuthorizerLambdaFunction, Arn]
+          - FunctionArn: !GetAtt RestAuthorizerLambdaFunction.Arn
       ProviderARNs:
         - Fn::ImportValue: ${self:custom.resourcePrefix}-cognito-UserPoolArn
-      RestApiId:
-        Ref: RestApiId
+      RestApiId: !Ref RestApiId
 
   # CloudWatch Role para API Gateway
   ApiGatewayCloudWatchRole:
@@ -63,7 +61,9 @@ Resources:
         Statement:
           - Effect: Allow
             Principal:
-              Service: apigateway.amazonaws.com
+              Service:
+                - lambda.amazonaws.com
+                - apigateway.amazonaws.com
             Action: sts:AssumeRole
       ManagedPolicyArns:
         - arn:aws:iam::aws:policy/service-role/AmazonAPIGatewayPushToCloudWatchLogs
@@ -113,7 +113,7 @@ Resources:
       RestApiId: !Ref RestApiId
       Description: Deployment for ${self:provider.stage} stage
 
-  # Stage Configuration
+  # Stage Configuration - Usando un nombre único para evitar conflictos
   ApiGatewayStage:
     Type: AWS::ApiGateway::Stage
     DependsOn:
@@ -121,22 +121,21 @@ Resources:
     Properties:
       RestApiId: !Ref RestApiId
       DeploymentId: !Ref ApiDeployment
-      StageName: api-${self:provider.stage}
+      StageName: ${self:provider.stage}
       Description: ${self:provider.stage} stage for ${self:custom.service}
-      TracingEnabled: false
+      TracingEnabled: true
       CacheClusterEnabled: true
       CacheClusterSize: '0.5'
       ClientCertificateId: !Ref ApiClientCertificate
-      # Disabled AccessLogSetting to avoid CloudWatch Logs role requirement
-      #      AccessLogSetting:
-      #        DestinationArn: !GetAtt ApiGatewayAccessLogs.Arn
-      #        Format: '{"requestId":"$context.requestId","ip":"$context.identity.sourceIp","caller":"$context.identity.caller","user":"$context.identity.user","requestTime":"$context.requestTime","httpMethod":"$context.httpMethod","resourcePath":"$context.resourcePath","status":"$context.status","protocol":"$context.protocol","responseLength":"$context.responseLength","integrationError":"$context.integrationErrorMessage","xrayTraceId":"$context.xrayTraceId","integrationLatency":"$context.integration.latency","functionError":"$context.integration.error","authorizer":{"principalId":"$context.authorizer.principalId","claims":"$context.authorizer.claims"}}'
+      AccessLogSetting:
+        DestinationArn: !GetAtt ApiGatewayAccessLogs.Arn
+        Format: '{"requestId":"$context.requestId","ip":"$context.identity.sourceIp","caller":"$context.identity.caller","user":"$context.identity.user","requestTime":"$context.requestTime","httpMethod":"$context.httpMethod","resourcePath":"$context.resourcePath","status":"$context.status","protocol":"$context.protocol","responseLength":"$context.responseLength","integrationError":"$context.integrationErrorMessage","xrayTraceId":"$context.xrayTraceId","integrationLatency":"$context.integration.latency","functionError":"$context.integration.error","authorizer":{"principalId":"$context.authorizer.principalId","claims":"$context.authorizer.claims"}}'
       MethodSettings:
-        - ResourcePath: '/*'
-          HttpMethod: '*'
+        - ResourcePath: "/*"
+          HttpMethod: "*"
           MetricsEnabled: true
-          DataTraceEnabled: false
-          LoggingLevel: OFF
+          DataTraceEnabled: true
+          LoggingLevel: INFO
           CachingEnabled: true
           CacheTtlInSeconds: 300
           # RequireAuthorizationForCacheControl: true
@@ -274,15 +273,14 @@ Outputs:
 
   RestApiRootResourceId:
     Description: REST API Root Resource Id
-    Value:
-      Fn::GetAtt: [RestApiId, RootResourceId]
+    Value: !GetAtt RestApiId.RootResourceId
     Export:
       Name: ${self:custom.resourcePrefix}-rest-api-root-resource-id
 
   ApiEndpoint:
     Description: API Gateway endpoint URL
     Value:
-      Fn::Sub: 'https://${RestApiId}.execute-api.${AWS::Region}.amazonaws.com/dev'
+      Fn::Sub: 'https://${RestApiId}.execute-api.${AWS::Region}.amazonaws.com/${self:provider.stage}'
     Export:
       Name: ${self:custom.resourcePrefix}-api-endpoint
 

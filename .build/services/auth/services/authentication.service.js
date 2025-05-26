@@ -931,6 +931,12 @@ class AuthenticationService {
     }
     async logout(accessToken) {
         try {
+            console.log(JSON.stringify({
+                message: 'CLOUDWATCH TEST: Starting logout process',
+                accessTokenLength: accessToken ? accessToken.length : 0,
+                accessTokenFirstChars: accessToken ? accessToken.substring(0, 10) + '...' : 'null',
+                timestamp: new Date().toISOString()
+            }));
             this.logger.info('Starting logout process');
             console.log('Starting logout process', {
                 accessTokenLength: accessToken ? accessToken.length : 0,
@@ -938,10 +944,20 @@ class AuthenticationService {
                 timestamp: new Date().toISOString()
             });
             if (!accessToken) {
+                console.log(JSON.stringify({
+                    message: 'CLOUDWATCH TEST: No access token provided for logout',
+                    timestamp: new Date().toISOString()
+                }));
                 console.error('No access token provided for logout');
                 throw new errors_1.AuthenticationError('No access token provided');
             }
             if (!accessToken.includes('.') || accessToken.split('.').length !== 3) {
+                console.log(JSON.stringify({
+                    message: 'CLOUDWATCH TEST: Invalid token format',
+                    accessTokenLength: accessToken.length,
+                    accessTokenFirstChars: accessToken.substring(0, 10) + '...',
+                    timestamp: new Date().toISOString()
+                }));
                 console.error('Invalid token format', {
                     accessTokenLength: accessToken.length,
                     accessTokenFirstChars: accessToken.substring(0, 10) + '...'
@@ -949,8 +965,19 @@ class AuthenticationService {
                 throw new errors_1.AuthenticationError('Invalid token format');
             }
             try {
+                console.log(JSON.stringify({
+                    message: 'CLOUDWATCH TEST: Verifying token before logout',
+                    timestamp: new Date().toISOString()
+                }));
                 console.log('Verifying token before logout');
                 const payload = await this.tokenService.verifyToken(accessToken);
+                console.log(JSON.stringify({
+                    message: 'CLOUDWATCH TEST: Token verified successfully',
+                    sub: payload.sub,
+                    username: payload.username,
+                    hasEmail: !!payload.email,
+                    timestamp: new Date().toISOString()
+                }));
                 console.log('Token verified successfully', {
                     sub: payload.sub,
                     username: payload.username,
@@ -958,18 +985,38 @@ class AuthenticationService {
                 });
             }
             catch (verifyError) {
+                console.log(JSON.stringify({
+                    message: 'CLOUDWATCH TEST: Error verifying token before logout',
+                    errorName: verifyError instanceof Error ? verifyError.name : 'Unknown',
+                    errorMessage: verifyError instanceof Error ? verifyError.message : String(verifyError),
+                    timestamp: new Date().toISOString()
+                }));
                 console.error('Error verifying token before logout', {
                     error: verifyError,
                     errorName: verifyError instanceof Error ? verifyError.name : 'Unknown',
                     errorMessage: verifyError instanceof Error ? verifyError.message : String(verifyError)
                 });
             }
+            console.log(JSON.stringify({
+                message: 'CLOUDWATCH TEST: Invalidating token in Cognito',
+                timestamp: new Date().toISOString()
+            }));
             console.log('Invalidating token in Cognito');
             try {
                 await this.cognitoService.signOut(accessToken);
+                console.log(JSON.stringify({
+                    message: 'CLOUDWATCH TEST: Token invalidated successfully in Cognito',
+                    timestamp: new Date().toISOString()
+                }));
                 console.log('Token invalidated successfully in Cognito');
             }
             catch (cognitoError) {
+                console.log(JSON.stringify({
+                    message: 'CLOUDWATCH TEST: Error invalidating token in Cognito',
+                    errorName: cognitoError instanceof Error ? cognitoError.name : 'Unknown',
+                    errorMessage: cognitoError instanceof Error ? cognitoError.message : String(cognitoError),
+                    timestamp: new Date().toISOString()
+                }));
                 console.error('Error invalidating token in Cognito', {
                     error: cognitoError,
                     errorName: cognitoError instanceof Error ? cognitoError.name : 'Unknown',
@@ -978,30 +1025,59 @@ class AuthenticationService {
                 if (cognitoError instanceof Error &&
                     (cognitoError.name === 'NotAuthorizedException' ||
                         cognitoError.message.includes('expired'))) {
+                    console.log(JSON.stringify({
+                        message: 'CLOUDWATCH TEST: Token already invalid or expired in Cognito, continuing with local invalidation',
+                        timestamp: new Date().toISOString()
+                    }));
                     console.log('Token already invalid or expired in Cognito, continuing with local invalidation');
                 }
                 else {
                     throw cognitoError;
                 }
             }
+            console.log(JSON.stringify({
+                message: 'CLOUDWATCH TEST: Adding token to local blacklist',
+                timestamp: new Date().toISOString()
+            }));
             console.log('Adding token to local blacklist');
             try {
                 await this.tokenService.invalidateToken(accessToken);
+                console.log(JSON.stringify({
+                    message: 'CLOUDWATCH TEST: Token added to local blacklist successfully',
+                    timestamp: new Date().toISOString()
+                }));
                 console.log('Token added to local blacklist successfully');
             }
             catch (blacklistError) {
+                console.log(JSON.stringify({
+                    message: 'CLOUDWATCH TEST: Error adding token to local blacklist',
+                    errorName: blacklistError instanceof Error ? blacklistError.name : 'Unknown',
+                    errorMessage: blacklistError instanceof Error ? blacklistError.message : String(blacklistError),
+                    timestamp: new Date().toISOString()
+                }));
                 console.error('Error adding token to local blacklist', {
                     error: blacklistError,
                     errorName: blacklistError instanceof Error ? blacklistError.name : 'Unknown',
                     errorMessage: blacklistError instanceof Error ? blacklistError.message : String(blacklistError)
                 });
             }
+            console.log(JSON.stringify({
+                message: 'CLOUDWATCH TEST: Logout completed successfully',
+                timestamp: new Date().toISOString()
+            }));
             this.logger.info('Logout completed successfully');
             console.log('Logout completed successfully', {
                 timestamp: new Date().toISOString()
             });
         }
         catch (error) {
+            console.log(JSON.stringify({
+                message: 'CLOUDWATCH TEST: Error in logout',
+                errorName: error instanceof Error ? error.name : 'Unknown',
+                errorMessage: error instanceof Error ? error.message : String(error),
+                stack: error instanceof Error ? error.stack : 'No stack trace',
+                timestamp: new Date().toISOString()
+            }));
             this.logger.error('Error in logout', {
                 error,
                 errorName: error instanceof Error ? error.name : 'Unknown',

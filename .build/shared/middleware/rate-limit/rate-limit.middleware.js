@@ -11,8 +11,7 @@ class RateLimitMiddleware {
             return async (event, context) => {
                 try {
                     const clientIp = event.requestContext?.identity?.sourceIp ||
-                        event.requestContext?.http?.sourceIp ||
-                        '127.0.0.1';
+                        event.requestContext?.http?.sourceIp;
                     const key = `${config.keyPrefix || 'rateLimit'}:${clientIp}:${event.path}`;
                     let count = 1;
                     let ttl = config.windowMs;

@@ -435,16 +435,32 @@ class CognitoService {
     }
     async signOut(accessToken) {
         try {
+            console.log(JSON.stringify({
+                message: 'CLOUDWATCH TEST: CognitoService.signOut called',
+                accessTokenLength: accessToken ? accessToken.length : 0,
+                accessTokenFirstChars: accessToken ? accessToken.substring(0, 10) + '...' : 'null',
+                timestamp: new Date().toISOString()
+            }));
             console.log('CognitoService.signOut called', {
                 accessTokenLength: accessToken ? accessToken.length : 0,
                 accessTokenFirstChars: accessToken ? accessToken.substring(0, 10) + '...' : 'null',
                 timestamp: new Date().toISOString()
             });
             if (!accessToken) {
+                console.log(JSON.stringify({
+                    message: 'CLOUDWATCH TEST: No access token provided for sign out',
+                    timestamp: new Date().toISOString()
+                }));
                 console.error('No access token provided for sign out');
                 throw new errors_1.AuthenticationError('No access token provided');
             }
             if (!accessToken.includes('.') || accessToken.split('.').length !== 3) {
+                console.log(JSON.stringify({
+                    message: 'CLOUDWATCH TEST: Invalid token format',
+                    accessTokenLength: accessToken.length,
+                    accessTokenFirstChars: accessToken.substring(0, 10) + '...',
+                    timestamp: new Date().toISOString()
+                }));
                 console.error('Invalid token format', {
                     accessTokenLength: accessToken.length,
                     accessTokenFirstChars: accessToken.substring(0, 10) + '...'
@@ -454,9 +470,20 @@ class CognitoService {
             const command = new client_cognito_identity_provider_1.GlobalSignOutCommand({
                 AccessToken: accessToken
             });
+            console.log(JSON.stringify({
+                message: 'CLOUDWATCH TEST: Sending GlobalSignOutCommand to Cognito',
+                timestamp: new Date().toISOString()
+            }));
             console.log('Sending GlobalSignOutCommand to Cognito');
             try {
                 const response = await this.client.send(command);
+                console.log(JSON.stringify({
+                    message: 'CLOUDWATCH TEST: GlobalSignOutCommand response received',
+                    success: true,
+                    responseType: typeof response,
+                    hasResponse: !!response,
+                    timestamp: new Date().toISOString()
+                }));
                 console.log('GlobalSignOutCommand response received', {
                     success: true,
                     responseType: typeof response,
@@ -465,6 +492,12 @@ class CognitoService {
                 });
             }
             catch (signOutError) {
+                console.log(JSON.stringify({
+                    message: 'CLOUDWATCH TEST: Error from Cognito during sign out',
+                    errorName: signOutError instanceof Error ? signOutError.name : 'Unknown',
+                    errorMessage: signOutError instanceof Error ? signOutError.message : String(signOutError),
+                    timestamp: new Date().toISOString()
+                }));
                 console.error('Error from Cognito during sign out', {
                     error: signOutError,
                     errorName: signOutError instanceof Error ? signOutError.name : 'Unknown',
@@ -473,19 +506,44 @@ class CognitoService {
                 });
                 if (signOutError instanceof Error) {
                     if (signOutError.name === 'NotAuthorizedException') {
+                        console.log(JSON.stringify({
+                            message: 'CLOUDWATCH TEST: Invalid or expired access token',
+                            timestamp: new Date().toISOString()
+                        }));
                         throw new errors_1.AuthenticationError('Invalid or expired access token');
                     }
                     if (signOutError.name === 'InvalidParameterException') {
+                        console.log(JSON.stringify({
+                            message: 'CLOUDWATCH TEST: Invalid token parameter',
+                            errorMessage: signOutError.message,
+                            timestamp: new Date().toISOString()
+                        }));
                         throw new errors_1.AuthenticationError('Invalid token parameter: ' + signOutError.message);
                     }
+                    console.log(JSON.stringify({
+                        message: 'CLOUDWATCH TEST: Failed to sign out',
+                        errorMessage: signOutError.message,
+                        timestamp: new Date().toISOString()
+                    }));
                     throw new errors_1.AuthenticationError('Failed to sign out: ' + signOutError.message);
                 }
                 throw signOutError;
             }
+            console.log(JSON.stringify({
+                message: 'CLOUDWATCH TEST: User signed out successfully',
+                timestamp: new Date().toISOString()
+            }));
             this.logger.info('User signed out successfully');
             console.log('User signed out successfully');
         }
         catch (error) {
+            console.log(JSON.stringify({
+                message: 'CLOUDWATCH TEST: Error signing out user',
+                errorName: error instanceof Error ? error.name : 'Unknown',
+                errorMessage: error instanceof Error ? error.message : String(error),
+                stack: error instanceof Error ? error.stack : 'No stack trace',
+                timestamp: new Date().toISOString()
+            }));
             this.logger.error('Error signing out user', {
                 error,
                 errorName: error instanceof Error ? error.name : 'Unknown',

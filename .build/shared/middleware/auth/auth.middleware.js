@@ -15,8 +15,7 @@ const withAuth = (handler) => {
                 return {
                     statusCode: 401,
                     headers: {
-                        'Content-Type': 'application/json',
-                        'Access-Control-Allow-Origin': '*'
+                        'Content-Type': 'application/json'
                     },
                     body: JSON.stringify({
                         success: false,

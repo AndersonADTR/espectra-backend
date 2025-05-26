@@ -3,11 +3,13 @@
 import { APIGatewayProxyHandler } from 'aws-lambda';
 import { AuthenticationService } from '../services/authentication.service';
 import { withErrorHandling } from '@shared/middleware/error/error-handling.middleware';
+import { withCors } from '@shared/middleware/cors';
 import { Logger } from '@shared/utils/logger';
 import { AuthenticationError } from '@shared/utils/errors';
 
 const logger = new Logger('LogoutHandler');
 
+// Usar APIGatewayProxyHandler para REST API Gateway
 const logoutHandler: APIGatewayProxyHandler = async (event) => {
   // Log directo a CloudWatch para verificar que los logs se están enviando
   console.log(JSON.stringify({
@@ -136,9 +138,6 @@ const logoutHandler: APIGatewayProxyHandler = async (event) => {
       statusCode: 200,
       headers: {
         'Content-Type': 'application/json',
-        'Access-Control-Allow-Origin': '*',
-        'Access-Control-Allow-Methods': 'OPTIONS,POST,GET',
-        'Access-Control-Allow-Headers': 'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token',
         ...(cookies.length > 0 && { 'Set-Cookie': cookies.join(', ') })
       },
       body: JSON.stringify({
@@ -183,10 +182,7 @@ const logoutHandler: APIGatewayProxyHandler = async (event) => {
       return {
         statusCode: 401,
         headers: {
-          'Content-Type': 'application/json',
-          'Access-Control-Allow-Origin': '*',
-          'Access-Control-Allow-Methods': 'OPTIONS,POST,GET',
-          'Access-Control-Allow-Headers': 'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'
+          'Content-Type': 'application/json'
         },
         body: JSON.stringify({
           success: false,
@@ -219,5 +215,5 @@ const logoutHandler: APIGatewayProxyHandler = async (event) => {
   }
 };
 
-// Exportar el handler con el middleware de error
-export const handler = withErrorHandling(logoutHandler);
+// Exportar el handler con los middlewares de error y CORS
+export const handler = withCors(withErrorHandling(logoutHandler));

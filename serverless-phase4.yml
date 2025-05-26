@@ -9,30 +9,44 @@ provider:
   timeout: 29
   logRetentionInDays: 14
 
-  # Removed websocket configuration as it's not supported in Serverless v4
-
   httpApi:
+    cors: true
+
+  # Configuración para REST API Gateway
+  apiGateway:
+    restApiId: !Ref RestApiId
+    restApiRootResourceId: !GetAtt RestApiId.RootResourceId
+    binaryMediaTypes:
+      - '*/*'
+    # Configuración detallada de CORS
     cors:
-      allowedOrigins:
-        - '*'
-      allowedHeaders:
+      allowOrigin: '*'
+      allowHeaders:
         - Content-Type
         - Authorization
-      allowedMethods:
+        - X-Amz-Date
+        - X-Api-Key
+        - X-Amz-Security-Token
+        - X-Requested-With
+        - X-Amz-User-Agent
+      allowMethods:
         - GET
         - POST
         - PUT
         - DELETE
         - OPTIONS
-    authorizers:
-      restAuthorizer:
-        type: request
-        functionName: restAuthorizer
-        identitySource:
-          - $request.header.Authorization
+      # Nota: No podemos usar allowCredentials: true con allowOrigin: '*'
+      # allowCredentials: true
+      exposeHeaders:
+        - Content-Type
+        - X-Amz-Date
+        - Authorization
+        - X-Api-Key
+        - X-Amz-Security-Token
+        - X-Amz-User-Agent
 
   tracing:
-    lambda: false
+    lambda: true
 
   vpc:
     securityGroupIds:
@@ -91,8 +105,7 @@ provider:
 
     # WebSocket
     WEBSOCKET_API_ENDPOINT:
-      'your-websocket-endpoint'
-      # Fn::ImportValue: ${self:custom.resourcePrefix}-websocket-endpoint
+      Fn::ImportValue: ${self:custom.resourcePrefix}-websocket-endpoint
 
     # Redis Configuration
     REDIS_HOST:
@@ -173,8 +186,6 @@ custom:
     websocket:
       connections: 2000
 
-  # Removed apiGatewayWebsocket as it's not supported in Serverless v4
-
   serverless-offline:
     httpPort: 3000
     websocketPort: 3001
@@ -241,9 +252,13 @@ functions:
     role:
       Fn::ImportValue: ${self:custom.resourcePrefix}-lambda-role-arn
     events:
-      - httpApi:
-          path: /auth/register
+      - http:
+          path: auth/register
           method: post
+          cors: true
+          integration: lambda-proxy
+          restApi:
+            id: !Ref RestApiId
     environment:
       ALLOWED_ORIGINS: '*'
       PASSWORD_MIN_LENGTH: '8'
@@ -262,9 +277,13 @@ functions:
     role:
       Fn::ImportValue: ${self:custom.resourcePrefix}-lambda-role-arn
     events:
-      - httpApi:
-          path: /auth/contact-request
+      - http:
+          path: auth/contact-request
           method: post
+          cors: true
+          integration: lambda-proxy
+          restApi:
+            id: !Ref RestApiId
     environment:
       GOOGLE_SHEETS_SPREADSHEET_ID: ${ssm:/espectra/${self:provider.stage}/google-sheets-spreadsheet-id}
       GOOGLE_SHEETS_PRIVATE_KEY: ${ssm:/espectra/${self:provider.stage}/google-sheets-private-key}
@@ -277,9 +296,18 @@ functions:
     role:
       Fn::ImportValue: ${self:custom.resourcePrefix}-lambda-role-arn
     events:
-      - httpApi:
-          path: /auth/login
+      - http:
+          path: auth/login
           method: post
+          cors: true
+          integration: lambda-proxy
+          restApi:
+            id: !Ref RestApiId
+    environment:
+      COGNITO_USER_POOL_ID:
+        Fn::ImportValue: ${self:custom.resourcePrefix}-cognito-UserPoolId
+      COGNITO_CLIENT_ID:
+        Fn::ImportValue: ${self:custom.resourcePrefix}-cognito-UserPoolClientId
 
   refreshToken:
     handler: services/auth/handlers/refreshToken.handler
@@ -287,9 +315,13 @@ functions:
     role:
       Fn::ImportValue: ${self:custom.resourcePrefix}-lambda-role-arn
     events:
-      - httpApi:
-          path: /auth/refresh-token
+      - http:
+          path: auth/refresh-token
           method: post
+          cors: true
+          integration: lambda-proxy
+          restApi:
+            id: !Ref RestApiId
     environment:
       COGNITO_USER_POOL_ID:
         Fn::ImportValue: ${self:custom.resourcePrefix}-cognito-UserPoolId
@@ -303,9 +335,13 @@ functions:
     role:
       Fn::ImportValue: ${self:custom.resourcePrefix}-lambda-role-arn
     events:
-      - httpApi:
-          path: /auth/logout
+      - http:
+          path: auth/logout
           method: post
+          cors: true
+          integration: lambda-proxy
+          restApi:
+            id: !Ref RestApiId
           authorizer:
             name: restAuthorizer
 
@@ -315,9 +351,13 @@ functions:
     role:
       Fn::ImportValue: ${self:custom.resourcePrefix}-lambda-role-arn
     events:
-      - httpApi:
-          path: /auth/me
+      - http:
+          path: auth/me
           method: get
+          cors: true
+          integration: lambda-proxy
+          restApi:
+            id: !Ref RestApiId
           authorizer:
             name: restAuthorizer
 
@@ -327,9 +367,13 @@ functions:
     role:
       Fn::ImportValue: ${self:custom.resourcePrefix}-lambda-role-arn
     events:
-      - httpApi:
-          path: /auth/forgot-password
+      - http:
+          path: auth/forgot-password
           method: post
+          cors: true
+          integration: lambda-proxy
+          restApi:
+            id: !Ref RestApiId
     environment:
       COGNITO_USER_POOL_ID:
         Fn::ImportValue: ${self:custom.resourcePrefix}-cognito-UserPoolId
@@ -344,9 +388,13 @@ functions:
     role:
       Fn::ImportValue: ${self:custom.resourcePrefix}-lambda-role-arn
     events:
-      - httpApi:
-          path: /auth/reset-password
+      - http:
+          path: auth/reset-password
           method: post
+          cors: true
+          integration: lambda-proxy
+          restApi:
+            id: !Ref RestApiId
     environment:
       COGNITO_USER_POOL_ID:
         Fn::ImportValue: ${self:custom.resourcePrefix}-cognito-UserPoolId
@@ -360,9 +408,13 @@ functions:
     role:
       Fn::ImportValue: ${self:custom.resourcePrefix}-lambda-role-arn
     events:
-      - httpApi:
-          path: /auth/verify-email
+      - http:
+          path: auth/verify-email
           method: post
+          cors: true
+          integration: lambda-proxy
+          restApi:
+            id: !Ref RestApiId
     environment:
       COGNITO_USER_POOL_ID:
         Fn::ImportValue: ${self:custom.resourcePrefix}-cognito-UserPoolId
@@ -377,9 +429,13 @@ functions:
     role:
       Fn::ImportValue: ${self:custom.resourcePrefix}-lambda-role-arn
     events:
-      - httpApi:
-          path: /auth/resend-verification-code
+      - http:
+          path: auth/resend-verification-code
           method: post
+          cors: true
+          integration: lambda-proxy
+          restApi:
+            id: !Ref RestApiId
     environment:
       COGNITO_USER_POOL_ID:
         Fn::ImportValue: ${self:custom.resourcePrefix}-cognito-UserPoolId
@@ -394,9 +450,13 @@ functions:
     role:
       Fn::ImportValue: ${self:custom.resourcePrefix}-lambda-role-arn
     events:
-      - httpApi:
-          path: /auth/test-email
+      - http:
+          path: auth/test-email
           method: post
+          cors: true
+          integration: lambda-proxy
+          restApi:
+            id: !Ref RestApiId
     environment:
       SES_FROM_EMAIL: 'soporte@spectrumai.com.co'
 
@@ -460,11 +520,14 @@ functions:
     name: ${self:custom.resourcePrefix}-botpress-webhook
     role:
       Fn::ImportValue: ${self:custom.resourcePrefix}-lambda-role-arn
-    vpc: null
     events:
-      - httpApi:
-          path: /botpress/webhook
+      - http:
+          path: botpress/webhook
           method: post
+          cors: true
+          integration: lambda-proxy
+          restApi:
+            id: !Ref RestApiId
     environment:
       BOTPRESS_API_KEY: ${ssm:/espectra/${self:provider.stage}/botpress-api-key}
   # Removed aliases as it's not supported in Serverless v4
@@ -474,7 +537,6 @@ functions:
     name: ${self:custom.resourcePrefix}-process-message
     role:
       Fn::ImportValue: ${self:custom.resourcePrefix}-lambda-role-arn
-    vpc: null
     events:
       - sqs:
           arn:
@@ -488,11 +550,14 @@ functions:
     name: ${self:custom.resourcePrefix}-handoff-request
     role:
       Fn::ImportValue: ${self:custom.resourcePrefix}-lambda-role-arn
-    vpc: null
     events:
-      - httpApi:
-          path: /handoff/request
+      - http:
+          path: handoff/request
           method: post
+          cors: true
+          integration: lambda-proxy
+          restApi:
+            id: !Ref RestApiId
           authorizer:
             name: restAuthorizer
   # Removed aliases as it's not supported in Serverless v4
@@ -503,9 +568,11 @@ functions:
     role:
       Fn::ImportValue: ${self:custom.resourcePrefix}-lambda-role-arn
     events:
-      - httpApi:
-          path: /handoff/accept
+      - http:
+          path: handoff/accept
           method: post
+          cors: true
+          integration: lambda-proxy
           authorizer:
             name: restAuthorizer
   # Removed aliases as it's not supported in Serverless v4
@@ -517,9 +584,11 @@ functions:
     role:
       Fn::ImportValue: ${self:custom.resourcePrefix}-lambda-role-arn
     events:
-      - httpApi:
-          path: /session/start
+      - http:
+          path: session/start
           method: post
+          cors: true
+          integration: lambda-proxy
           authorizer:
             name: restAuthorizer
 
@@ -529,9 +598,11 @@ functions:
     role:
       Fn::ImportValue: ${self:custom.resourcePrefix}-lambda-role-arn
     events:
-      - httpApi:
-          path: /sessions/create
+      - http:
+          path: sessions/create
           method: post
+          cors: true
+          integration: lambda-proxy
           authorizer:
             name: restAuthorizer
     environment:
@@ -545,8 +616,8 @@ functions:
     role:
       Fn::ImportValue: ${self:custom.resourcePrefix}-lambda-role-arn
     events:
-      - httpApi:
-          path: /sessions/update/{sessionId}
+      - http:
+          path: sessions/update/{sessionId}
           method: put
           authorizer:
             name: restAuthorizer
@@ -560,25 +631,13 @@ functions:
     role:
       Fn::ImportValue: ${self:custom.resourcePrefix}-lambda-role-arn
     events:
-      - httpApi:
-          path: /session/end
+      - http:
+          path: session/end
           method: post
+          cors: true
+          integration: lambda-proxy
           authorizer:
             name: restAuthorizer
-
-  # Metrics Functions
-  # metricsCollector:
-  #   handler: services/metrics/handlers/collector.handler
-  #   name: ${self:custom.resourcePrefix}-metrics-collector
-  #   role:
-  #     Fn::ImportValue: ${self:custom.resourcePrefix}-lambda-role-arn
-  #   vpc: null
-  #   events:
-  #     - schedule: rate(1 minute)
-  #   environment:
-  #     METRICS_NAMESPACE: ${self:custom.service}/${self:provider.stage}
-  #     BOTPRESS_METRICS_TABLE:
-  #       Fn::ImportValue: ${self:custom.resourcePrefix}-metrics-table-name
 
 resources:
   - ${file(infrastructure/apigateway/api.yml)}
@@ -588,116 +647,3 @@ resources:
 
   - ${file(infrastructure/websocket/websocket.yml)}
   - ${file(infrastructure/security/websocket-security.yml)}
-
-outputs:
-  ApiId:
-    Description: REST API Id
-    Value:
-      Ref: RestApiId
-    Export:
-      Name: ${self:custom.resourcePrefix}-rest-api-id
-
-  RestApiRootResourceId:
-    Description: REST API Root Resource Id
-    Value:
-      Fn::GetAtt: [RestApiId, RootResourceId]
-    Export:
-      Name: ${self:custom.resourcePrefix}-rest-api-root-resource-id
-
-  ApiEndpoint:
-    Description: API Gateway endpoint URL
-    Value:
-      Fn::Sub: 'https://${RestApiId}.execute-api.${AWS::Region}.amazonaws.com/dev'
-    Export:
-      Name: ${self:custom.resourcePrefix}-api-endpoint
-
-  RestApiAuthorizerId:
-    Description: REST API Authorizer ID
-    Value:
-      Ref: RestApiAuthorizer
-    Export:
-      Name: ${self:custom.resourcePrefix}-rest-authorizer-id
-
-  ChatResourceId:
-    Description: Chat Resource ID
-    Value:
-      Ref: ChatResource
-    Export:
-      Name: ${self:custom.resourcePrefix}-chat-resource-id
-
-  SessionsResourceId:
-    Description: Sessions Resource ID
-    Value:
-      Ref: SessionsResource
-    Export:
-      Name: ${self:custom.resourcePrefix}-sessions-resource-id
-
-  MessagesResourceId:
-    Description: Messages Resource ID
-    Value:
-      Ref: MessagesResource
-    Export:
-      Name: ${self:custom.resourcePrefix}-messages-resource-id
-
-  HandoffResourceId:
-    Description: Handoff Resource ID
-    Value:
-      Ref: HandoffResource
-    Export:
-      Name: ${self:custom.resourcePrefix}-handoff-resource-id
-
-  WebACLId:
-    Description: ID of the Web ACL
-    Value:
-      Fn::GetAtt: [SpectraWebACL, Id]
-    Export:
-      Name: ${self:custom.resourcePrefix}-waf-id
-
-  WebACLArn:
-    Description: ARN of the Web ACL
-    Value:
-      Fn::GetAtt: [SpectraWebACL, Arn]
-    Export:
-      Name: ${self:custom.resourcePrefix}-waf-arn
-
-  IPSetId:
-    Description: ID of the IP Set
-    Value:
-      Ref: IPSet
-    Export:
-      Name: ${self:custom.resourcePrefix}-ipset-id
-
-  WafLogGroupName:
-    Description: Name of the WAF Log Group
-    Value:
-      Ref: WafLogGroup
-    Export:
-      Name: ${self:custom.resourcePrefix}-waf-log-group
-
-  WebSocketIPSetId:
-    Description: WebSocket IP Set ID
-    Value:
-      Ref: WebSocketIPSet
-    Export:
-      Name: ${self:custom.resourcePrefix}-websocket-ipset-id
-
-  WebSocketApiId:
-    Description: WebSocket API ID
-    Value:
-      Ref: WebSocketApi
-    Export:
-      Name: ${self:custom.resourcePrefix}-websocket-api-id
-
-  WebSocketApiEndpoint:
-    Description: WebSocket API Endpoint
-    Value:
-      Fn::Sub: 'https://${WebSocketApi}.execute-api.${AWS::Region}.amazonaws.com/dev'
-    Export:
-      Name: ${self:custom.resourcePrefix}-websocket-endpoint
-
-  WebSocketStageArn:
-    Description: WebSocket Stage ARN
-    Value:
-      Fn::Sub: 'arn:aws:apigateway:${AWS::Region}::/apis/${WebSocketApi}/stages/dev'
-    Export:
-      Name: ${self:custom.resourcePrefix}-websocket-stage-arn

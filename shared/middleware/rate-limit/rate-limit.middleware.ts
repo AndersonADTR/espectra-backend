@@ -20,8 +20,7 @@ export class RateLimitMiddleware {
         try {
           // Obtener IP del cliente - compatible con REST API y HTTP API
           const clientIp = event.requestContext?.identity?.sourceIp ||
-                          (event.requestContext as any)?.http?.sourceIp ||
-                          '127.0.0.1'; // IP por defecto si no se puede determinar
+                          (event.requestContext as any)?.http?.sourceIp
 
           // Construir key para Redis
           const key = `${config.keyPrefix || 'rateLimit'}:${clientIp}:${event.path}`;
