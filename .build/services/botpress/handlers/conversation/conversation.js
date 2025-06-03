@@ -2,14 +2,15 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.handler = void 0;
 const botpress_service_1 = require("@services/botpress/services/botpress/botpress.service");
+const user_service_1 = require("@services/botpress/services/user/user.service");
 const handler = async (event) => {
     console.info('Processing concierge conversation request', {
         path: event.path,
         method: event.httpMethod
     });
-    const userId = event.requestContext.authorizer?.userId;
-    if (!userId) {
-        console.error('No user ID found in request');
+    const userSub = event.requestContext.authorizer?.userId;
+    if (!userSub) {
+        console.error('No userSub found in request');
         return {
             statusCode: 401,
             headers: { 'Content-Type': 'application/json' },
@@ -17,6 +18,21 @@ const handler = async (event) => {
         };
     }
     const botpressService = botpress_service_1.BotpressService.getInstance();
+    const userService = user_service_1.UserService.getInstance();
+    console.info('Searching user by userSub', { userSub });
+    const user = await userService.getUserByUserSub(userSub);
+    if (!user) {
+        console.error('User not found in database', { userSub });
+        return {
+            statusCode: 404,
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                message: 'User not found',
+                error: 'USER_NOT_FOUND'
+            })
+        };
+    }
+    const userBotpressKey = user.botpressUserKeyId;
     try {
         const path = event.path;
         const method = event.httpMethod;
@@ -25,7 +41,7 @@ const handler = async (event) => {
         const conversationId = conversationIdIndex < pathParts.length ? pathParts[conversationIdIndex] : null;
         const action = conversationId && conversationIdIndex + 1 < pathParts.length ? pathParts[conversationIdIndex + 1] : null;
         if (method === 'GET' && !conversationId) {
-            const activeConversation = await botpressService.getActiveConciergeConversation(userId);
+            const activeConversation = await botpressService.getActiveConciergeConversation(userBotpressKey);
             return {
                 statusCode: 200,
                 headers: { 'Content-Type': 'application/json' },
@@ -36,8 +52,39 @@ const handler = async (event) => {
             };
         }
         else if (method === 'POST' && !conversationId) {
-            const existingConversation = await botpressService.getActiveConciergeConversation(userId);
+            console.info('Verifying user exists and has Botpress key', { userBotpressKey });
+            if (!user) {
+                console.error('User not found in database', { userSub });
+                return {
+                    statusCode: 404,
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        message: 'User not found',
+                        error: 'USER_NOT_FOUND'
+                    })
+                };
+            }
+            if (!userBotpressKey) {
+                console.error('User does not have Botpress key', { userBotpressKey });
+                return {
+                    statusCode: 400,
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        message: 'User is not configured for Botpress integration',
+                        error: 'BOTPRESS_KEY_MISSING'
+                    })
+                };
+            }
+            console.info('User verified with Botpress key', {
+                userBotpressKey,
+                hasKey: !!userBotpressKey
+            });
+            const existingConversation = await botpressService.getActiveConciergeConversation(userBotpressKey);
             if (existingConversation) {
+                console.info('Active conversation already exists', {
+                    userBotpressKey,
+                    conversationId: existingConversation.conversationId
+                });
                 return {
                     statusCode: 200,
                     headers: { 'Content-Type': 'application/json' },
@@ -47,7 +94,12 @@ const handler = async (event) => {
                     })
                 };
             }
-            const newConversation = await botpressService.createConciergeConversation(userId);
+            console.info('Creating new concierge conversation', { userBotpressKey });
+            const newConversation = await botpressService.createConciergeConversation(userBotpressKey);
+            console.info('New concierge conversation created successfully', {
+                userBotpressKey,
+                conversationId: newConversation.conversationId
+            });
             return {
                 statusCode: 201,
                 headers: { 'Content-Type': 'application/json' },
@@ -58,7 +110,7 @@ const handler = async (event) => {
             };
         }
         else if (method === 'GET' && conversationId && !action) {
-            const conversation = await botpressService.getConversationHistory(userId, conversationId);
+            const conversation = await botpressService.getConversationHistory(userBotpressKey, conversationId);
             if (!conversation) {
                 return {
                     statusCode: 404,
@@ -73,7 +125,7 @@ const handler = async (event) => {
             };
         }
         else if (method === 'GET' && conversationId && action === 'messages') {
-            const messages = await botpressService.getConversationMessages(userId, conversationId);
+            const messages = await botpressService.getConversationMessages(userBotpressKey, conversationId);
             return {
                 statusCode: 200,
                 headers: { 'Content-Type': 'application/json' },
@@ -96,7 +148,7 @@ const handler = async (event) => {
                     body: JSON.stringify({ message: 'Message is required' })
                 };
             }
-            const response = await botpressService.sendMessage(userId, requestData.message, conversationId, true);
+            const response = await botpressService.sendMessage(userBotpressKey, requestData.message, conversationId, true);
             return {
                 statusCode: 200,
                 headers: { 'Content-Type': 'application/json' },
@@ -104,7 +156,7 @@ const handler = async (event) => {
             };
         }
         else if (method === 'POST' && conversationId && action === 'session') {
-            await botpressService.openSession(userId, conversationId);
+            await botpressService.openSession(userBotpressKey, conversationId);
             return {
                 statusCode: 200,
                 headers: { 'Content-Type': 'application/json' },
@@ -112,7 +164,7 @@ const handler = async (event) => {
             };
         }
         else if (method === 'DELETE' && conversationId && action === 'session') {
-            await botpressService.closeSession(userId, conversationId);
+            await botpressService.closeSession(userBotpressKey, conversationId);
             return {
                 statusCode: 200,
                 headers: { 'Content-Type': 'application/json' },
@@ -137,4 +189,4 @@ const handler = async (event) => {
     }
 };
 exports.handler = handler;
-//# sourceMappingURL=conversation.handler.js.map
+//# sourceMappingURL=conversation.js.map

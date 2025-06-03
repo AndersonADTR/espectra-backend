@@ -18,6 +18,7 @@ export declare class UserService {
     private constructor();
     static getInstance(): UserService;
     getUserById(userId: string): Promise<UserDetails | null>;
+    getUserByUserSub(userSub: string): Promise<UserDetails | null>;
     getBotpressUserKey(userId: string): Promise<string | null>;
 }
 //# sourceMappingURL=user.service.d.ts.map

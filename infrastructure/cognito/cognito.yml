@@ -9,25 +9,17 @@ Resources:
         InviteMessageTemplate:
           EmailMessage: "Your username is {username} and temporary password is {####}."
           EmailSubject: "Welcome to Espectra Platform"
-          #SMSMessage: "Your username is {username} and temporary password is {####}"
-      # SmsConfiguration:
-      #   SnsCallerArn: !GetAtt CognitoSMSRole.Arn
-      #   ExternalId: ${self:custom.resourcePrefix}-external
       VerificationMessageTemplate:
         DefaultEmailOption: CONFIRM_WITH_CODE  # O CONFIRM_WITH_LINK
         EmailMessage: "Tu código de verificación para Espectra Platform es {####}."
         EmailSubject: "Verifica tu cuenta en Espectra Platform"
-        #SmsMessage: "Tu código de verificación para Espectra Platform es {####}."
       AutoVerifiedAttributes:
         - email
-        #- phone_number
       UsernameAttributes:
         - email
-        #- phone_number
       MfaConfiguration: ${self:custom.cognito.userPool.mfaConfiguration}
       EnabledMfas:
-        - EMAIL_OTP 
-        #- SMS_MFA
+        - EMAIL_OTP
         - SOFTWARE_TOKEN_MFA
       AccountRecoverySetting:
         RecoveryMechanisms:
@@ -37,8 +29,12 @@ Resources:
             Priority: 2
       EmailConfiguration:
         EmailSendingAccount: DEVELOPER
-        From: ${self:custom.cognito.userPool.emailSender}
-        SourceArn: !Sub "arn:aws:ses:${AWS::Region}:${AWS::AccountId}:identity/${self:custom.cognito.userPool.emailSender}"
+        From: "Espectra Platform <soporte@spectrumai.com.co>"
+        SourceArn: !Sub "arn:aws:ses:${AWS::Region}:${AWS::AccountId}:identity/spectrumai.com.co"
+        ReplyToEmailAddress: "soporte@spectrumai.com.co"
+        # EmailSendingAccount: DEVELOPER
+        # From: ${self:custom.cognito.userPool.emailSender}
+        # SourceArn: !Sub "arn:aws:ses:${AWS::Region}:${AWS::AccountId}:identity/${self:custom.cognito.userPool.emailSender}"
       Policies:
         PasswordPolicy:
           MinimumLength: ${self:custom.cognito.userPool.passwordPolicy.minLength}

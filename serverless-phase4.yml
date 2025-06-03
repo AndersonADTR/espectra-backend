@@ -96,7 +96,7 @@ provider:
     #   Fn::ImportValue: ${self:custom.resourcePrefix}-handoff-table-name
 
     # Botpress Configuration
-    BOTPRESS_API_URL: ${ssm:/espectra/dev/botpress-api-url, 'https://api.botpress.cloud/v1'}
+    BOTPRESS_API_URL: ${ssm:/espectra/dev/botpress-api-url, 'https://chat.botpress.cloud/a3d58c2c-c0bb-4db7-b344-9d87b18316ea'}
     BOTPRESS_BOT_ID: ${ssm:/espectra/dev/botpress-bot-id, 'your-bot-id'}
     BOTPRESS_API_KEY: ${ssm:/espectra/dev/botpress-api-key, 'your-api-key'}
     BOTPRESS_WORKSPACE_ID: ${ssm:/espectra/dev/botpress-workspace-id, 'your-workspace-id'}
@@ -543,6 +543,113 @@ functions:
             Fn::ImportValue: ${self:custom.resourcePrefix}-message-queue-arn
           batchSize: 1
           functionResponseType: ReportBatchItemFailures
+
+  # Concierge Conversation Management
+  conversations:
+    handler: services/botpress/handlers/conversation/conversation.handler
+    name: ${self:custom.resourcePrefix}-conversations
+    role:
+      Fn::ImportValue: ${self:custom.resourcePrefix}-lambda-role-arn
+    events:
+      # GET /conversations - Check for active concierge conversation
+      - http:
+          path: conversations
+          method: get
+          cors: true
+          integration: lambda-proxy
+          restApi:
+            id: !Ref RestApiId
+          authorizer:
+            name: restAuthorizer
+      # POST /conversations - Create new concierge conversation
+      - http:
+          path: conversations
+          method: post
+          cors: true
+          integration: lambda-proxy
+          restApi:
+            id: !Ref RestApiId
+          authorizer:
+            name: restAuthorizer
+      # GET /conversations/{id} - Get conversation details
+      - http:
+          path: conversations/{conversationId}
+          method: get
+          cors: true
+          integration: lambda-proxy
+          restApi:
+            id: !Ref RestApiId
+          authorizer:
+            name: restAuthorizer
+      # GET /conversations/{id}/messages - Load conversation messages
+      - http:
+          path: conversations/{conversationId}/messages
+          method: get
+          cors: true
+          integration: lambda-proxy
+          restApi:
+            id: !Ref RestApiId
+          authorizer:
+            name: restAuthorizer
+      # POST /conversations/{id}/messages - Send message to conversation
+      - http:
+          path: conversations/{conversationId}/messages
+          method: post
+          cors: true
+          integration: lambda-proxy
+          restApi:
+            id: !Ref RestApiId
+          authorizer:
+            name: restAuthorizer
+      # POST /conversations/{id}/session - Open session
+      - http:
+          path: conversations/{conversationId}/session
+          method: post
+          cors: true
+          integration: lambda-proxy
+          restApi:
+            id: !Ref RestApiId
+          authorizer:
+            name: restAuthorizer
+      # DELETE /conversations/{id}/session - Close session
+      - http:
+          path: conversations/{conversationId}/session
+          method: delete
+          cors: true
+          integration: lambda-proxy
+          restApi:
+            id: !Ref RestApiId
+          authorizer:
+            name: restAuthorizer
+
+  # Token Management
+  tokenUsage:
+    handler: services/botpress/handlers/token/token-usage.handler
+    name: ${self:custom.resourcePrefix}-token-usage
+    role:
+      Fn::ImportValue: ${self:custom.resourcePrefix}-lambda-role-arn
+    events:
+      - http:
+          path: tokens/usage
+          method: get
+          cors: true
+          integration: lambda-proxy
+          restApi:
+            id: !Ref RestApiId
+          authorizer:
+            name: restAuthorizer
+
+  # Daily Token Reset (Scheduled)
+  resetDailyTokens:
+    handler: services/botpress/handlers/token/reset-daily-tokens.handler
+    name: ${self:custom.resourcePrefix}-reset-daily-tokens
+    role:
+      Fn::ImportValue: ${self:custom.resourcePrefix}-lambda-role-arn
+    events:
+      - schedule: cron(0 0 * * ? *)  # Daily at midnight UTC
+    environment:
+      TOKEN_TABLE:
+        Fn::ImportValue: ${self:custom.resourcePrefix}-tokens-table-name
 
   # Handoff Functions
   handoffRequest:

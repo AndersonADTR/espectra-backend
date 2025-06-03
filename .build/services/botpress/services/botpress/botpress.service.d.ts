@@ -37,9 +37,13 @@ export declare class BotpressApiClient {
     private readonly defaultHeaders;
     constructor();
     private setupInterceptors;
-    getOrCreateConversation(conversationId: string, userId?: string): Promise<any>;
     sendMessage(conversationId: string, message: string | BotpressMessage, userId?: string): Promise<BotpressResponse>;
     createUser(userId: string, name: string): Promise<BotpressUserCreate>;
+    listConversations(userKey: string): Promise<any>;
+    getConversation(conversationId: string, userId: string): Promise<any>;
+    createConversation(userKey: string): Promise<any>;
+    getOrCreateConversation(userId: string, integrationName?: string): Promise<any>;
+    listMessages(conversationId: string, userId: string): Promise<any>;
 }
 export declare class BotpressService {
     private static instance;
@@ -55,5 +59,10 @@ export declare class BotpressService {
     getConversationHistory(userId: string, conversationId: string): Promise<any>;
     initiateHandoff(userId: string, conversationId: string): Promise<void>;
     listUserConversations(userId: string): Promise<any[]>;
+    getActiveConciergeConversation(userKey: string): Promise<any>;
+    createConciergeConversation(userKey: string): Promise<any>;
+    getConversationMessages(userId: string, conversationId: string): Promise<any>;
+    openSession(userId: string, conversationId: string): Promise<void>;
+    closeSession(userId: string, conversationId: string): Promise<void>;
 }
 //# sourceMappingURL=botpress.service.d.ts.map

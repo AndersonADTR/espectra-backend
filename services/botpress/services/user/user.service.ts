@@ -1,7 +1,7 @@
 // services/botpress/services/user/user.service.ts
 
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
-import { DynamoDBDocumentClient, GetCommand } from '@aws-sdk/lib-dynamodb';
+import { DynamoDBDocumentClient, GetCommand, QueryCommand } from '@aws-sdk/lib-dynamodb';
 import { Logger } from '@shared/utils/logger';
 import { CacheService } from '@shared/services/cache/cache.service';
 
@@ -102,6 +102,73 @@ export class UserService {
       this.logger.error('Error retrieving user details', {
         error: error instanceof Error ? error.message : 'Unknown error',
         userId
+      });
+
+      return null;
+    }
+  }
+
+  /**
+   * Obtiene un usuario por su userSub de Cognito
+   * @param userSub UserSub de Cognito
+   * @returns Detalles del usuario o null si no se encuentra
+   */
+  public async getUserByUserSub(userSub: string): Promise<UserDetails | null> {
+    if (!userSub) {
+      this.logger.warn('Invalid userSub provided to getUserByUserSub', { userSub });
+      return null;
+    }
+
+    const startTime = Date.now();
+    const cacheKey = `${this.cacheKeyPrefix}sub:${userSub}`;
+
+    try {
+      // Intentar obtener de caché primero
+      const cachedUser = await this.cacheService.get<UserDetails>(cacheKey);
+
+      if (cachedUser) {
+        this.logger.debug('User details retrieved from cache by userSub', { userSub });
+        return cachedUser;
+      }
+
+      // Buscar en DynamoDB usando el índice SubIndex
+      const result = await this.dynamoDbClient.send(new QueryCommand({
+        TableName: this.usersTableName,
+        IndexName: 'SubIndex',
+        KeyConditionExpression: 'userSub = :userSub',
+        ExpressionAttributeValues: {
+          ':userSub': userSub
+        },
+        Limit: 1
+      }));
+
+      if (!result.Items || result.Items.length === 0) {
+        this.logger.warn('User not found by userSub', { userSub });
+        return null;
+      }
+
+      const user = result.Items[0] as UserDetails;
+
+      // Verificar que el usuario tenga botpressUserKeyId
+      if (!user.botpressUserKeyId) {
+        this.logger.warn('User found by userSub but has no botpressUserKeyId', { userSub, userId: user.userId });
+      }
+
+      // Guardar en caché
+      await this.cacheService.set(cacheKey, user, { ttl: this.cacheTtl });
+
+      this.logger.debug('User details retrieved from database by userSub', {
+        userSub,
+        userId: user.userId,
+        hasBotpressKey: !!user.botpressUserKeyId,
+        latency: Date.now() - startTime
+      });
+
+      return user;
+    } catch (error) {
+      this.logger.error('Error retrieving user details by userSub', {
+        error: error instanceof Error ? error.message : 'Unknown error',
+        userSub
       });
 
       return null;

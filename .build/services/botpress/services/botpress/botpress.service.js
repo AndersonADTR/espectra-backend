@@ -22,13 +22,13 @@ class BotpressApiClient {
     constructor() {
         this.logger = new logger_1.Logger('BotpressApiClient');
         this.userService = user_service_1.UserService.getInstance();
+        const botpressApiUrl = process.env.BOTPRESS_API_URL;
         this.defaultHeaders = {
             'Accept': 'application/json',
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${process.env.BOTPRESS_API_KEY || ''}`
+            'Content-Type': 'application/json'
         };
         this.axios = axios_1.default.create({
-            baseURL: process.env.BOTPRESS_API_URL,
+            baseURL: botpressApiUrl,
             timeout: 10000,
             headers: this.defaultHeaders
         });
@@ -39,7 +39,7 @@ class BotpressApiClient {
             const config = error.config;
             if (!config)
                 return Promise.reject(error);
-            let retryCount = retryCount || 0;
+            let retryCount = 0;
             this.logger.error('Botpress API error', {
                 status: error.response?.status,
                 url: config.url,
@@ -61,61 +61,37 @@ class BotpressApiClient {
             return Promise.reject(error);
         });
     }
-    async getOrCreateConversation(conversationId, userId) {
-        try {
-            const config = {};
-            if (userId) {
-                const userKey = await this.userService.getBotpressUserKey(userId);
-                if (userKey) {
-                    config.headers = {
-                        'x-user-key': userKey
-                    };
-                    this.logger.debug('Using dynamic user key for get-or-create conversation', { userId });
-                }
-                else {
-                    this.logger.warn('Botpress user key not found for user in get-or-create', { userId });
-                }
-            }
-            const response = await this.axios.post('/conversations/get-or-create', {
-                id: conversationId
-            }, config);
-            return response.data;
-        }
-        catch (error) {
-            this.logger.error('Error in getOrCreateConversation', {
-                error,
-                conversationId,
-                userId: userId || 'not_provided'
-            });
-            throw error;
-        }
-    }
     async sendMessage(conversationId, message, userId) {
         try {
-            const messageObj = typeof message === 'string'
+            const messagePayload = typeof message === 'string'
                 ? { type: 'text', text: message }
-                : message;
+                : message.payload;
             const config = {};
             if (userId) {
                 const userKey = await this.userService.getBotpressUserKey(userId);
                 if (userKey) {
                     config.headers = {
+                        'Content-Type': 'application/json',
                         'x-user-key': userKey
                     };
-                    this.logger.debug('Using dynamic user key for Botpress request', { userId });
+                    this.logger.debug('Using dynamic user key for Chat API request', { userId });
                 }
                 else {
                     this.logger.warn('Botpress user key not found for user', { userId });
+                    throw new Error(`User key not found for user: ${userId}`);
                 }
+            }
+            else {
+                throw new Error('userId is required for Chat API requests');
             }
             const response = await this.axios.post('/messages', {
                 conversationId,
-                payload: messageObj
+                payload: messagePayload
             }, config);
             return response.data;
         }
         catch (error) {
-            this.logger.error('Error sending message to Botpress', {
+            this.logger.error('Error sending message to Chat API', {
                 error,
                 conversationId,
                 userId: userId || 'not_provided'
@@ -126,13 +102,109 @@ class BotpressApiClient {
     async createUser(userId, name) {
         try {
             const response = await this.axios.post('/users', {
-                id: userId,
-                name: name
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                data: {
+                    id: userId,
+                    name: name
+                }
             });
             return response.data;
         }
         catch (error) {
             this.logger.error('Error creating user in Botpress', { error, userId });
+            throw error;
+        }
+    }
+    async listConversations(userKey) {
+        try {
+            const response = await this.axios.get('/conversations', {
+                headers: {
+                    'Content-Type': 'application/json',
+                    'x-user-key': userKey
+                }
+            });
+            return response.data;
+        }
+        catch (error) {
+            this.logger.error('Error listing conversations from Chat API', { error, userKey });
+            throw error;
+        }
+    }
+    async getConversation(conversationId, userId) {
+        try {
+            const userKey = await this.userService.getBotpressUserKey(userId);
+            if (!userKey) {
+                throw new Error(`User key not found for user: ${userId}`);
+            }
+            const response = await this.axios.get(`/conversations/${conversationId}`, {
+                headers: {
+                    'Content-Type': 'application/json',
+                    'x-user-key': userKey
+                }
+            });
+            return response.data;
+        }
+        catch (error) {
+            this.logger.error('Error getting conversation from Chat API', { error, conversationId, userId });
+            throw error;
+        }
+    }
+    async createConversation(userKey) {
+        try {
+            const response = await this.axios.post('/conversations', {}, {
+                headers: {
+                    'Content-Type': 'application/json',
+                    'x-user-key': userKey
+                }
+            });
+            return response.data;
+        }
+        catch (error) {
+            this.logger.error('Error creating conversation in Chat API', { error, userKey });
+            throw error;
+        }
+    }
+    async getOrCreateConversation(userId, integrationName) {
+        try {
+            const userKey = await this.userService.getBotpressUserKey(userId);
+            if (!userKey) {
+                throw new Error(`User key not found for user: ${userId}`);
+            }
+            const payload = {};
+            if (integrationName) {
+                payload.integrationName = integrationName;
+            }
+            const response = await this.axios.post('/conversations/get-or-create', payload, {
+                headers: {
+                    'Content-Type': 'application/json',
+                    'x-user-key': userKey
+                }
+            });
+            return response.data;
+        }
+        catch (error) {
+            this.logger.error('Error getting or creating conversation in Chat API', { error, userId });
+            throw error;
+        }
+    }
+    async listMessages(conversationId, userId) {
+        try {
+            const userKey = await this.userService.getBotpressUserKey(userId);
+            if (!userKey) {
+                throw new Error(`User key not found for user: ${userId}`);
+            }
+            const response = await this.axios.get(`/conversations/${conversationId}/messages`, {
+                headers: {
+                    'Content-Type': 'application/json',
+                    'x-user-key': userKey
+                }
+            });
+            return response.data;
+        }
+        catch (error) {
+            this.logger.error('Error listing messages from Chat API', { error, conversationId, userId });
             throw error;
         }
     }
@@ -295,6 +367,136 @@ class BotpressService {
         }
         catch (error) {
             this.logger.error('Error listing user conversations', { error, userId });
+            throw error;
+        }
+    }
+    async getActiveConciergeConversation(userKey) {
+        try {
+            const contexts = await this.contextService.listUserContexts(userKey);
+            const activeContext = contexts.find(ctx => ctx.status === conversation_context_types_1.ConversationStatus.ACTIVE &&
+                ctx.type === conversation_context_types_1.ConversationType.BOT);
+            if (activeContext) {
+                this.logger.info('Found active concierge conversation in local context', {
+                    userKey,
+                    conversationId: activeContext.conversationId
+                });
+                return activeContext;
+            }
+            try {
+                const botpressConversations = await this.apiClient.listConversations(userKey);
+                if (botpressConversations.conversations && botpressConversations.conversations.length > 0) {
+                    const recentConversation = botpressConversations.conversations[0];
+                    const existingContext = await this.contextService.getContext(recentConversation.id);
+                    if (!existingContext) {
+                        const newContext = {
+                            conversationId: recentConversation.id,
+                            userId: userKey,
+                            status: conversation_context_types_1.ConversationStatus.ACTIVE,
+                            type: conversation_context_types_1.ConversationType.BOT,
+                            createdAt: Date.now(),
+                            updatedAt: Date.now(),
+                            lastActivity: Date.now(),
+                            messages: []
+                        };
+                        await this.contextService.saveContext(newContext);
+                        return newContext;
+                    }
+                    return existingContext;
+                }
+            }
+            catch (error) {
+                this.logger.warn('Error checking Botpress conversations, will create new one', { error, userKey });
+            }
+            return null;
+        }
+        catch (error) {
+            this.logger.error('Error checking for active concierge conversation', { error, userKey });
+            throw error;
+        }
+    }
+    async createConciergeConversation(userKey) {
+        try {
+            const botpressConversation = await this.apiClient.createConversation(userKey);
+            const context = {
+                conversationId: botpressConversation.conversation.id,
+                userId: userKey,
+                status: conversation_context_types_1.ConversationStatus.ACTIVE,
+                type: conversation_context_types_1.ConversationType.BOT,
+                createdAt: Date.now(),
+                updatedAt: Date.now(),
+                lastActivity: Date.now(),
+                messages: []
+            };
+            await this.contextService.saveContext(context);
+            this.logger.info('Created new concierge conversation', {
+                userKey,
+                conversationId: context.conversationId
+            });
+            return context;
+        }
+        catch (error) {
+            this.logger.error('Error creating concierge conversation', { error, userKey });
+            throw error;
+        }
+    }
+    async getConversationMessages(userId, conversationId) {
+        try {
+            const context = await this.contextService.getContext(conversationId);
+            if (!context || context.userId !== userId) {
+                throw new Error('Conversation not found or access denied');
+            }
+            const botpressMessages = await this.apiClient.listMessages(conversationId, userId);
+            if (botpressMessages.messages && botpressMessages.messages.length > 0) {
+                const contextMessages = botpressMessages.messages.map((msg) => ({
+                    role: msg.direction === 'incoming' ? 'user' : 'assistant',
+                    content: msg.payload?.text || JSON.stringify(msg.payload),
+                    timestamp: new Date(msg.createdAt).getTime()
+                }));
+                await this.contextService.updateContext(conversationId, {
+                    messages: contextMessages,
+                    updatedAt: Date.now()
+                });
+            }
+            return botpressMessages;
+        }
+        catch (error) {
+            this.logger.error('Error getting conversation messages', { error, userId, conversationId });
+            throw error;
+        }
+    }
+    async openSession(userId, conversationId) {
+        try {
+            const context = await this.contextService.getContext(conversationId);
+            if (!context || context.userId !== userId) {
+                throw new Error('Conversation not found or access denied');
+            }
+            await this.contextService.updateContext(conversationId, {
+                status: conversation_context_types_1.ConversationStatus.ACTIVE,
+                lastActivity: Date.now(),
+                updatedAt: Date.now()
+            });
+            this.logger.info('Session opened for conversation', { userId, conversationId });
+        }
+        catch (error) {
+            this.logger.error('Error opening session', { error, userId, conversationId });
+            throw error;
+        }
+    }
+    async closeSession(userId, conversationId) {
+        try {
+            const context = await this.contextService.getContext(conversationId);
+            if (!context || context.userId !== userId) {
+                throw new Error('Conversation not found or access denied');
+            }
+            await this.contextService.updateContext(conversationId, {
+                status: conversation_context_types_1.ConversationStatus.INACTIVE,
+                lastActivity: Date.now(),
+                updatedAt: Date.now()
+            });
+            this.logger.info('Session closed for conversation', { userId, conversationId });
+        }
+        catch (error) {
+            this.logger.error('Error closing session', { error, userId, conversationId });
             throw error;
         }
     }

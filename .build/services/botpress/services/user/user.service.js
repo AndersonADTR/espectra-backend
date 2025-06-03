@@ -73,6 +73,53 @@ class UserService {
             return null;
         }
     }
+    async getUserByUserSub(userSub) {
+        if (!userSub) {
+            this.logger.warn('Invalid userSub provided to getUserByUserSub', { userSub });
+            return null;
+        }
+        const startTime = Date.now();
+        const cacheKey = `${this.cacheKeyPrefix}sub:${userSub}`;
+        try {
+            const cachedUser = await this.cacheService.get(cacheKey);
+            if (cachedUser) {
+                this.logger.debug('User details retrieved from cache by userSub', { userSub });
+                return cachedUser;
+            }
+            const result = await this.dynamoDbClient.send(new lib_dynamodb_1.QueryCommand({
+                TableName: this.usersTableName,
+                IndexName: 'SubIndex',
+                KeyConditionExpression: 'userSub = :userSub',
+                ExpressionAttributeValues: {
+                    ':userSub': userSub
+                },
+                Limit: 1
+            }));
+            if (!result.Items || result.Items.length === 0) {
+                this.logger.warn('User not found by userSub', { userSub });
+                return null;
+            }
+            const user = result.Items[0];
+            if (!user.botpressUserKeyId) {
+                this.logger.warn('User found by userSub but has no botpressUserKeyId', { userSub, userId: user.userId });
+            }
+            await this.cacheService.set(cacheKey, user, { ttl: this.cacheTtl });
+            this.logger.debug('User details retrieved from database by userSub', {
+                userSub,
+                userId: user.userId,
+                hasBotpressKey: !!user.botpressUserKeyId,
+                latency: Date.now() - startTime
+            });
+            return user;
+        }
+        catch (error) {
+            this.logger.error('Error retrieving user details by userSub', {
+                error: error instanceof Error ? error.message : 'Unknown error',
+                userSub
+            });
+            return null;
+        }
+    }
     async getBotpressUserKey(userId) {
         if (!userId) {
             this.logger.warn('Invalid userId provided to getBotpressUserKey', { userId });
