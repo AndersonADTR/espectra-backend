@@ -2,7 +2,7 @@
 
 import { APIGatewayProxyHandler } from 'aws-lambda';
 import { AdvisorQueueService } from '../../services/handoff/advisor-queue.service';
-import { WebSocketService } from '@services/websocket/services/websocket.service';
+// SPECTRUM: SSE Manager removed - using polling instead
 import { ConversationContextService } from '../../services/context/conversation-context.service';
 import { Logger } from '@shared/utils/logger';
 import { ErrorHandlingMiddleware } from '@shared/middleware/error/error-handling.middleware';
@@ -41,7 +41,7 @@ const sendMessageHandler: APIGatewayProxyHandler = async (event) => {
     // Obtener servicios
     const queueService = AdvisorQueueService.getInstance();
     const contextService = ConversationContextService.getInstance();
-    const websocketService = new WebSocketService();
+    // SPECTRUM: SSE Manager removed - using polling instead
 
     // Verificar que este asesor está asignado a este handoff
     const handoff = await queueService.getHandoffRequest(handoffId);
@@ -83,17 +83,27 @@ const sendMessageHandler: APIGatewayProxyHandler = async (event) => {
       updatedAt: timestamp
     });
 
-    // Enviar mensaje al usuario a través de WebSocket
-    await websocketService.sendMessageToUser(context.userId, {
+    // Enviar mensaje al usuario via SSE
+    const sseMessage = {
       type: 'AGENT_MESSAGE',
       content: message,
       conversationId,
       timestamp: new Date().toISOString(),
+      messageId: `agent_msg_${Date.now()}`,
       metadata: {
         handoffId,
         advisorId,
-        advisorName: advisor?.name || 'Asesor'
+        advisorName: advisor?.name || 'Asesor',
+        source: 'human_advisor'
       }
+    };
+
+    // SPECTRUM: Advisor messages are now stored in Botpress and retrieved via polling
+    logger.info('SPECTRUM: Advisor message processed for polling retrieval', {
+      userId: context.userId,
+      conversationId,
+      advisorId,
+      platform: 'spectrum'
     });
 
     logger.info('Advisor message sent', {

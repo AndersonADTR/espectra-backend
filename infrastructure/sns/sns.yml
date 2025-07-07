@@ -8,13 +8,13 @@ Resources:
         Fn::ImportValue: ${self:custom.resourcePrefix}-kms-SystemKeyArn
       Tags:
         - Key: Project
-          Value: ${file(./serverless-common.yml):custom.projectName}
+          Value: ${self:custom.projectName}
         - Key: Environment
-          Value: ${file(./serverless-common.yml):custom.stage}
+          Value: ${self:custom.stage}
         - Key: ManagedBy
           Value: serverless
         - Key: Company
-          Value: ${file(./serverless-common.yml):custom.company}
+          Value: ${self:custom.company}
         - Key: Priority
           Value: High
 
@@ -46,13 +46,13 @@ Resources:
         Fn::ImportValue: ${self:custom.resourcePrefix}-kms-SystemKeyArn
       Tags:
         - Key: Project
-          Value: ${file(./serverless-common.yml):custom.projectName}
+          Value: ${self:custom.projectName}
         - Key: Environment
-          Value: ${file(./serverless-common.yml):custom.stage}
+          Value: ${self:custom.stage}
         - Key: ManagedBy
           Value: serverless
         - Key: Company
-          Value: ${file(./serverless-common.yml):custom.company}
+          Value: ${self:custom.company}
         - Key: Priority
           Value: Medium
 
@@ -84,13 +84,13 @@ Resources:
         Fn::ImportValue: ${self:custom.resourcePrefix}-kms-SystemKeyArn
       Tags:
         - Key: Project
-          Value: ${file(./serverless-common.yml):custom.projectName}
+          Value: ${self:custom.projectName}
         - Key: Environment
-          Value: ${file(./serverless-common.yml):custom.stage}
+          Value: ${self:custom.stage}
         - Key: ManagedBy
           Value: serverless
         - Key: Company
-          Value: ${file(./serverless-common.yml):custom.company}
+          Value: ${self:custom.company}
         - Key: Priority
           Value: Low
 
@@ -160,13 +160,13 @@ Resources:
             Ref: HighPriorityTopic
       Tags:
         - Key: Project
-          Value: ${file(./serverless-common.yml):custom.projectName}
+          Value: ${self:custom.projectName}
         - Key: Environment
-          Value: ${file(./serverless-common.yml):custom.stage}
+          Value: ${self:custom.stage}
         - Key: ManagedBy
           Value: serverless
         - Key: Company
-          Value: ${file(./serverless-common.yml):custom.company}
+          Value: ${self:custom.company}
         - Key: Component
           Value: Alarm
 
@@ -187,13 +187,13 @@ Resources:
             Ref: HighPriorityTopic
       Tags:
         - Key: Project
-          Value: ${file(./serverless-common.yml):custom.projectName}
+          Value: ${self:custom.projectName}
         - Key: Environment
-          Value: ${file(./serverless-common.yml):custom.stage}
+          Value: ${self:custom.stage}
         - Key: ManagedBy
           Value: serverless
         - Key: Company
-          Value: ${file(./serverless-common.yml):custom.company}
+          Value: ${self:custom.company}
         - Key: Component
           Value: Alarm
 

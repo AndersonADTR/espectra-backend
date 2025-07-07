@@ -1,0 +1,544 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🚀 SPECTRUM - Cliente Final Completo</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: #333;
+        }
+        .container {
+            background: white;
+            border-radius: 15px;
+            padding: 30px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+        }
+        h1 {
+            color: #4a5568;
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+            margin-bottom: 20px;
+        }
+        .config-section {
+            background: #f7fafc;
+            padding: 20px;
+            border-radius: 10px;
+        }
+        .input-group {
+            margin-bottom: 15px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: 600;
+            color: #2d3748;
+        }
+        input, textarea, select {
+            width: 100%;
+            padding: 10px;
+            border: 2px solid #e2e8f0;
+            border-radius: 8px;
+            font-size: 14px;
+            transition: border-color 0.3s;
+        }
+        input:focus, textarea:focus, select:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+        .button-group {
+            display: flex;
+            gap: 10px;
+            margin: 20px 0;
+            flex-wrap: wrap;
+        }
+        button {
+            padding: 12px 24px;
+            border: none;
+            border-radius: 8px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        .btn-primary { background: #667eea; color: white; }
+        .btn-primary:hover { background: #5a67d8; }
+        .btn-secondary { background: #718096; color: white; }
+        .btn-secondary:hover { background: #4a5568; }
+        .btn-success { background: #38a169; color: white; }
+        .btn-success:hover { background: #2f855a; }
+        .btn-danger { background: #e53e3e; color: white; }
+        .btn-danger:hover { background: #c53030; }
+        .status {
+            padding: 15px;
+            border-radius: 8px;
+            margin: 10px 0;
+            font-weight: 600;
+        }
+        .status.connected { background: #c6f6d5; color: #22543d; border: 2px solid #9ae6b4; }
+        .status.disconnected { background: #fed7d7; color: #742a2a; border: 2px solid #fc8181; }
+        .status.connecting { background: #fef5e7; color: #744210; border: 2px solid #f6e05e; }
+        .messages {
+            background: #f7fafc;
+            border: 2px solid #e2e8f0;
+            border-radius: 10px;
+            height: 400px;
+            overflow-y: auto;
+            padding: 15px;
+            margin: 20px 0;
+        }
+        .message {
+            margin: 10px 0;
+            padding: 10px;
+            border-radius: 8px;
+            border-left: 4px solid #667eea;
+        }
+        .message.error { background: #fed7d7; border-left-color: #e53e3e; }
+        .message.success { background: #c6f6d5; border-left-color: #38a169; }
+        .message.info { background: #bee3f8; border-left-color: #3182ce; }
+        .message.bot { background: #e6fffa; border-left-color: #38b2ac; }
+        .timestamp {
+            font-size: 12px;
+            color: #718096;
+            margin-bottom: 5px;
+        }
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 15px;
+            margin: 20px 0;
+        }
+        .stat-card {
+            background: #edf2f7;
+            padding: 15px;
+            border-radius: 8px;
+            text-align: center;
+        }
+        .stat-value {
+            font-size: 24px;
+            font-weight: bold;
+            color: #667eea;
+        }
+        .stat-label {
+            font-size: 12px;
+            color: #718096;
+            text-transform: uppercase;
+        }
+        .chat-section {
+            background: #f7fafc;
+            padding: 20px;
+            border-radius: 10px;
+            margin-top: 20px;
+        }
+        .chat-input {
+            display: flex;
+            gap: 10px;
+            margin-top: 15px;
+        }
+        .chat-input input {
+            flex: 1;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🚀 SPECTRUM - Cliente Final Completo</h1>
+        
+        <div class="grid">
+            <div class="config-section">
+                <h3>Configuración de Conexión</h3>
+                <div class="input-group">
+                    <label for="apiUrl">API Gateway URL:</label>
+                    <input type="text" id="apiUrl" value="https://jgsh83v6k5.execute-api.us-east-1.amazonaws.com/dev">
+                </div>
+                <div class="input-group">
+                    <label for="conversationId">Conversation ID:</label>
+                    <input type="text" id="conversationId" value="conv_01JYASTTJWKTGYQB4PTDJP48WH">
+                </div>
+                <div class="input-group">
+                    <label for="userId">User ID (userSub):</label>
+                    <input type="text" id="userId" value="f4d82438-50f1-706b-c263-2afddf0820cdd">
+                </div>
+            </div>
+            
+            <div class="config-section">
+                <h3>Configuración de Prueba</h3>
+                <div class="input-group">
+                    <label for="testMode">Modo de Prueba:</label>
+                    <select id="testMode">
+                        <option value="hybrid">SSE + Polling Híbrido</option>
+                        <option value="sse">Solo SSE</option>
+                        <option value="polling">Solo Polling</option>
+                    </select>
+                </div>
+                <div class="input-group">
+                    <label for="pollingInterval">Intervalo Polling (ms):</label>
+                    <input type="number" id="pollingInterval" value="2000" min="1000" max="10000">
+                </div>
+                <div class="input-group">
+                    <label for="autoReconnect">Reconexión Automática:</label>
+                    <select id="autoReconnect">
+                        <option value="true">Habilitada</option>
+                        <option value="false">Deshabilitada</option>
+                    </select>
+                </div>
+            </div>
+        </div>
+
+        <div class="input-group">
+            <label for="jwtToken">JWT Token:</label>
+            <textarea id="jwtToken" rows="3">eyJraWQiOiIwQ1JmWGcycGhscXlpRjkwV0xQN0NNN0Y3aUFIcnM2WE50RTl5MjJPV2dzPSIsImFsZyI6IlJTMjU2In0.eyJzdWIiOiJmNGQ4MjQzOC01MGYxLTcwNmItYzI2My0yYWZkZjA4MjBjZGQiLCJpc3MiOiJodHRwczpcL1wvY29nbml0by1pZHAudXMtZWFzdC0xLmFtYXpvbmF3cy5jb21cL3VzLWVhc3QtMV93dTBEeTNUdFAiLCJjbGllbnRfaWQiOiIxNXRnNzliczBjaW80MHZoanR1bmg1dm9oaSIsIm9yaWdpbl9qdGkiOiIyMzQ2ZDE5Ni1mYmZkLTQ1OGMtOTRkOC0wNzU5ODA2YTZiM2YiLCJldmVudF9pZCI6ImJlOTUxZTMyLTEwOGMtNGE4OC04MTYwLWE1YTUwMWFmNTcyNSIsInRva2VuX3VzZSI6ImFjY2VzcyIsInNjb3BlIjoiYXdzLmNvZ25pdG8uc2lnbmluLnVzZXIuYWRtaW4iLCJhdXRoX3RpbWUiOjE3NTA1NjA5MTQsImV4cCI6MTc1MDU2NDUxNCwiaWF0IjoxNzUwNTYwOTE0LCJqdGkiOiI4NGM5YjUyOC1mNmQ2LTRlYjYtODlmMS02NzFkNjNlNTY5MjYiLCJ1c2VybmFtZSI6ImY0ZDgyNDM4LTUwZjEtNzA2Yi1jMjYzLTJhZmRmMDgyMGNkZCJ9.lzwB5SgU12MDM8Uisn1egiPWRygyTnOLt8u878ei3LUGHxWC9M-EVEd37zHcFt_QMpk9BXmjKvYLMk2sxcNKj71j0VBhrnV_R_1z6X7ONc4Ru9hrcV42YGX20Q6UGH0P9DGKZLfmRjdvYv2FMaU6vGqoz9pnznRW7aCynKcI4QB6Gs8kFfjO18R8dA7SIpU9KZgmfiYdbAxsBLFQsPv10wsfY4GzvvT-hmLdJR653RkuOUWhBUC6scz_vfQxOmMfQbrdX9rnVUmjjVqjS-3JmIP9jiLXc9tQcCspGz_7LKm2umPmyw-Am8lyRPxeADsAR81iXPgB7X6_AZVrKvg3CA</textarea>
+        </div>
+
+        <div class="button-group">
+            <button class="btn-primary" onclick="startConnection()">🚀 Iniciar Conexión</button>
+            <button class="btn-secondary" onclick="disconnect()">❌ Desconectar</button>
+            <button class="btn-success" onclick="testEndpoints()">🧪 Test Endpoints</button>
+            <button class="btn-secondary" onclick="clearMessages()">🧹 Limpiar</button>
+            <button class="btn-success" onclick="sendTestMessage()">💬 Enviar Mensaje</button>
+        </div>
+
+        <div id="connectionStatus" class="status disconnected">
+            ❌ Desconectado - Listo para conectar
+        </div>
+
+        <div class="stats">
+            <div class="stat-card">
+                <div class="stat-value" id="sseEvents">0</div>
+                <div class="stat-label">Eventos SSE</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" id="pollRequests">0</div>
+                <div class="stat-label">Requests Polling</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" id="reconnects">0</div>
+                <div class="stat-label">Reconexiones</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" id="botMessages">0</div>
+                <div class="stat-label">Mensajes Bot</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" id="uptime">0s</div>
+                <div class="stat-label">Tiempo Activo</div>
+            </div>
+        </div>
+
+        <div class="chat-section">
+            <h3>💬 Chat en Tiempo Real</h3>
+            <div class="chat-input">
+                <input type="text" id="messageInput" placeholder="Escribe tu mensaje aquí..." onkeypress="handleKeyPress(event)">
+                <button class="btn-primary" onclick="sendMessage()">Enviar</button>
+            </div>
+        </div>
+
+        <h3>📨 Mensajes y Eventos</h3>
+        <div id="messages" class="messages"></div>
+    </div>
+
+    <script>
+        let eventSource = null;
+        let pollingInterval = null;
+        let connectionStartTime = null;
+        let uptimeInterval = null;
+        let lastMessageTimestamp = null;
+        
+        // Contadores
+        let sseEventCount = 0;
+        let pollRequestCount = 0;
+        let reconnectCount = 0;
+        let botMessageCount = 0;
+
+        function updateStatus(status, message) {
+            const statusEl = document.getElementById('connectionStatus');
+            statusEl.className = `status ${status}`;
+            statusEl.textContent = message;
+        }
+
+        function addMessage(type, content, source = 'SYSTEM') {
+            const messagesEl = document.getElementById('messages');
+            const messageEl = document.createElement('div');
+            messageEl.className = `message ${type}`;
+            
+            const timestamp = new Date().toLocaleTimeString();
+            messageEl.innerHTML = `
+                <div class="timestamp">${timestamp} - ${source}</div>
+                <div>${content}</div>
+            `;
+            
+            messagesEl.appendChild(messageEl);
+            messagesEl.scrollTop = messagesEl.scrollHeight;
+
+            if (type === 'bot') {
+                botMessageCount++;
+                updateStats();
+            }
+        }
+
+        function updateStats() {
+            document.getElementById('sseEvents').textContent = sseEventCount;
+            document.getElementById('pollRequests').textContent = pollRequestCount;
+            document.getElementById('reconnects').textContent = reconnectCount;
+            document.getElementById('botMessages').textContent = botMessageCount;
+        }
+
+        function startUptime() {
+            connectionStartTime = Date.now();
+            uptimeInterval = setInterval(() => {
+                if (connectionStartTime) {
+                    const uptime = Math.floor((Date.now() - connectionStartTime) / 1000);
+                    document.getElementById('uptime').textContent = `${uptime}s`;
+                }
+            }, 1000);
+        }
+
+        function stopUptime() {
+            if (uptimeInterval) {
+                clearInterval(uptimeInterval);
+                uptimeInterval = null;
+            }
+            connectionStartTime = null;
+            document.getElementById('uptime').textContent = '0s';
+        }
+
+        function startConnection() {
+            const mode = document.getElementById('testMode').value;
+            
+            disconnect(); // Limpiar conexiones existentes
+            
+            switch(mode) {
+                case 'hybrid':
+                    connectHybrid();
+                    break;
+                case 'sse':
+                    connectSSE();
+                    break;
+                case 'polling':
+                    startPolling();
+                    break;
+            }
+            
+            startUptime();
+            addMessage('info', `Iniciando conexión en modo: ${mode.toUpperCase()}`);
+        }
+
+        function connectSSE() {
+            const apiUrl = document.getElementById('apiUrl').value;
+            const conversationId = document.getElementById('conversationId').value;
+            const userId = document.getElementById('userId').value;
+            const token = document.getElementById('jwtToken').value;
+
+            const url = `${apiUrl}/conversations/${conversationId}/listen?userId=${userId}`;
+            
+            updateStatus('connecting', '🔄 Conectando SSE...');
+            
+            eventSource = new EventSource(url, {
+                headers: {
+                    'Authorization': `Bearer ${token}`
+                }
+            });
+
+            eventSource.onopen = function(event) {
+                updateStatus('connected', '✅ SSE Conectado');
+                addMessage('success', 'Conexión SSE establecida');
+                sseEventCount++;
+                updateStats();
+            };
+
+            eventSource.onmessage = function(event) {
+                try {
+                    const data = JSON.parse(event.data);
+                    addMessage('bot', `${JSON.stringify(data, null, 2)}`, 'SSE');
+                } catch (e) {
+                    addMessage('info', `${event.data}`, 'SSE');
+                }
+                sseEventCount++;
+                updateStats();
+            };
+
+            eventSource.onerror = function(error) {
+                updateStatus('disconnected', '❌ Error SSE');
+                addMessage('error', `Error SSE: ${JSON.stringify(error)}`);
+                
+                if (document.getElementById('autoReconnect').value === 'true') {
+                    setTimeout(() => {
+                        startPolling();
+                        reconnectCount++;
+                        updateStats();
+                    }, 2000);
+                }
+            };
+        }
+
+        function startPolling() {
+            const apiUrl = document.getElementById('apiUrl').value;
+            const conversationId = document.getElementById('conversationId').value;
+            const userId = document.getElementById('userId').value;
+            const token = document.getElementById('jwtToken').value;
+            const interval = parseInt(document.getElementById('pollingInterval').value);
+
+            updateStatus('connected', '🔄 Modo Polling Activo');
+            
+            pollingInterval = setInterval(async () => {
+                try {
+                    let url = `${apiUrl}/conversations/${conversationId}/poll?userId=${userId}`;
+                    if (lastMessageTimestamp) {
+                        url += `&since=${encodeURIComponent(lastMessageTimestamp)}`;
+                    }
+
+                    const response = await fetch(url, {
+                        headers: {
+                            'Authorization': `Bearer ${token}`,
+                            'Accept': 'application/json'
+                        }
+                    });
+
+                    pollRequestCount++;
+                    updateStats();
+
+                    if (response.ok) {
+                        const data = await response.json();
+                        
+                        if (data.messages && data.messages.length > 0) {
+                            data.messages.forEach(message => {
+                                addMessage('bot', `${JSON.stringify(message, null, 2)}`, 'POLL');
+                            });
+                            lastMessageTimestamp = data.timestamp;
+                        }
+                    } else {
+                        addMessage('error', `Error polling: ${response.status}`, 'POLL');
+                    }
+                } catch (error) {
+                    addMessage('error', `Error polling: ${error.message}`, 'POLL');
+                }
+            }, interval);
+        }
+
+        function connectHybrid() {
+            connectSSE();
+            // El SSE manejará el fallback a polling automáticamente
+        }
+
+        function disconnect() {
+            if (eventSource) {
+                eventSource.close();
+                eventSource = null;
+            }
+            
+            if (pollingInterval) {
+                clearInterval(pollingInterval);
+                pollingInterval = null;
+            }
+            
+            stopUptime();
+            updateStatus('disconnected', '❌ Desconectado');
+        }
+
+        async function testEndpoints() {
+            const apiUrl = document.getElementById('apiUrl').value;
+            const conversationId = document.getElementById('conversationId').value;
+            const userId = document.getElementById('userId').value;
+            const token = document.getElementById('jwtToken').value;
+
+            addMessage('info', 'Iniciando test de endpoints...');
+
+            // Test polling endpoint
+            try {
+                const pollResponse = await fetch(`${apiUrl}/conversations/${conversationId}/poll?userId=${userId}`, {
+                    headers: { 'Authorization': `Bearer ${token}`, 'Accept': 'application/json' }
+                });
+                
+                if (pollResponse.ok) {
+                    addMessage('success', `✅ Polling endpoint: ${pollResponse.status}`, 'TEST');
+                } else {
+                    addMessage('error', `❌ Polling endpoint: ${pollResponse.status}`, 'TEST');
+                }
+            } catch (error) {
+                addMessage('error', `❌ Polling endpoint error: ${error.message}`, 'TEST');
+            }
+
+            // Test SSE endpoint
+            try {
+                const sseResponse = await fetch(`${apiUrl}/conversations/${conversationId}/listen?userId=${userId}`, {
+                    headers: { 'Authorization': `Bearer ${token}`, 'Accept': 'text/event-stream' }
+                });
+                
+                if (sseResponse.ok) {
+                    addMessage('success', `✅ SSE endpoint: ${sseResponse.status}`, 'TEST');
+                } else {
+                    addMessage('error', `❌ SSE endpoint: ${sseResponse.status}`, 'TEST');
+                }
+            } catch (error) {
+                addMessage('error', `❌ SSE endpoint error: ${error.message}`, 'TEST');
+            }
+        }
+
+        async function sendMessage() {
+            const messageText = document.getElementById('messageInput').value.trim();
+            if (!messageText) return;
+
+            const apiUrl = document.getElementById('apiUrl').value;
+            const conversationId = document.getElementById('conversationId').value;
+            const token = document.getElementById('jwtToken').value;
+
+            try {
+                const response = await fetch(`${apiUrl}/conversations/${conversationId}/messages`, {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        message: messageText,
+                        type: 'text'
+                    })
+                });
+
+                if (response.ok) {
+                    addMessage('success', `Mensaje enviado: "${messageText}"`, 'CHAT');
+                    document.getElementById('messageInput').value = '';
+                } else {
+                    addMessage('error', `Error enviando mensaje: ${response.status}`, 'CHAT');
+                }
+            } catch (error) {
+                addMessage('error', `Error enviando mensaje: ${error.message}`, 'CHAT');
+            }
+        }
+
+        function sendTestMessage() {
+            document.getElementById('messageInput').value = 'Hola, este es un mensaje de prueba';
+            sendMessage();
+        }
+
+        function handleKeyPress(event) {
+            if (event.key === 'Enter') {
+                sendMessage();
+            }
+        }
+
+        function clearMessages() {
+            document.getElementById('messages').innerHTML = '';
+            sseEventCount = 0;
+            pollRequestCount = 0;
+            reconnectCount = 0;
+            botMessageCount = 0;
+            updateStats();
+        }
+
+        // Cleanup al cerrar la página
+        window.addEventListener('beforeunload', function() {
+            disconnect();
+        });
+    </script>
+</body>
+</html>

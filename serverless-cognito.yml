@@ -36,10 +36,10 @@ custom:
         requireSymbols: true
         temporaryPasswordValidityDays: 7
     userPoolClient:
-      accessTokenValidity: 1
-      idTokenValidity: 1
-      refreshTokenValidity: 30
-      authSessionValidity: 3
+      accessTokenValidity: 8    # 8 horas - mejor para desarrollo y testing
+      idTokenValidity: 8        # 8 horas - mejor para desarrollo y testing
+      refreshTokenValidity: 30  # 30 días - mantener igual
+      authSessionValidity: 3    # 3 minutos - mantener igual
     alarms:
       signInErrorsThreshold: 10
       signInErrorsEvaluationPeriods: 2
@@ -48,28 +48,3 @@ custom:
 
 resources:
   - ${file(infrastructure/cognito/cognito.yml)}
-
-# outputs:
-#   UserPoolId:
-#     Value:
-#       Ref: SpectraUserPool
-#     Export:
-#       Name: ${self:custom.resourcePrefix}-cognito-UserPoolId
-
-#   UserPoolClientId:
-#     Value:
-#       Ref: SpectraUserPoolClient
-#     Export:
-#       Name: ${self:custom.resourcePrefix}-cognito-UserPoolClientId
-
-#   UserPoolArn:
-#     Value:
-#       Fn::GetAtt: [SpectraUserPool, Arn]
-#     Export:
-#       Name: ${self:custom.resourcePrefix}-cognito-UserPoolArn
-
-#   UserPoolDomain:
-#     Value:
-#       Fn::Sub: "${self:custom.resourcePrefix}-auth.auth.${AWS::Region}.amazoncognito.com"
-#     Export:
-#       Name: ${self:custom.resourcePrefix}-cognito-UserPoolDomain

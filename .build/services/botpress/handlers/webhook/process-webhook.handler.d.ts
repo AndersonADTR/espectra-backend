@@ -1,3 +1,0 @@
-import { Handler } from 'aws-lambda';
-export declare const handler: Handler;
-//# sourceMappingURL=process-webhook.handler.d.ts.map

@@ -50,6 +50,24 @@ const meHandler: APIGatewayProxyHandler = async (event) => {
       })
     };
 
+  } catch (error) {
+    logger.error('Error retrieving user information', { error });
+
+    return {
+      statusCode: 500,
+      headers: {
+        'Content-Type': 'application/json',
+        'Access-Control-Allow-Origin': '*'
+      },
+      body: JSON.stringify({
+        success: false,
+        message: 'An error occurred while retrieving user information',
+        data: null,
+        errors: {
+          server: ['Unable to retrieve user information. Please try again later.']
+        }
+      })
+    };
   } finally {
     await authService.cleanup();
   }

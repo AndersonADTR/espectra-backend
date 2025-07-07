@@ -106,9 +106,8 @@ Resources:
   ApiDeployment:
     Type: AWS::ApiGateway::Deployment
     DependsOn:
-      - CreateSessionMethod
-      - SendMessageMethod
       - RestApiId
+      - RestApiAuthorizer
     Properties:
       RestApiId: !Ref RestApiId
       Description: Deployment for ${self:provider.stage} stage

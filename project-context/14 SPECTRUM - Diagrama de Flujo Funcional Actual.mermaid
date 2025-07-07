@@ -1,0 +1,162 @@
+```mermaid
+graph TD
+    %% SPECTRUM - Flujo Funcional Actual (100% Operativo)
+    %% Fecha: 24 de Junio, 2025
+    %% Estado: PRODUCCIÓN
+
+    %% Content Creator y App Móvil
+    CC[📱 Content Creator<br/>App Móvil]
+    
+    %% API Gateway
+    AG[🌐 API Gateway<br/>REST Endpoints<br/>✅ CORS Configurado]
+    
+    %% Authorizer
+    AUTH[🔐 JWT Authorizer<br/>✅ Wildcard Policy<br/>8 horas duración]
+    
+    %% Cognito
+    COG[👤 AWS Cognito<br/>✅ Autenticación<br/>Tokens 8h + Refresh 30d]
+    
+    %% Lambda Functions
+    LOGIN[⚡ Login Function<br/>✅ JWT Generation]
+    CONV[⚡ Conversations Function<br/>✅ CRUD Operations]
+    MSG[⚡ Messages Function<br/>✅ Send to Botpress]
+    POLL[⚡ Polling Function<br/>✅ 2s Interval<br/>Bot Messages Only]
+    
+    %% DynamoDB
+    DB_USERS[🗄️ Users Table<br/>✅ User Data<br/>+ botpressUserKeyId]
+    DB_CONV[🗄️ Conversations Table<br/>✅ Active Conversations]
+    DB_CTX[🗄️ Context Table<br/>✅ Persistent Context]
+    
+    %% Botpress
+    BP[🤖 Botpress Cloud<br/>✅ Chat API<br/>Content Creation Specialist]
+    
+    %% CloudWatch
+    CW[📊 CloudWatch<br/>✅ Logs & Monitoring<br/>24/7 Observability]
+
+    %% FLUJO PRINCIPAL FUNCIONAL
+    
+    %% 1. Autenticación
+    CC -->|1. POST /auth/login| AG
+    AG --> AUTH
+    AUTH --> LOGIN
+    LOGIN --> COG
+    LOGIN --> DB_USERS
+    LOGIN -->|✅ JWT Token 8h| CC
+    
+    %% 2. Gestión de Conversaciones
+    CC -->|2. GET /conversations<br/>Authorization: Bearer| AG
+    AG --> AUTH
+    AUTH --> CONV
+    CONV --> DB_CONV
+    CONV -->|✅ Active Conversation| CC
+    
+    %% 3. Envío de Mensaje
+    CC -->|3. POST /conversations/{id}/messages<br/>"¿Cómo hacer videos virales?"| AG
+    AG --> AUTH
+    AUTH --> MSG
+    MSG --> DB_USERS
+    MSG -->|x-user-key| BP
+    BP -->|✅ Message Stored| MSG
+    MSG -->|✅ Success| CC
+    
+    %% 4. Polling para Respuesta
+    CC -->|4. GET /conversations/{id}/poll<br/>Every 2 seconds| AG
+    AG --> AUTH
+    AUTH --> POLL
+    POLL --> DB_USERS
+    POLL -->|x-user-key| BP
+    BP -->|✅ Bot Response<br/>"Tips para TikTok viral..."| POLL
+    POLL -->|✅ Filtered Bot Messages<br/>X-Spectrum-Platform| CC
+    
+    %% Logging y Monitoreo
+    LOGIN --> CW
+    CONV --> CW
+    MSG --> CW
+    POLL --> CW
+    
+    %% Estilos
+    classDef functional fill:#4CAF50,stroke:#2E7D32,stroke-width:3px,color:#fff
+    classDef infrastructure fill:#2196F3,stroke:#1565C0,stroke-width:2px,color:#fff
+    classDef storage fill:#FF9800,stroke:#E65100,stroke-width:2px,color:#fff
+    classDef external fill:#9C27B0,stroke:#6A1B9A,stroke-width:2px,color:#fff
+    classDef monitoring fill:#607D8B,stroke:#37474F,stroke-width:2px,color:#fff
+    
+    class CC,LOGIN,CONV,MSG,POLL functional
+    class AG,AUTH,COG infrastructure
+    class DB_USERS,DB_CONV,DB_CTX storage
+    class BP external
+    class CW monitoring
+```
+
+## 📊 **MÉTRICAS DE FLUJO ACTUAL**
+
+### **⚡ Latencias Medidas**
+- **Autenticación (Paso 1):** < 500ms
+- **Obtener conversación (Paso 2):** < 300ms  
+- **Enviar mensaje (Paso 3):** < 1 segundo
+- **Polling respuesta (Paso 4):** < 300ms
+- **Respuesta del bot:** 2-5 segundos
+
+### **🔄 Frecuencias Optimizadas**
+- **Polling interval:** 2 segundos (perfecto para móviles)
+- **Token refresh:** Automático antes de expiración
+- **Context persistence:** Indefinida
+- **Error retry:** Exponential backoff
+
+### **📱 Experiencia Content Creator**
+1. **Login una vez** → Token válido 8 horas
+2. **Pregunta sobre content creation** → Envío inmediato
+3. **Polling automático** → Respuesta en 2-5 segundos
+4. **Contexto mantenido** → Conversación fluida
+
+## 🎯 **COMPONENTES FUNCIONALES VALIDADOS**
+
+### **✅ Autenticación Robusta**
+- JWT Authorizer con wildcard policy
+- Tokens de 8 horas sin cache issues
+- Refresh tokens de 30 días
+- Validación consistente en todos endpoints
+
+### **✅ Polling Optimizado**
+- Intervalo de 2 segundos para UX móvil
+- Filtrado inteligente: solo mensajes del bot
+- Headers SPECTRUM específicos
+- Contexto enriquecido para apps móviles
+
+### **✅ Integración Botpress**
+- Chat API completamente funcional
+- x-user-key authentication desde DynamoDB
+- Bot especializado en content creation
+- Respuestas específicas para TikTok, Instagram, YouTube
+
+### **✅ Persistencia de Datos**
+- DynamoDB para usuarios y conversaciones
+- Botpress Cloud para mensajes y contexto
+- Contexto indefinido entre sesiones
+- Backup automático en la nube
+
+## 🚀 **PRÓXIMAS INTEGRACIONES**
+
+### **🔄 Human Handoff (Preparado)**
+```mermaid
+graph LR
+    POLL[Polling Function] -->|Detect Handoff Need| QUEUE[Advisor Queue]
+    QUEUE --> ADVISOR[Human Advisor]
+    ADVISOR -->|Response| POLL
+```
+
+### **📈 Analytics Avanzados**
+```mermaid
+graph LR
+    POLL[Polling Function] -->|Metrics| ANALYTICS[Analytics Service]
+    ANALYTICS --> DASHBOARD[Admin Dashboard]
+```
+
+### **🎬 Especialización por Creator Type**
+```mermaid
+graph LR
+    CC[Content Creator] -->|Creator Type| ROUTER[Smart Router]
+    ROUTER -->|TikTok| BP_TIKTOK[TikTok Specialist Bot]
+    ROUTER -->|YouTube| BP_YOUTUBE[YouTube Specialist Bot]
+    ROUTER -->|Instagram| BP_INSTAGRAM[Instagram Specialist Bot]
+```

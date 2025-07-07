@@ -37,25 +37,3 @@ custom:
 
 resources:
   - ${file(infrastructure/sns/sns.yml)}
-
-# outputs:
-#   HighPriorityTopicArn:
-#     Description: ARN of the high priority SNS topic
-#     Value:
-#       Ref: HighPriorityTopic
-#     Export:
-#       Name: ${self:custom.resourcePrefix}-sns-HighPriorityTopicArn
-
-#   MediumPriorityTopicArn:
-#     Description: ARN of the medium priority SNS topic
-#     Value:
-#       Ref: MediumPriorityTopic
-#     Export:
-#       Name: ${self:custom.resourcePrefix}-sns-MediumPriorityTopicArn
-
-#   LowPriorityTopicArn:
-#     Description: ARN of the low priority SNS topic
-#     Value:
-#       Ref: LowPriorityTopic
-#     Export:
-#       Name: ${self:custom.resourcePrefix}-sns-LowPriorityTopicArn

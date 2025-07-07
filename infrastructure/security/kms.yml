@@ -5,7 +5,7 @@ Resources:
     DeletionPolicy: Retain
     UpdateReplacePolicy: Retain
     Properties:
-      Description: "${file(./serverless-common.yml):custom.resourcePrefix} main system encryption key"
+      Description: "${self:custom.resourcePrefix} main system encryption key"
       EnableKeyRotation: true
       PendingWindowInDays: 30
       MultiRegion: false
@@ -48,20 +48,20 @@ Resources:
             Resource: '*'
       Tags:
         - Key: Project
-          Value: ${file(./serverless-common.yml):custom.projectName}
+          Value: ${self:custom.projectName}
         - Key: Environment
-          Value: ${file(./serverless-common.yml):custom.stage}
+          Value: ${self:custom.stage}
         - Key: ManagedBy
           Value: serverless
         - Key: Company
-          Value: ${file(./serverless-common.yml):custom.company}
+          Value: ${self:custom.company}
         - Key: Purpose
           Value: SystemEncryption
 
   SystemKMSAlias:
     Type: AWS::KMS::Alias
     Properties:
-      AliasName: alias/${file(./serverless-common.yml):custom.resourcePrefix}-system
+      AliasName: alias/${self:custom.resourcePrefix}-system
       TargetKeyId:
         Ref: SystemKMSKey
 
@@ -71,7 +71,7 @@ Resources:
     DeletionPolicy: Retain
     UpdateReplacePolicy: Retain
     Properties:
-      Description: "${file(./serverless-common.yml):custom.resourcePrefix} secrets encryption key"
+      Description: "${self:custom.resourcePrefix} secrets encryption key"
       EnableKeyRotation: true
       PendingWindowInDays: 30
       MultiRegion: false
@@ -100,20 +100,20 @@ Resources:
             Resource: '*'
       Tags:
         - Key: Project
-          Value: ${file(./serverless-common.yml):custom.projectName}
+          Value: ${self:custom.projectName}
         - Key: Environment
-          Value: ${file(./serverless-common.yml):custom.stage}
+          Value: ${self:custom.stage}
         - Key: ManagedBy
           Value: serverless
         - Key: Company
-          Value: ${file(./serverless-common.yml):custom.company}
+          Value: ${self:custom.company}
         - Key: Purpose
           Value: SecretsEncryption
 
   SecretsKMSAlias:
     Type: AWS::KMS::Alias
     Properties:
-      AliasName: alias/${file(./serverless-common.yml):custom.resourcePrefix}-secrets
+      AliasName: alias/${self:custom.resourcePrefix}-secrets
       TargetKeyId:
         Ref: SecretsKMSKey
 
@@ -123,7 +123,7 @@ Resources:
     DeletionPolicy: Retain
     UpdateReplacePolicy: Retain
     Properties:
-      Description: "${file(./serverless-common.yml):custom.resourcePrefix} websocket encryption key"
+      Description: "${self:custom.resourcePrefix} websocket encryption key"
       EnableKeyRotation: true
       PendingWindowInDays: 30
       MultiRegion: false
@@ -153,20 +153,20 @@ Resources:
             Resource: '*'
       Tags:
         - Key: Project
-          Value: ${file(./serverless-common.yml):custom.projectName}
+          Value: ${self:custom.projectName}
         - Key: Environment
-          Value: ${file(./serverless-common.yml):custom.stage}
+          Value: ${self:custom.stage}
         - Key: ManagedBy
           Value: serverless
         - Key: Company
-          Value: ${file(./serverless-common.yml):custom.company}
+          Value: ${self:custom.company}
         - Key: Purpose
           Value: WebSocketEncryption
 
   WebSocketKMSAlias:
     Type: AWS::KMS::Alias
     Properties:
-      AliasName: alias/${file(./serverless-common.yml):custom.resourcePrefix}-websocket
+      AliasName: alias/${self:custom.resourcePrefix}-websocket
       TargetKeyId:
         Ref: WebSocketKMSKey
 

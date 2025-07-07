@@ -34,7 +34,7 @@ export const handler: Handler = async () => {
       checkApiGatewayHealth(cloudWatch),
       checkLambdaHealth(cloudWatch),
       checkDynamoDBHealth(cloudWatch),
-      checkWebSocketHealth(cloudWatch, dynamoDbClient),
+      // TODO: Add SSE health check in Phase 2
       checkBotpressIntegrationHealth(cloudWatch, dynamoDbClient)
     ]);
     
@@ -282,92 +282,8 @@ async function checkDynamoDBHealth(cloudWatch: CloudWatchClient): Promise<Health
   };
 }
 
-/**
- * Verifica la salud de las conexiones WebSocket
- */
-async function checkWebSocketHealth(
-  cloudWatch: CloudWatchClient,
-  dynamoDb: DynamoDBDocumentClient
-): Promise<HealthCheckResult> {
-  // Nombre de la tabla de conexiones WebSocket
-  const connectionsTableName = process.env.CONNECTIONS_TABLE || 
-    `${process.env.RESOURCE_PREFIX}-websocket-connections`;
-  
-  // Contar conexiones activas
-  const activeConnectionsResult = await dynamoDb.send(new ScanCommand({
-    TableName: connectionsTableName,
-    Select: 'COUNT'
-  }));
-  
-  const activeConnections = activeConnectionsResult.Count || 0;
-  
-  // Métricas de WebSocket API en CloudWatch
-  const metrics = [
-    { name: 'ConnectCount', id: 'connects' },
-    { name: 'MessageCount', id: 'messages' },
-    { name: 'ClientError', id: 'clientErrors' },
-    { name: 'ExecutionError', id: 'executionErrors' },
-    { name: 'IntegrationLatency', id: 'latency' }
-  ];
-  
-  // Construir consulta de métricas
-  const metricDataQueries = metrics.map((metric, index) => ({
-    Id: `m${index}`,
-    MetricStat: {
-      Metric: {
-        Namespace: 'AWS/ApiGateway',
-        MetricName: metric.name,
-        Dimensions: [
-          {
-            Name: 'ApiId',
-            Value: process.env.WEBSOCKET_API_ID || 'spectrum-ws'
-          }
-        ]
-      },
-      Period: 300, // 5 minutos
-      Stat: metric.name === 'IntegrationLatency' ? 'Average' : 'Sum'
-    }
-  }));
-  
-  // Obtener datos de métricas
-  const result = await cloudWatch.send(new GetMetricDataCommand({
-    StartTime: new Date(Date.now() - 15 * 60 * 1000), // 15 minutos atrás
-    EndTime: new Date(),
-    MetricDataQueries: metricDataQueries
-  }));
-  
-  // Procesar resultados
-  const metricValues: Record<string, number> = {
-    activeConnections
-  };
-  
-  result.MetricDataResults?.forEach((metricData, index) => {
-    const metricName = metrics[index].id;
-    // Usar el último valor disponible o 0
-    const lastValue = metricData.Values?.length ? 
-      metricData.Values[metricData.Values.length - 1] : 0;
-    metricValues[metricName] = lastValue || 0;
-  });
-  
-  // Determinar estado
-  let status: 'HEALTHY' | 'DEGRADED' | 'UNHEALTHY' = 'HEALTHY';
-  
-  // Criterios de salud
-  if (metricValues.executionErrors > 0) {
-    status = 'UNHEALTHY';
-  } else if (metricValues.clientErrors / (metricValues.messages || 1) > 0.1) {
-    status = 'DEGRADED'; // >10% de errores de cliente
-  } else if (metricValues.latency > 300) { // >300ms promedio
-    status = 'DEGRADED';
-  }
-  
-  return {
-    service: 'WebSocket',
-    status,
-    metrics: metricValues,
-    timestamp: new Date().toISOString()
-  };
-}
+// TODO: Implement SSE health check in Phase 2
+// WebSocket health check removed as part of migration to SSE
 
 /**
  * Verifica la salud de la integración con Botpress

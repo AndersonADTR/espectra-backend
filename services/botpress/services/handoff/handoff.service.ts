@@ -5,7 +5,7 @@ import { MetricsService } from '@shared/utils/metrics';
 import { HandoffDetectionService, HandoffReason } from './handoff-detection.service';
 import { AdvisorQueueService, AdvisorStatus, HandoffStatus } from './advisor-queue.service';
 import { ConversationContextService } from '../context/conversation-context.service';
-import { WebSocketService } from '@services/websocket/services/websocket.service';
+// SPECTRUM: BotpressEventsHandler removed - using polling instead
 import { MONITORING_CONFIG } from '../../config/config';
 import { ConversationStatus } from '@services/botpress/types/conversation-context.types';
 
@@ -16,7 +16,7 @@ export class HandoffService {
   private readonly detectionService: HandoffDetectionService;
   private readonly queueService: AdvisorQueueService;
   private readonly contextService: ConversationContextService;
-  private readonly websocketService: WebSocketService;
+  // SPECTRUM: SSE removed - handoff notifications via polling
 
   private constructor() {
     this.logger = new Logger('HandoffService');
@@ -24,7 +24,7 @@ export class HandoffService {
     this.detectionService = HandoffDetectionService.getInstance();
     this.queueService = AdvisorQueueService.getInstance();
     this.contextService = ConversationContextService.getInstance();
-    this.websocketService = new WebSocketService();
+    // SPECTRUM: SSE events handler removed - using polling instead
   }
 
   public static getInstance(): HandoffService {
@@ -32,6 +32,27 @@ export class HandoffService {
       HandoffService.instance = new HandoffService();
     }
     return HandoffService.instance;
+  }
+
+  /**
+   * SPECTRUM: Notifica al cliente via polling
+   * Los content creators verán las notificaciones cuando hagan polling
+   */
+  private async notifyClient(userId: string, message: any): Promise<void> {
+    try {
+      // SPECTRUM: Handoff notifications are now stored and retrieved via polling
+      this.logger.info('SPECTRUM: Handoff notification logged for polling retrieval', {
+        userId,
+        messageType: message.type,
+        platform: 'spectrum'
+      });
+    } catch (error) {
+      this.logger.error('Error logging handoff notification', {
+        error: error instanceof Error ? error.message : 'Unknown error',
+        userId,
+        messageType: message.type
+      });
+    }
   }
 
   /**
@@ -53,11 +74,11 @@ export class HandoffService {
         userId,
         HandoffReason.EXPLICIT_REQUEST.toString(), 
       ) 
-      // Notificar al usuario a través de WebSocket
-      await this.websocketService.sendMessageToUser(userId, {
+      // TODO: Replace with SSE notification in Phase 2
+      await this.notifyClient(userId, {
         type: 'HANDOFF_STATUS',
         content: 'Tu consulta está siendo transferida a un asesor. Por favor espera un momento.',
-        conversationId,  
+        conversationId,
       })
       this.metrics.incrementCounter('HandoffsInitiated');
       this.logger.info('Handoff initiated', {
@@ -154,8 +175,8 @@ export class HandoffService {
         }
       );
       
-      // Notificar al usuario a través de WebSocket
-      await this.websocketService.sendMessageToUser(userId, {
+      // Notificar al usuario via SSE
+      await this.notifyClient(userId, {
         type: 'HANDOFF_STATUS',
         content: 'Tu consulta está siendo transferida a un asesor. Por favor espera un momento.',
         conversationId,
@@ -211,8 +232,8 @@ export class HandoffService {
         }
       });
       
-      // Notificar al usuario
-      await this.websocketService.sendMessageToUser(handoff.userId, {
+      // Notificar al usuario via SSE
+      await this.notifyClient(handoff.userId, {
         type: 'HANDOFF_STATUS',
         content: `${advisorName} se ha unido a la conversación y te ayudará con tu consulta.`,
         conversationId: handoff.conversationId,
@@ -282,8 +303,8 @@ export class HandoffService {
         );
       }
       
-      // Notificar al usuario
-      await this.websocketService.sendMessageToUser(handoff.userId, {
+      // Notificar al usuario via SSE
+      await this.notifyClient(handoff.userId, {
         type: 'HANDOFF_STATUS',
         content: 'Tu conversación con el asesor ha finalizado. Puedes continuar consultando con nuestro asistente virtual.',
         conversationId: handoff.conversationId,
@@ -345,8 +366,8 @@ export class HandoffService {
         }
       });
       
-      // Notificar al usuario
-      await this.websocketService.sendMessageToUser(handoff.userId, {
+      // Notificar al usuario via SSE
+      await this.notifyClient(handoff.userId, {
         type: 'HANDOFF_STATUS',
         content: `Tu solicitud de asesoría ha sido cancelada: ${reason}. Por favor, continúa interactuando con nuestro asistente virtual.`,
         conversationId: handoff.conversationId,

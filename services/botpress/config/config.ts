@@ -66,19 +66,8 @@ export const MONITORING_CONFIG = {
       INACTIVITY_TIMEOUT: parseInt(process.env.HANDOFF_INACTIVITY_TIMEOUT || '600')
     },
     
-    /**
-     * Configuración para el sistema de conexiones websocket
-     */
-    WEBSOCKET: {
-      // Intervalo de ping para mantener conexiones activas (milisegundos)
-      PING_INTERVAL: parseInt(process.env.WEBSOCKET_PING_INTERVAL || '30000'),
-      
-      // Tiempo máximo sin actividad antes de considerar una conexión como obsoleta (segundos)
-      CONNECTION_TTL: parseInt(process.env.WEBSOCKET_CONNECTION_TTL || '86400'),
-      
-      // Número máximo de reintentos para envío de mensajes
-      MAX_RETRIES: parseInt(process.env.WEBSOCKET_MAX_RETRIES || '3')
-    },
+    // TODO: Add SSE configuration in Phase 2
+    // WebSocket configuration removed as part of migration to SSE
     
     /**
      * Configuración para la integración con Botpress

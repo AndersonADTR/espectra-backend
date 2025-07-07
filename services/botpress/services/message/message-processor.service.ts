@@ -6,7 +6,7 @@ import { MetricsService } from '@shared/utils/metrics';
 import { ConversationContextService } from '../context/conversation-context.service';
 import { TokenManagementService } from '../token/token-management.service';
 import { BotpressService } from '../botpress/botpress.service';
-import { WebSocketService } from '@services/websocket/services/websocket.service';
+// SPECTRUM: SSE Manager removed - using polling instead
 import { BotpressMessageTransformer } from '../botpress/transformers/message-transformer.service';
 import { ConversationStatus, ConversationType } from '../../types/conversation-context.types';
 import { HandoffDetectionService } from '../handoff/handoff-detection.service';
@@ -35,7 +35,7 @@ export class MessageProcessorService {
   private readonly contextService: ConversationContextService;
   private readonly tokenService: TokenManagementService;
   private readonly botpressService: BotpressService;
-  private readonly websocketService: WebSocketService;
+  // SPECTRUM: SSE Manager removed - using polling instead
   private readonly handoffDetectionService: HandoffDetectionService;
   private readonly messageTransformer: BotpressMessageTransformer;
   private readonly logger: Logger;
@@ -45,7 +45,7 @@ export class MessageProcessorService {
     this.contextService = ConversationContextService.getInstance();
     this.tokenService = TokenManagementService.getInstance();
     this.botpressService = BotpressService.getInstance();
-    this.websocketService = new WebSocketService();
+    // SPECTRUM: SSE Manager removed - messages retrieved via polling
     this.handoffDetectionService = HandoffDetectionService.getInstance();
     this.messageTransformer = new BotpressMessageTransformer();
     this.logger = new Logger('MessageProcessorService');
@@ -57,6 +57,32 @@ export class MessageProcessorService {
       MessageProcessorService.instance = new MessageProcessorService();
     }
     return MessageProcessorService.instance;
+  }
+
+  /**
+   * SPECTRUM: Notifica al cliente via polling
+   * Los content creators verán las respuestas cuando hagan polling
+   */
+  private async notifyClient(userId: string, message: any): Promise<void> {
+    try {
+      // SPECTRUM: Messages are now stored in Botpress and retrieved via polling
+      this.logger.info('SPECTRUM: Message processed for polling retrieval', {
+        userId,
+        messageType: message.type,
+        conversationId: message.conversationId,
+        platform: 'spectrum'
+      });
+        metadata: message.metadata
+      });
+
+      this.logger.debug('SSE notification sent', { userId, messageType: message.type });
+    } catch (error) {
+      this.logger.error('Error sending SSE notification', {
+        error: error instanceof Error ? error.message : 'Unknown error',
+        userId,
+        messageType: message.type
+      });
+    }
   }
 
   /**
@@ -97,9 +123,9 @@ export class MessageProcessorService {
         
         this.metrics.incrementCounter('InsufficientTokens');
         
-        // Notificar al usuario sobre tokens insuficientes
-        if (message.connectionId) {
-          await this.websocketService.sendMessage(message.connectionId, {
+        // Notificar al usuario via SSE
+        if (message.userId) {
+          await this.notifyClient(message.userId, {
             type: 'ERROR',
             conversationId,
             content: 'Insufficient tokens for this operation. Please upgrade your plan or wait for your tokens to reset.',
@@ -131,9 +157,9 @@ export class MessageProcessorService {
         this.metrics.incrementCounter('ConversationsCreated');
       }
       
-      // Enviar feedback de recepción al cliente si hay ID de conexión
-      if (message.connectionId) {
-        await this.websocketService.sendMessage(message.connectionId, {
+      // Notificar al usuario via SSE
+      if (message.userId) {
+        await this.notifyClient(message.userId, {
           type: 'MESSAGE_RECEIVED',
           messageId,
           conversationId,

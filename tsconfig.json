@@ -39,6 +39,8 @@
     "emitDecoratorMetadata": true,            // Emitir metadatos de decoradores
     "useDefineForClassFields": true,          // Usar 'define' para campos de clase
   },
+  "types": [],                                // Tipos a incluir
+  "typeRoots": ["./node_modules/@types"],     // Directorio de tipos
   "include": [
     "src/**/*.ts",                            // Incluir todos los archivos en src
     "services/**/*",                          // Incluir todos los archivos en services

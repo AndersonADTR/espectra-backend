@@ -24,9 +24,7 @@ provider:
     subnetIds:
       - !ImportValue ${self:custom.service}-${self:provider.stage}-private-subnet-1-id
       - !ImportValue ${self:custom.service}-${self:provider.stage}-private-subnet-2-id
-  websocket:
-    apiId: !Ref WebSocketApi
-    stage: ${self:provider.stage}
+
   httpApi:
     cors: true
   apiGateway:
@@ -69,8 +67,7 @@ provider:
     BOTPRESS_WORKSPACE_ID: ${ssm:/espectra/${self:provider.stage}/botpress-workspace-id}
     BOTPRESS_EVENT_BUS: !ImportValue ${self:custom.service}-${self:provider.stage}-eventbus-name
 
-    # WebSocket
-    WEBSOCKET_API_ENDPOINT: ${self:custom.service}-${self:provider.stage}-websocket-endpoint
+
 
     # Redis Configuration
     REDIS_HOST: !ImportValue ${self:custom.service}-${self:provider.stage}-redis-endpoint
@@ -120,8 +117,7 @@ custom:
     systemKeyArn: ${cf:${self:custom.service}-kms-${self:provider.stage}.SystemKMSKeyArn}
     secretsKeyId: ${cf:${self:custom.service}-kms-${self:provider.stage}.SecretsKMSKeyId}
     secretsKeyArn: ${cf:${self:custom.service}-kms-${self:provider.stage}.SecretsKMSKeyArn}
-    websocketKeyId: ${cf:${self:custom.service}-kms-${self:provider.stage}.WebSocketKMSKeyId}
-    websocketKeyArn: ${cf:${self:custom.service}-kms-${self:provider.stage}.WebSocketKMSKeyArn}
+
   
   # SNS Topics for notifications
   snsHighPriorityTopic: ${ssm:/espectra/${self:provider.stage}/sns/high-priority-topic}
@@ -166,9 +162,7 @@ custom:
     dynamodb:
       throttles: 10
       period: 300
-    websocket:
-      connections: 2000
-      period: 300
+
     costs:
       monthly: 1000
   
@@ -182,16 +176,11 @@ custom:
     tokenUsage: 80
     handoffSuccessRate: 90
   
-  # WebSocket API configuration
-  apiGatewayWebsocket:
-    minimumCompressionSize: 1024
-    websocketApiId: !Ref WebSocketApi
-    stage: ${self:provider.stage}
+
   
   # Local development configurations
   serverless-offline:
     httpPort: 3000
-    websocketPort: 3001
     lambdaPort: 3002
     noPrependStageInUrl: true
   
@@ -257,8 +246,6 @@ package:
 functions:
   # --- Auth Functions ---
   - ${file(infrastructure/functions/auth.yml)}
-  # --- WebSocket Functions ---
-  - ${file(infrastructure/functions/websocket.yml)}
   # --- Botpress Functions ---
   - ${file(infrastructure/functions/botpress.yml)}
   # --- Session Functions ---
@@ -270,7 +257,6 @@ resources:
   # --- Security Resources ---
   - ${file(infrastructure/security/kms.yml)}
   - ${file(infrastructure/security/waf.yml)}
-  - ${file(infrastructure/security/websocket-security.yml)}
   
   # --- Network Resources ---
   - ${file(infrastructure/network/vpc.yml)}
@@ -292,7 +278,6 @@ resources:
   # --- API Resources ---
   - ${file(infrastructure/apigateway/api.yml)}
   - ${file(infrastructure/apigateway/chat-api-routes.yml)}
-  - ${file(infrastructure/websocket/websocket.yml)}
   
   # --- Authentication Resources ---
   - ${file(infrastructure/cognito/cognito.yml)}
@@ -302,7 +287,6 @@ resources:
   
   # --- IAM Resources ---
   - ${file(infrastructure/iam/roles.yml)}
-  - ${file(infrastructure/iam/websocket-roles.yml)}
   
   # --- Monitoring Resources ---
   - ${file(infrastructure/monitoring/cloudwatch.yml)}
@@ -339,17 +323,7 @@ outputs:
     Export:
       Name: ${self:custom.service}-${self:provider.stage}-secrets-kms-key-arn
 
-  WebSocketKMSKeyId:
-    Description: ID of the WebSocket KMS key
-    Value: !Ref WebSocketKMSKey
-    Export:
-      Name: ${self:custom.service}-${self:provider.stage}-websocket-kms-key-id
 
-  WebSocketKMSKeyArn:
-    Description: ARN of the WebSocket KMS key
-    Value: !GetAtt WebSocketKMSKey.Arn
-    Export:
-      Name: ${self:custom.service}-${self:provider.stage}-websocket-kms-key-arn
 
   # --- SNS Outputs ---
   HighPriorityTopicArn:

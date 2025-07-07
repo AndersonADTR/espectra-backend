@@ -204,7 +204,7 @@ Resources:
         IntegrationHttpMethod: POST
         Uri: !Sub
           - arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${FunctionArn}/invocations
-          - FunctionArn: !GetAtt WebSocketMessageLambdaFunction.Arn
+          - FunctionArn: !GetAtt ConversationsLambdaFunction.Arn
         TimeoutInMillis: 29000
         ContentHandling: CONVERT_TO_TEXT
         PassthroughBehavior: WHEN_NO_TEMPLATES

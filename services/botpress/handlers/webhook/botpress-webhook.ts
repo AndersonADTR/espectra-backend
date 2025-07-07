@@ -5,7 +5,7 @@ import { SQSClient, SendMessageCommand } from '@aws-sdk/client-sqs';
 import { Logger } from '@shared/utils/logger';
 import { MetricsService } from '@shared/utils/metrics';
 import * as crypto from 'crypto';
-import { WebSocketService } from '../../../websocket/services/websocket.service';
+// SPECTRUM: SSE Manager removed - using polling instead
 
 /**
  * Handler Lambda para procesar webhooks de Botpress
@@ -14,7 +14,7 @@ import { WebSocketService } from '../../../websocket/services/websocket.service'
 export const handler: Handler = async (event: APIGatewayProxyEvent) => {
   const logger = new Logger('BotpressWebhookHandler');
   const metrics = new MetricsService('BotpressWebhook');
-  const websocketService = new WebSocketService();
+  // SPECTRUM: SSE Manager removed - webhook now processes directly
   
   logger.info('Processing Botpress webhook', { routeKey: event.requestContext.httpMethod });
   metrics.incrementCounter('WebhooksReceived');
@@ -58,8 +58,40 @@ export const handler: Handler = async (event: APIGatewayProxyEvent) => {
     // Enviar a SQS para procesamiento asíncrono (implementacion futura)
     // await sendToProcessingQueue(webhookData);
 
-    // Enviar respuesta al websocket para actualizar el chat
-    await websocketService.sendMessageToConversation(webhookData.conversationId, webhookData.payload.message);
+    // Enviar respuesta al cliente via SSE
+    if (webhookData.payload.message && webhookData.userId) {
+      const sseMessage = {
+        type: 'BOT_RESPONSE',
+        content: webhookData.payload.message,
+        conversationId: webhookData.conversationId,
+        timestamp: new Date().toISOString(),
+        messageId: webhookData.payload.messageId || `webhook_${Date.now()}`,
+        metadata: {
+          source: 'botpress_webhook',
+          webhookId: webhookData.id
+        }
+      };
+
+      const sent = await sseManager.sendEventToClient(webhookData.userId, sseMessage);
+
+      if (sent) {
+        logger.info('Webhook response sent via SSE', {
+          conversationId: webhookData.conversationId,
+          userId: webhookData.userId
+        });
+      } else {
+        logger.warn('Failed to send webhook response via SSE', {
+          conversationId: webhookData.conversationId,
+          userId: webhookData.userId
+        });
+      }
+    } else {
+      logger.warn('Webhook data missing required fields for SSE', {
+        hasMessage: !!webhookData.payload.message,
+        hasUserId: !!webhookData.userId,
+        conversationId: webhookData.conversationId
+      });
+    }
     
     metrics.recordLatency('WebhookProcessingTime', Date.now() - startTime);
     metrics.incrementCounter('WebhooksProcessed');

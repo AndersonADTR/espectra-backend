@@ -1,0 +1,439 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SPECTRUM - Content Creator Assistant</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+        }
+        
+        .container {
+            background: white;
+            border-radius: 15px;
+            padding: 30px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+        }
+        
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        
+        .header h1 {
+            color: #333;
+            margin: 0;
+            font-size: 2.5em;
+            background: linear-gradient(45deg, #667eea, #764ba2);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+        
+        .subtitle {
+            color: #666;
+            margin: 10px 0;
+            font-size: 1.1em;
+        }
+        
+        .status {
+            padding: 15px;
+            border-radius: 10px;
+            margin: 20px 0;
+            font-weight: bold;
+        }
+        
+        .status.connected {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        
+        .status.disconnected {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+        
+        .auth-section {
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 10px;
+            margin: 20px 0;
+        }
+        
+        .form-group {
+            margin: 15px 0;
+        }
+        
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+            color: #333;
+        }
+        
+        input, textarea {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #ddd;
+            border-radius: 8px;
+            font-size: 16px;
+            box-sizing: border-box;
+        }
+        
+        input:focus, textarea:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+        
+        button {
+            background: linear-gradient(45deg, #667eea, #764ba2);
+            color: white;
+            border: none;
+            padding: 12px 25px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 16px;
+            font-weight: bold;
+            margin: 5px;
+            transition: transform 0.2s;
+        }
+        
+        button:hover {
+            transform: translateY(-2px);
+        }
+        
+        button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+            transform: none;
+        }
+        
+        .chat-container {
+            border: 2px solid #ddd;
+            border-radius: 10px;
+            height: 400px;
+            overflow-y: auto;
+            padding: 20px;
+            margin: 20px 0;
+            background: #fafafa;
+        }
+        
+        .message {
+            margin: 15px 0;
+            padding: 15px;
+            border-radius: 10px;
+            max-width: 80%;
+        }
+        
+        .message.user {
+            background: linear-gradient(45deg, #667eea, #764ba2);
+            color: white;
+            margin-left: auto;
+            text-align: right;
+        }
+        
+        .message.bot {
+            background: #e9ecef;
+            color: #333;
+            border-left: 4px solid #667eea;
+        }
+        
+        .message.human {
+            background: #fff3cd;
+            color: #856404;
+            border-left: 4px solid #ffc107;
+        }
+        
+        .message-time {
+            font-size: 0.8em;
+            opacity: 0.7;
+            margin-top: 5px;
+        }
+        
+        .input-section {
+            display: flex;
+            gap: 10px;
+            margin: 20px 0;
+        }
+        
+        .input-section textarea {
+            flex: 1;
+            resize: vertical;
+            min-height: 60px;
+        }
+        
+        .metrics {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 10px;
+            margin: 20px 0;
+            font-family: monospace;
+            font-size: 0.9em;
+        }
+        
+        .polling-info {
+            background: #e7f3ff;
+            border: 1px solid #b3d9ff;
+            padding: 15px;
+            border-radius: 10px;
+            margin: 20px 0;
+        }
+        
+        .polling-info h3 {
+            margin: 0 0 10px 0;
+            color: #0066cc;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🎬 SPECTRUM</h1>
+            <div class="subtitle">Asistente para Content Creators</div>
+            <div class="subtitle">Optimizado con Polling Inteligente</div>
+        </div>
+
+        <div class="polling-info">
+            <h3>📡 Sistema de Polling Optimizado</h3>
+            <p><strong>Intervalo:</strong> 2 segundos | <strong>Latencia:</strong> Excelente para content creation</p>
+            <p><strong>Ideal para:</strong> Consultas sobre estrategias de contenido, tips de creación, análisis de tendencias</p>
+        </div>
+
+        <div id="status" class="status disconnected">
+            🔴 Desconectado - Ingresa tus credenciales
+        </div>
+
+        <div class="auth-section">
+            <h3>🔐 Autenticación</h3>
+            <div class="form-group">
+                <label for="token">JWT Token:</label>
+                <input type="password" id="token" placeholder="Pega tu JWT token aquí">
+            </div>
+            <div class="form-group">
+                <label for="userId">User ID (userSub):</label>
+                <input type="text" id="userId" placeholder="Tu userSub de Cognito">
+            </div>
+            <div class="form-group">
+                <label for="conversationId">Conversation ID:</label>
+                <input type="text" id="conversationId" placeholder="ID de tu conversación">
+            </div>
+            <button onclick="connect()">🚀 Conectar a SPECTRUM</button>
+            <button onclick="disconnect()" disabled id="disconnectBtn">⏹️ Desconectar</button>
+        </div>
+
+        <div class="chat-container" id="messages">
+            <div class="message bot">
+                <div>¡Hola! 👋 Soy tu asistente de SPECTRUM para content creators.</div>
+                <div>Pregúntame sobre:</div>
+                <ul>
+                    <li>📱 Estrategias para TikTok, Instagram, YouTube</li>
+                    <li>🎨 Ideas de contenido viral</li>
+                    <li>📊 Análisis de tendencias</li>
+                    <li>💡 Tips de engagement</li>
+                    <li>🎬 Técnicas de edición</li>
+                </ul>
+                <div class="message-time">Sistema iniciado</div>
+            </div>
+        </div>
+
+        <div class="input-section">
+            <textarea id="messageInput" placeholder="Pregunta sobre content creation... ej: ¿Cómo hacer videos virales en TikTok?" disabled></textarea>
+            <button onclick="sendMessage()" disabled id="sendBtn">📤 Enviar</button>
+        </div>
+
+        <div class="metrics" id="metrics">
+            <strong>📊 Métricas de SPECTRUM:</strong><br>
+            Mensajes enviados: <span id="sentCount">0</span><br>
+            Respuestas recibidas: <span id="receivedCount">0</span><br>
+            Última actualización: <span id="lastUpdate">-</span><br>
+            Estado del polling: <span id="pollingStatus">Detenido</span>
+        </div>
+    </div>
+
+    <script>
+        let isConnected = false;
+        let pollingInterval = null;
+        let lastTimestamp = null;
+        let sentCount = 0;
+        let receivedCount = 0;
+        let conversationId = null;
+        let userId = null;
+        let authToken = null;
+
+        // Configuración para SPECTRUM
+        const SPECTRUM_CONFIG = {
+            pollingInterval: 2000, // 2 segundos - perfecto para content creators
+            baseUrl: 'https://jgsh83v6k5.execute-api.us-east-1.amazonaws.com/dev',
+            platform: 'spectrum',
+            userType: 'content_creator'
+        };
+
+        function connect() {
+            authToken = document.getElementById('token').value.trim();
+            userId = document.getElementById('userId').value.trim();
+            conversationId = document.getElementById('conversationId').value.trim();
+
+            if (!authToken || !userId || !conversationId) {
+                alert('Por favor completa todos los campos');
+                return;
+            }
+
+            isConnected = true;
+            updateStatus('🟢 Conectado a SPECTRUM - Polling activo cada 2 segundos', 'connected');
+            
+            document.getElementById('disconnectBtn').disabled = false;
+            document.getElementById('messageInput').disabled = false;
+            document.getElementById('sendBtn').disabled = false;
+            
+            // Iniciar polling optimizado para content creators
+            startPolling();
+            
+            addMessage('system', '🎬 Conectado a SPECTRUM! Listo para ayudarte con content creation', new Date());
+        }
+
+        function disconnect() {
+            isConnected = false;
+            stopPolling();
+            updateStatus('🔴 Desconectado de SPECTRUM', 'disconnected');
+            
+            document.getElementById('disconnectBtn').disabled = true;
+            document.getElementById('messageInput').disabled = true;
+            document.getElementById('sendBtn').disabled = true;
+        }
+
+        function startPolling() {
+            if (pollingInterval) {
+                clearInterval(pollingInterval);
+            }
+            
+            document.getElementById('pollingStatus').textContent = 'Activo (2s)';
+            
+            pollingInterval = setInterval(async () => {
+                try {
+                    await pollForMessages();
+                } catch (error) {
+                    console.error('Error en polling:', error);
+                }
+            }, SPECTRUM_CONFIG.pollingInterval);
+        }
+
+        function stopPolling() {
+            if (pollingInterval) {
+                clearInterval(pollingInterval);
+                pollingInterval = null;
+            }
+            document.getElementById('pollingStatus').textContent = 'Detenido';
+        }
+
+        async function pollForMessages() {
+            if (!isConnected) return;
+
+            try {
+                const url = `${SPECTRUM_CONFIG.baseUrl}/conversations/${conversationId}/poll?userId=${userId}${lastTimestamp ? `&since=${lastTimestamp}` : ''}`;
+                
+                const response = await fetch(url, {
+                    method: 'GET',
+                    headers: {
+                        'Authorization': `Bearer ${authToken}`,
+                        'Content-Type': 'application/json'
+                    }
+                });
+
+                if (response.ok) {
+                    const data = await response.json();
+                    
+                    if (data.messages && data.messages.length > 0) {
+                        data.messages.forEach(message => {
+                            const messageType = message.direction === 'outgoing' ? 'bot' : 
+                                              message.source === 'human' ? 'human' : 'bot';
+                            addMessage(messageType, message.payload?.text || message.content, new Date(message.createdAt));
+                            receivedCount++;
+                        });
+                    }
+                    
+                    lastTimestamp = data.timestamp;
+                    updateMetrics();
+                } else {
+                    console.error('Error en polling:', response.status);
+                }
+            } catch (error) {
+                console.error('Error en polling:', error);
+            }
+        }
+
+        async function sendMessage() {
+            const messageText = document.getElementById('messageInput').value.trim();
+            if (!messageText || !isConnected) return;
+
+            try {
+                addMessage('user', messageText, new Date());
+                document.getElementById('messageInput').value = '';
+                sentCount++;
+                updateMetrics();
+
+                const response = await fetch(`${SPECTRUM_CONFIG.baseUrl}/conversations/${conversationId}/messages`, {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${authToken}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        content: messageText,
+                        type: 'text'
+                    })
+                });
+
+                if (!response.ok) {
+                    addMessage('system', '❌ Error enviando mensaje', new Date());
+                }
+            } catch (error) {
+                console.error('Error enviando mensaje:', error);
+                addMessage('system', '❌ Error de conexión', new Date());
+            }
+        }
+
+        function addMessage(type, content, timestamp) {
+            const messagesContainer = document.getElementById('messages');
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `message ${type}`;
+            
+            const icon = type === 'user' ? '👤' : type === 'human' ? '👨‍💼' : '🤖';
+            
+            messageDiv.innerHTML = `
+                <div>${icon} ${content}</div>
+                <div class="message-time">${timestamp.toLocaleTimeString()}</div>
+            `;
+            
+            messagesContainer.appendChild(messageDiv);
+            messagesContainer.scrollTop = messagesContainer.scrollHeight;
+        }
+
+        function updateStatus(message, className) {
+            const statusElement = document.getElementById('status');
+            statusElement.textContent = message;
+            statusElement.className = `status ${className}`;
+        }
+
+        function updateMetrics() {
+            document.getElementById('sentCount').textContent = sentCount;
+            document.getElementById('receivedCount').textContent = receivedCount;
+            document.getElementById('lastUpdate').textContent = new Date().toLocaleTimeString();
+        }
+
+        // Permitir envío con Enter
+        document.getElementById('messageInput').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                sendMessage();
+            }
+        });
+    </script>
+</body>
+</html>

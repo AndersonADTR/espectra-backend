@@ -92,80 +92,27 @@ export const handler = async (
   const requestId = Math.random().toString(36).substring(2, 15);
 
   try {
-    // Log completo del evento (sin información sensible)
-    console.log(JSON.stringify({
-      message: `CLOUDWATCH DEBUG [${requestId}]: Full authorization event`,
-      eventKeys: Object.keys(event),
-      methodArn: event.methodArn,
-      type: event.type,
-      hasHeaders: !!event.headers,
-      hasMultiValueHeaders: !!event.multiValueHeaders,
-      hasAuthorizationToken: !!event.authorizationToken,
-      hasQueryStringParameters: !!event.queryStringParameters,
-      timestamp: new Date().toISOString()
-    }));
-
     logger.info('Processing authorization request', {
       requestId,
-      methodArn: event.methodArn,
-      eventType: typeof event,
-      hasHeaders: !!event.headers,
-      hasMultiValueHeaders: !!event.multiValueHeaders,
-      hasAuthorizationToken: !!event.authorizationToken,
-      hasQueryStringParameters: !!event.queryStringParameters
+      methodArn: event.methodArn
     });
 
     // Extraer el token de autorización
     const authToken = extractToken(event);
 
     if (!authToken) {
-      // No se encontró token en ninguna parte
-      console.log(JSON.stringify({
-        message: `CLOUDWATCH DEBUG [${requestId}]: No authorization token found in any location`,
-        timestamp: new Date().toISOString()
-      }));
       logger.error('No authorization token provided');
       return generatePolicy('user', 'Deny', event.methodArn);
     }
 
-    // Log del token recibido (sin mostrar el token completo por seguridad)
-    console.log(JSON.stringify({
-      message: 'CLOUDWATCH TEST: Authorization token received',
-      tokenLength: authToken.length,
-      tokenStartsWith: authToken.substring(0, 20) + '...',
-      hasBearerPrefix: authToken.startsWith('Bearer '),
-      timestamp: new Date().toISOString()
-    }));
-
     // Extraer el token si comienza con 'Bearer '
     let token = authToken;
     if (token.startsWith('Bearer ')) {
-      token = token.substring(7); // Extraer el token después de 'Bearer '
+      token = token.substring(7);
     }
-
-    // Log del token extraído
-    console.log(JSON.stringify({
-      message: 'CLOUDWATCH TEST: Token extracted',
-      tokenLength: token.length,
-      source: token === authToken ? 'original' : 'processed',
-      timestamp: new Date().toISOString()
-    }));
-
-    logger.debug('Token extracted', {
-      tokenLength: token.length,
-      source: token === authToken ? 'original' : 'processed'
-    });
 
     // Verificar el token
     const payload = await verifier.verify(token);
-
-    // Log del resultado de la verificación
-    console.log(JSON.stringify({
-      message: 'CLOUDWATCH TEST: Token verification successful',
-      userId: payload.sub,
-      methodArn: event.methodArn,
-      timestamp: new Date().toISOString()
-    }));
 
     logger.info('Token verification successful', {
       userId: payload.sub,
@@ -174,21 +121,9 @@ export const handler = async (
 
     metrics.incrementCounter('AuthorizationSuccess');
 
-    // Calcular la duración del proceso
-    const duration = Date.now() - startTime;
+    // Generar la política de autorización con wildcard para evitar cache issues
+    const resourceArn = event.methodArn.split('/').slice(0, 2).join('/') + '/*';
 
-    // Log de finalización
-    console.log(JSON.stringify({
-      message: 'CLOUDWATCH TEST: Authorization process completed',
-      duration,
-      timestamp: new Date().toISOString()
-    }));
-
-    logger.debug('Authorization process completed', {
-      duration
-    });
-
-    // Generar la política de autorización
     return {
       principalId: payload.sub,
       policyDocument: {
@@ -197,7 +132,7 @@ export const handler = async (
           {
             Action: 'execute-api:Invoke',
             Effect: 'Allow',
-            Resource: event.methodArn,
+            Resource: resourceArn, // Usar wildcard para permitir todos los endpoints
           },
         ],
       },
@@ -209,38 +144,12 @@ export const handler = async (
       },
     };
   } catch (error) {
-    // Log detallado del error
-    console.log(JSON.stringify({
-      message: 'CLOUDWATCH TEST: Authorization failed',
-      errorName: error instanceof Error ? error.name : 'Unknown',
-      errorMessage: error instanceof Error ? error.message : String(error),
-      stack: error instanceof Error ? error.stack : 'No stack trace',
-      methodArn: event.methodArn,
-      timestamp: new Date().toISOString()
-    }));
-
     logger.error('Authorization failed', {
       error: error instanceof Error ? error.message : 'Unknown error',
-      errorName: error instanceof Error ? error.name : 'Unknown',
       methodArn: event.methodArn
     });
 
     metrics.incrementCounter('AuthorizationFailure');
-
-    // Calcular la duración del proceso
-    const duration = Date.now() - startTime;
-
-    // Log de finalización
-    console.log(JSON.stringify({
-      message: 'CLOUDWATCH TEST: Authorization process completed with error',
-      duration,
-      timestamp: new Date().toISOString()
-    }));
-
-    logger.debug('Authorization process completed with error', {
-      duration
-    });
-
     return generatePolicy('user', 'Deny', event.methodArn);
   }
 };
@@ -258,6 +167,11 @@ const generatePolicy = (
   effect: 'Allow' | 'Deny',
   resource: string
 ): APIGatewayAuthorizerResult => {
+  // Usar wildcard para evitar problemas de cache entre endpoints
+  const resourceArn = effect === 'Allow' ?
+    resource.split('/').slice(0, 2).join('/') + '/*' :
+    resource;
+
   return {
     principalId,
     policyDocument: {
@@ -266,7 +180,7 @@ const generatePolicy = (
         {
           Action: 'execute-api:Invoke',
           Effect: effect,
-          Resource: resource,
+          Resource: resourceArn,
         },
       ],
     },

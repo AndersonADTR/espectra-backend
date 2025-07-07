@@ -5,7 +5,7 @@ import { SNSClient, PublishCommand } from '@aws-sdk/client-sns';
 import { SESClient, SendEmailCommand } from '@aws-sdk/client-ses';
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import { DynamoDBDocumentClient, GetCommand } from '@aws-sdk/lib-dynamodb';
-import { WebSocketService } from '@services/websocket/services/websocket.service';
+// SPECTRUM: BotpressEventsHandler removed - using polling instead
 
 interface TokenAlertDetail {
   userId: string;
@@ -30,8 +30,8 @@ export const handler: Handler = async (event: EventBridgeEvent<'token-usage-aler
     if (detail && detail.userId) {
       const { userId, usagePercentage, plan, remainingTokens, dailyLimit, alertType } = detail;
       
-      // Enviar notificación al usuario a través de WebSocket si está conectado
-      await sendWebSocketNotification(detail);
+      // Enviar notificación al usuario via SSE
+      await sendSSENotification(detail);
 
       // Enviar email de notificación si es un nivel de alerta alto
       if (detail.alertType === 'NEAR_LIMIT' || detail.alertType === 'LIMIT_REACHED') {
@@ -125,32 +125,42 @@ export const handler: Handler = async (event: EventBridgeEvent<'token-usage-aler
 };
 
 /**
- * Envía una notificación al usuario a través de WebSocket
+ * SPECTRUM: Token alerts now handled via polling
+ * Content creators will see alerts when they poll for messages
  * @param detail Detalles de la alerta
  */
-async function sendWebSocketNotification(detail: TokenAlertDetail): Promise<void> {
-  
-  const websocketService = new WebSocketService();
-  
+async function sendSSENotification(detail: TokenAlertDetail): Promise<void> {
   try {
-    const message = {
-      type: 'token_alert',
+    // SPECTRUM: Token alerts are now stored and retrieved via polling
+    // The polling endpoint will include system messages like token alerts
+
+    console.info('SPECTRUM: Token alert logged for polling retrieval', {
+      userId: detail.userId,
       alertType: detail.alertType,
-      usagePercentage: detail.usagePercentage,
-      remainingTokens: detail.remainingTokens,
-      dailyLimit: detail.dailyLimit,
-      timestamp: Date.now()
-    };
-    
-    const sentCount = await websocketService.sendMessageToUser(detail.userId, message);
-    
-    console.info('WebSocket notification sent', { 
-      userId: detail.userId, 
-      sentCount 
+      message: getAlertMessage(detail)
     });
   } catch (error) {
-    console.error('Error sending WebSocket notification', { error, userId: detail.userId });
+    console.error('Error sending SSE token alert notification', {
+      error: error instanceof Error ? error.message : 'Unknown error',
+      userId: detail.userId
+    });
     // No lanzamos el error para que el flujo continúe con otras notificaciones
+  }
+}
+
+/**
+ * Genera el mensaje de alerta apropiado según el tipo
+ */
+function getAlertMessage(detail: TokenAlertDetail): string {
+  switch (detail.alertType) {
+    case 'NEAR_LIMIT':
+      return `Has usado ${detail.usagePercentage}% de tus tokens diarios. Te quedan ${detail.remainingTokens} tokens.`;
+    case 'LIMIT_REACHED':
+      return 'Has alcanzado tu límite diario de tokens. Tu plan se renovará mañana.';
+    case 'WARNING':
+      return `Advertencia: Has usado ${detail.usagePercentage}% de tus tokens diarios.`;
+    default:
+      return 'Notificación sobre el uso de tokens.';
   }
 }
 

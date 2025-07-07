@@ -1,0 +1,339 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SPECTRUM SSE Test Client</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+        }
+        .form-group {
+            margin-bottom: 15px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+        input, textarea {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            box-sizing: border-box;
+        }
+        button {
+            background-color: #007bff;
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            margin-right: 10px;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+        button:disabled {
+            background-color: #6c757d;
+            cursor: not-allowed;
+        }
+        .status {
+            padding: 10px;
+            border-radius: 4px;
+            margin-bottom: 10px;
+        }
+        .status.connected {
+            background-color: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        .status.disconnected {
+            background-color: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+        .status.connecting {
+            background-color: #fff3cd;
+            color: #856404;
+            border: 1px solid #ffeaa7;
+        }
+        .messages {
+            height: 400px;
+            overflow-y: auto;
+            border: 1px solid #ddd;
+            padding: 10px;
+            background-color: #f8f9fa;
+        }
+        .message {
+            margin-bottom: 10px;
+            padding: 8px;
+            border-radius: 4px;
+            border-left: 4px solid #007bff;
+            background-color: white;
+        }
+        .message.error {
+            border-left-color: #dc3545;
+            background-color: #f8d7da;
+        }
+        .message.bot {
+            border-left-color: #28a745;
+        }
+        .message.agent {
+            border-left-color: #ffc107;
+        }
+        .message.system {
+            border-left-color: #6c757d;
+        }
+        .timestamp {
+            font-size: 0.8em;
+            color: #6c757d;
+            margin-bottom: 5px;
+        }
+        .event-type {
+            font-weight: bold;
+            color: #007bff;
+        }
+    </style>
+</head>
+<body>
+    <h1>🔥 SPECTRUM SSE Test Client</h1>
+    
+    <div class="container">
+        <h2>Configuración de Conexión</h2>
+        <div class="form-group">
+            <label for="apiUrl">API Gateway URL:</label>
+            <input type="text" id="apiUrl" placeholder="https://jgsh83v6k5.execute-api.us-east-1.amazonaws.com/dev" />
+        </div>
+        <div class="form-group">
+            <label for="conversationId">Conversation ID:</label>
+            <input type="text" id="conversationId" placeholder="test-conversation-123" />
+        </div>
+        <div class="form-group">
+            <label for="userId">User ID:</label>
+            <input type="text" id="userId" placeholder="f4d82438-50f1-706b-c263-2afddf0820cdd" />
+        </div>
+        <div class="form-group">
+            <label for="jwtToken">JWT Token:</label>
+            <textarea id="jwtToken" rows="3" placeholder="eyJraWQiOiIwQ1JmWGcycGhscXlpRjkwV0xQN0NNN0Y3aUFIcnM2WE50RTl5MjJPV2dzPSIsImFsZyI6IlJTMjU2In0.eyJzdWIiOiJmNGQ4MjQzOC01MGYxLTcwNmItYzI2My0yYWZkZjA4MjBjZGQiLCJpc3MiOiJodHRwczpcL1wvY29nbml0by1pZHAudXMtZWFzdC0xLmFtYXpvbmF3cy5jb21cL3VzLWVhc3QtMV93dTBEeTNUdFAiLCJjbGllbnRfaWQiOiIxNXRnNzliczBjaW80MHZoanR1bmg1dm9oaSIsIm9yaWdpbl9qdGkiOiIyMzQ2ZDE5Ni1mYmZkLTQ1OGMtOTRkOC0wNzU5ODA2YTZiM2YiLCJldmVudF9pZCI6ImJlOTUxZTMyLTEwOGMtNGE4OC04MTYwLWE1YTUwMWFmNTcyNSIsInRva2VuX3VzZSI6ImFjY2VzcyIsInNjb3BlIjoiYXdzLmNvZ25pdG8uc2lnbmluLnVzZXIuYWRtaW4iLCJhdXRoX3RpbWUiOjE3NTA1NjA5MTQsImV4cCI6MTc1MDU2NDUxNCwiaWF0IjoxNzUwNTYwOTE0LCJqdGkiOiI4NGM5YjUyOC1mNmQ2LTRlYjYtODlmMS02NzFkNjNlNTY5MjYiLCJ1c2VybmFtZSI6ImY0ZDgyNDM4LTUwZjEtNzA2Yi1jMjYzLTJhZmRmMDgyMGNkZCJ9.lzwB5SgU12MDM8Uisn1egiPWRygyTnOLt8u878ei3LUGHxWC9M-EVEd37zHcFt_QMpk9BXmjKvYLMk2sxcNKj71j0VBhrnV_R_1z6X7ONc4Ru9hrcV42YGX20Q6UGH0P9DGKZLfmRjdvYv2FMaU6vGqoz9pnznRW7aCynKcI4QB6Gs8kFfjO18R8dA7SIpU9KZgmfiYdbAxsBLFQsPv10wsfY4GzvvT-hmLdJR653RkuOUWhBUC6scz_vfQxOmMfQbrdX9rnVUmjjVqjS-3JmIP9jiLXc9tQcCspGz_7LKm2umPmyw-Am8lyRPxeADsAR81iXPgB7X6_AZVrKvg3CA"></textarea>
+        </div>
+        <button id="connectBtn" onclick="connect()">🔗 Conectar SSE</button>
+        <button id="disconnectBtn" onclick="disconnect()" disabled>❌ Desconectar</button>
+        <button onclick="clearMessages()">🗑️ Limpiar Mensajes</button>
+    </div>
+
+    <div class="container">
+        <h2>Estado de Conexión</h2>
+        <div id="connectionStatus" class="status disconnected">
+            ❌ Desconectado
+        </div>
+        <div id="connectionInfo"></div>
+    </div>
+
+    <div class="container">
+        <h2>Mensajes SSE Recibidos</h2>
+        <div id="messages" class="messages"></div>
+    </div>
+
+    <script>
+        let eventSource = null;
+        let reconnectAttempts = 0;
+        const maxReconnectAttempts = 5;
+
+        function updateStatus(status, message) {
+            const statusEl = document.getElementById('connectionStatus');
+            const infoEl = document.getElementById('connectionInfo');
+            
+            statusEl.className = `status ${status}`;
+            
+            switch(status) {
+                case 'connected':
+                    statusEl.innerHTML = '✅ Conectado';
+                    break;
+                case 'connecting':
+                    statusEl.innerHTML = '🔄 Conectando...';
+                    break;
+                case 'disconnected':
+                    statusEl.innerHTML = '❌ Desconectado';
+                    break;
+                case 'error':
+                    statusEl.innerHTML = '⚠️ Error de Conexión';
+                    break;
+            }
+            
+            infoEl.innerHTML = message || '';
+        }
+
+        function addMessage(type, eventType, data, timestamp = new Date()) {
+            const messagesEl = document.getElementById('messages');
+            const messageEl = document.createElement('div');
+            messageEl.className = `message ${type}`;
+            
+            messageEl.innerHTML = `
+                <div class="timestamp">${timestamp.toLocaleTimeString()}</div>
+                <div class="event-type">${eventType}</div>
+                <pre>${JSON.stringify(data, null, 2)}</pre>
+            `;
+            
+            messagesEl.appendChild(messageEl);
+            messagesEl.scrollTop = messagesEl.scrollHeight;
+        }
+
+        function connect() {
+            const apiUrl = document.getElementById('apiUrl').value.trim();
+            const conversationId = document.getElementById('conversationId').value.trim();
+            const userId = document.getElementById('userId').value.trim();
+            const jwtToken = document.getElementById('jwtToken').value.trim();
+
+            if (!apiUrl || !conversationId || !userId || !jwtToken) {
+                alert('Por favor completa todos los campos');
+                return;
+            }
+
+            disconnect(); // Cerrar conexión existente si la hay
+
+            updateStatus('connecting', 'Estableciendo conexión SSE...');
+            
+            const sseUrl = `${apiUrl}/conversations/${conversationId}/listen?userId=${userId}`;
+            
+            addMessage('system', 'CONNECTION_ATTEMPT', {
+                url: sseUrl,
+                conversationId,
+                userId
+            });
+
+            try {
+                eventSource = new EventSource(sseUrl);
+
+                eventSource.onopen = function(event) {
+                    updateStatus('connected', `Conectado a: ${sseUrl}`);
+                    reconnectAttempts = 0;
+                    
+                    document.getElementById('connectBtn').disabled = true;
+                    document.getElementById('disconnectBtn').disabled = false;
+                    
+                    addMessage('system', 'CONNECTION_OPENED', {
+                        readyState: eventSource.readyState,
+                        url: eventSource.url
+                    });
+                };
+
+                eventSource.onmessage = function(event) {
+                    try {
+                        const data = JSON.parse(event.data);
+                        addMessage('system', 'MESSAGE', data);
+                    } catch (e) {
+                        addMessage('error', 'PARSE_ERROR', {
+                            rawData: event.data,
+                            error: e.message
+                        });
+                    }
+                };
+
+                eventSource.onerror = function(event) {
+                    updateStatus('error', 'Error en la conexión SSE');
+                    
+                    addMessage('error', 'CONNECTION_ERROR', {
+                        readyState: eventSource.readyState,
+                        error: 'Connection failed or closed'
+                    });
+
+                    if (eventSource.readyState === EventSource.CLOSED) {
+                        handleReconnect();
+                    }
+                };
+
+                // Event listeners específicos
+                eventSource.addEventListener('BOT_RESPONSE', function(event) {
+                    const data = JSON.parse(event.data);
+                    addMessage('bot', 'BOT_RESPONSE', data);
+                });
+
+                eventSource.addEventListener('AGENT_MESSAGE', function(event) {
+                    const data = JSON.parse(event.data);
+                    addMessage('agent', 'AGENT_MESSAGE', data);
+                });
+
+                eventSource.addEventListener('HANDOFF_STATUS', function(event) {
+                    const data = JSON.parse(event.data);
+                    addMessage('system', 'HANDOFF_STATUS', data);
+                });
+
+                eventSource.addEventListener('TOKEN_ALERT', function(event) {
+                    const data = JSON.parse(event.data);
+                    addMessage('system', 'TOKEN_ALERT', data);
+                });
+
+                eventSource.addEventListener('heartbeat', function(event) {
+                    const data = JSON.parse(event.data);
+                    addMessage('system', 'HEARTBEAT', data);
+                });
+
+            } catch (error) {
+                updateStatus('error', `Error: ${error.message}`);
+                addMessage('error', 'CONNECTION_EXCEPTION', {
+                    error: error.message,
+                    stack: error.stack
+                });
+            }
+        }
+
+        function disconnect() {
+            if (eventSource) {
+                eventSource.close();
+                eventSource = null;
+            }
+            
+            updateStatus('disconnected', 'Conexión cerrada manualmente');
+            
+            document.getElementById('connectBtn').disabled = false;
+            document.getElementById('disconnectBtn').disabled = true;
+            
+            addMessage('system', 'CONNECTION_CLOSED', {
+                timestamp: new Date().toISOString()
+            });
+        }
+
+        function handleReconnect() {
+            if (reconnectAttempts < maxReconnectAttempts) {
+                reconnectAttempts++;
+                const delay = Math.pow(2, reconnectAttempts) * 1000;
+                
+                updateStatus('connecting', `Reintentando conexión en ${delay/1000} segundos... (${reconnectAttempts}/${maxReconnectAttempts})`);
+                
+                setTimeout(() => {
+                    if (eventSource && eventSource.readyState === EventSource.CLOSED) {
+                        connect();
+                    }
+                }, delay);
+            } else {
+                updateStatus('error', 'Máximo número de reintentos alcanzado');
+                disconnect();
+            }
+        }
+
+        function clearMessages() {
+            document.getElementById('messages').innerHTML = '';
+        }
+
+        // Auto-llenar algunos campos para testing
+        window.onload = function() {
+            // Estos valores se pueden cambiar según tu configuración
+            document.getElementById('conversationId').value = 'test-conversation-123';
+            document.getElementById('userId').value = 'test-user-456';
+        };
+    </script>
+</body>
+</html>

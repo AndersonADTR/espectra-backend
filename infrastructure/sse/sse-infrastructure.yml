@@ -1,0 +1,259 @@
+# infrastructure/sse/sse-infrastructure.yml
+# Infraestructura para Server-Sent Events (SSE)
+
+Resources:
+  # CloudWatch Log Group para SSE
+  SSELogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/${self:custom.resourcePrefix}-sse'
+      RetentionInDays: 14
+
+  # CloudWatch Metrics para SSE
+  # SSEActiveConnectionsMetric:
+  #   Type: AWS::CloudWatch::Metric
+  #   Properties:
+  #     MetricName: SSEActiveConnections
+  #     Namespace: !Sub '${self:custom.resourcePrefix}/SSE'
+  #     Dimensions:
+  #       - Name: Environment
+  #         Value: !Ref Environment
+
+  # CloudWatch Alarms para SSE
+  SSEHighConnectionCountAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub '${self:custom.resourcePrefix}-sse-high-connection-count'
+      AlarmDescription: 'High number of active SSE connections'
+      MetricName: SSEActiveConnections
+      Namespace: !Sub '${self:custom.resourcePrefix}/SSE'
+      Statistic: Average
+      Period: 300
+      EvaluationPeriods: 2
+      Threshold: 1000
+      ComparisonOperator: GreaterThanThreshold
+      AlarmActions:
+        - !Ref SSEAlertsSnsTopic
+      TreatMissingData: notBreaching
+
+  SSEConnectionErrorsAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub '${self:custom.resourcePrefix}-sse-connection-errors'
+      AlarmDescription: 'High number of SSE connection errors'
+      MetricName: SSEConnectionErrors
+      Namespace: !Sub '${self:custom.resourcePrefix}/SSE'
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 2
+      Threshold: 10
+      ComparisonOperator: GreaterThanThreshold
+      AlarmActions:
+        - !Ref SSEAlertsSnsTopic
+      TreatMissingData: notBreaching
+
+  # SNS Topic para alertas SSE
+  SSEAlertsSnsTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: !Sub '${self:custom.resourcePrefix}-sse-alerts'
+      DisplayName: 'SSE Alerts'
+
+  # DynamoDB Table para tracking de conexiones SSE (opcional)
+  SSEConnectionsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub '${self:custom.resourcePrefix}-sse-connections'
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: userId
+          AttributeType: S
+        - AttributeName: connectionId
+          AttributeType: S
+        - AttributeName: conversationId
+          AttributeType: S
+      KeySchema:
+        - AttributeName: userId
+          KeyType: HASH
+        - AttributeName: connectionId
+          KeyType: RANGE
+      GlobalSecondaryIndexes:
+        - IndexName: ConversationIndex
+          KeySchema:
+            - AttributeName: conversationId
+              KeyType: HASH
+          Projection:
+            ProjectionType: ALL
+      TimeToLiveSpecification:
+        AttributeName: ttl
+        Enabled: true
+      StreamSpecification:
+        StreamViewType: NEW_AND_OLD_IMAGES
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
+      Tags:
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Service
+          Value: sse
+        - Key: Purpose
+          Value: connection-tracking
+
+  # IAM Role para funciones SSE
+  SSELambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub '${self:custom.resourcePrefix}-sse-lambda-role'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole
+      Policies:
+        - PolicyName: SSEDynamoDBAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - dynamodb:GetItem
+                  - dynamodb:PutItem
+                  - dynamodb:UpdateItem
+                  - dynamodb:DeleteItem
+                  - dynamodb:Query
+                  - dynamodb:Scan
+                Resource:
+                  - !GetAtt SSEConnectionsTable.Arn
+                  - !Sub '${SSEConnectionsTable.Arn}/index/*'
+        - PolicyName: SSECloudWatchAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - cloudwatch:PutMetricData
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: '*'
+        - PolicyName: SSESNSAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - sns:Publish
+                Resource: !Ref SSEAlertsSnsTopic
+
+  # CloudWatch Dashboard para SSE
+  SSEDashboard:
+    Type: AWS::CloudWatch::Dashboard
+    Properties:
+      DashboardName: !Sub '${self:custom.resourcePrefix}-sse-dashboard'
+      DashboardBody: !Sub |
+        {
+          "widgets": [
+            {
+              "type": "metric",
+              "x": 0,
+              "y": 0,
+              "width": 12,
+              "height": 6,
+              "properties": {
+                "metrics": [
+                  [ "${self:custom.resourcePrefix}/SSE", "SSEActiveConnections" ],
+                  [ ".", "SSEConnectionsCreated" ],
+                  [ ".", "SSEConnectionsClosed" ]
+                ],
+                "period": 300,
+                "stat": "Average",
+                "region": "${AWS::Region}",
+                "title": "SSE Connection Metrics"
+              }
+            },
+            {
+              "type": "metric",
+              "x": 12,
+              "y": 0,
+              "width": 12,
+              "height": 6,
+              "properties": {
+                "metrics": [
+                  [ "${self:custom.resourcePrefix}/SSE", "SSEConnectionErrors" ],
+                  [ ".", "SSEEventsSent" ],
+                  [ ".", "SSEEventsDeliveryFailed" ]
+                ],
+                "period": 300,
+                "stat": "Sum",
+                "region": "${AWS::Region}",
+                "title": "SSE Error and Event Metrics"
+              }
+            },
+            {
+              "type": "metric",
+              "x": 0,
+              "y": 6,
+              "width": 24,
+              "height": 6,
+              "properties": {
+                "metrics": [
+                  [ "AWS/Lambda", "Duration", "FunctionName", "${self:custom.resourcePrefix}-sse-conversation-listen" ],
+                  [ ".", "Errors", ".", "." ],
+                  [ ".", "Invocations", ".", "." ]
+                ],
+                "period": 300,
+                "stat": "Average",
+                "region": "${AWS::Region}",
+                "title": "SSE Lambda Function Metrics"
+              }
+            }
+          ]
+        }
+
+Parameters:
+  Environment:
+    Type: String
+    Default: dev
+    Description: Environment name
+
+Outputs:
+  SSEConnectionsTableName:
+    Description: Name of the SSE connections table
+    Value: !Ref SSEConnectionsTable
+    Export:
+      Name: !Sub '${self:custom.resourcePrefix}-sse-connections-table-name'
+
+  SSEConnectionsTableArn:
+    Description: ARN of the SSE connections table
+    Value: !GetAtt SSEConnectionsTable.Arn
+    Export:
+      Name: !Sub '${self:custom.resourcePrefix}-sse-connections-table-arn'
+
+  SSELambdaRoleArn:
+    Description: ARN of the SSE Lambda role
+    Value: !GetAtt SSELambdaRole.Arn
+    Export:
+      Name: !Sub '${self:custom.resourcePrefix}-sse-lambda-role-arn'
+
+  SSEAlertsTopicArn:
+    Description: ARN of the SSE alerts SNS topic
+    Value: !Ref SSEAlertsSnsTopic
+    Export:
+      Name: !Sub '${self:custom.resourcePrefix}-sse-alerts-topic-arn'
+
+  SSELogGroupName:
+    Description: Name of the SSE log group
+    Value: !Ref SSELogGroup
+    Export:
+      Name: !Sub '${self:custom.resourcePrefix}-sse-log-group-name'
+
+  SSEDashboardURL:
+    Description: URL of the SSE CloudWatch dashboard
+    Value: !Sub 'https://${AWS::Region}.console.aws.amazon.com/cloudwatch/home?region=${AWS::Region}#dashboards:name=${SSEDashboard}'
+    Export:
+      Name: !Sub '${self:custom.resourcePrefix}-sse-dashboard-url'

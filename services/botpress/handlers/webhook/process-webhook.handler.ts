@@ -4,7 +4,7 @@ import { Handler, SQSEvent } from 'aws-lambda';
 import { ConversationContextService } from '../../services/context/conversation-context.service';
 import { BotpressMessageTransformer } from '../../services/botpress/transformers/message-transformer.service';
 import { TokenManagementService } from '../../services/token/token-management.service';
-import { WebSocketService } from '@services/websocket/services/websocket.service';
+// SPECTRUM: SSE Manager removed - using polling instead
 import { Logger } from '@shared/utils/logger';
 import { MetricsService } from '@shared/utils/metrics';
 
@@ -25,7 +25,7 @@ export const handler: Handler = async (event: SQSEvent) => {
   const contextService = ConversationContextService.getInstance();
   const tokenService = TokenManagementService.getInstance();
   const transformer = new BotpressMessageTransformer();
-  const websocketService = new WebSocketService();
+  // SPECTRUM: SSE Manager removed - using polling instead
   
   const results = await Promise.all(
     event.Records.map(async (record) => {
@@ -90,9 +90,9 @@ export const handler: Handler = async (event: SQSEvent) => {
           });
         }
         
-        // Enviar mensajes al cliente vía WebSocket si está conectado
+        // Enviar respuesta al usuario via SSE
         if (userId) {
-          const wsMessage = {
+          const sseMessage = {
             type: 'BOT_RESPONSE',
             conversationId,
             content: transformedMessages.map((msg: { type: any; content: any; metadata: any; }) => ({
@@ -100,22 +100,21 @@ export const handler: Handler = async (event: SQSEvent) => {
               content: msg.content,
               metadata: msg.metadata
             })),
-            timestamp: new Date().toISOString()
+            timestamp: new Date().toISOString(),
+            messageId: `processed_${Date.now()}`,
+            metadata: {
+              source: 'webhook_processor',
+              messageCount: transformedMessages.length
+            }
           };
-    
-          try {
-            const sentCount = await websocketService.sendMessageToUser(userId, wsMessage, true);
-            logger.info('WebSocket notification sent', { 
-              userId, 
-              connectionCount: sentCount 
-            });
-          } catch (wsError) {
-            logger.warn('Error sending WebSocket notification', { 
-              error: wsError instanceof Error ? wsError.message : 'Unknown error',
-              userId 
-            });
-            // Continuamos incluso si falla la notificación WebSocket
-          }
+
+          // SPECTRUM: Webhook responses are now stored in Botpress and retrieved via polling
+          logger.info('SPECTRUM: Webhook response processed for polling retrieval', {
+            userId,
+            conversationId,
+            messageCount: transformedMessages.length,
+            platform: 'spectrum'
+          });
         }
   
         metrics.recordLatency('WebhookMessageProcessingTime', Date.now() - startTime);

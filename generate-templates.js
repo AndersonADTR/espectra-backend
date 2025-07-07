@@ -107,42 +107,42 @@ for (const template of templates) {
     serverlessConfig.outputs = {
       SystemKeyId: {
         Value: { Ref: 'SystemKMSKey' },
-        Export: { Name: '${self:custom.resourcePrefix}-kms.SystemKeyId' }
+        Export: { Name: '${self:custom.resourcePrefix}-kms-SystemKeyId' }
       },
       SystemKeyArn: {
         Value: { 'Fn::GetAtt': ['SystemKMSKey', 'Arn'] },
-        Export: { Name: '${self:custom.resourcePrefix}-kms.SystemKeyArn' }
+        Export: { Name: '${self:custom.resourcePrefix}-kms-SystemKeyArn' }
       },
       SecretsKeyId: {
         Value: { Ref: 'SecretsKMSKey' },
-        Export: { Name: '${self:custom.resourcePrefix}-kms.SecretsKeyId' }
+        Export: { Name: '${self:custom.resourcePrefix}-kms-SecretsKeyId' }
       },
       SecretsKeyArn: {
         Value: { 'Fn::GetAtt': ['SecretsKMSKey', 'Arn'] },
-        Export: { Name: '${self:custom.resourcePrefix}-kms.SecretsKeyArn' }
+        Export: { Name: '${self:custom.resourcePrefix}-kms-SecretsKeyArn' }
       },
       WebsocketKeyId: {
         Value: { Ref: 'WebSocketKMSKey' },
-        Export: { Name: '${self:custom.resourcePrefix}-kms.WebsocketKeyId' }
+        Export: { Name: '${self:custom.resourcePrefix}-kms-WebsocketKeyId' }
       },
       WebsocketKeyArn: {
         Value: { 'Fn::GetAtt': ['WebSocketKMSKey', 'Arn'] },
-        Export: { Name: '${self:custom.resourcePrefix}-kms.WebsocketKeyArn' }
+        Export: { Name: '${self:custom.resourcePrefix}-kms-WebsocketKeyArn' }
       }
     };
   } else if (template.name === 'sns') {
     serverlessConfig.outputs = {
       HighPriorityTopicArn: {
         Value: { Ref: 'HighPriorityTopic' },
-        Export: { Name: '${self:custom.resourcePrefix}-sns.HighPriorityTopicArn' }
+        Export: { Name: '${self:custom.resourcePrefix}-sns-HighPriorityTopicArn' }
       },
       MediumPriorityTopicArn: {
         Value: { Ref: 'MediumPriorityTopic' },
-        Export: { Name: '${self:custom.resourcePrefix}-sns.MediumPriorityTopicArn' }
+        Export: { Name: '${self:custom.resourcePrefix}-sns-MediumPriorityTopicArn' }
       },
       LowPriorityTopicArn: {
         Value: { Ref: 'LowPriorityTopic' },
-        Export: { Name: '${self:custom.resourcePrefix}-sns.LowPriorityTopicArn' }
+        Export: { Name: '${self:custom.resourcePrefix}-sns-LowPriorityTopicArn' }
       }
     };
 

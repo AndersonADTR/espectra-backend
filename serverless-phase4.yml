@@ -14,8 +14,6 @@ provider:
 
   # Configuración para REST API Gateway
   apiGateway:
-    restApiId: !Ref RestApiId
-    restApiRootResourceId: !GetAtt RestApiId.RootResourceId
     binaryMediaTypes:
       - '*/*'
     # Configuración detallada de CORS
@@ -103,9 +101,7 @@ provider:
     BOTPRESS_EVENT_BUS:
       Fn::ImportValue: ${self:custom.resourcePrefix}-eventbus-name
 
-    # WebSocket
-    WEBSOCKET_API_ENDPOINT:
-      Fn::ImportValue: ${self:custom.resourcePrefix}-websocket-endpoint
+
 
     # Redis Configuration
     REDIS_HOST:
@@ -120,6 +116,16 @@ provider:
     RATE_LIMIT_SESSION_CREATION: ${self:custom.rateLimit.sessionCreation}
 
     COGNITO_CLIENT_SECRET: ${ssm:/espectra/dev/cognito/client-secret, 'your-client-secret'}
+
+    # SSE Configuration
+    SSE_CONNECTIONS_TABLE: !Ref SSEConnectionsTable
+      #Fn::ImportValue: ${self:custom.resourcePrefix}-sse-connections-table-name
+    SSE_LOG_LEVEL: ${self:custom.logLevel.${self:provider.stage}}
+    SSE_HEARTBEAT_INTERVAL: '30000'
+    SSE_CONNECTION_TIMEOUT: '300000'
+    SSE_MAX_RETRIES: '3'
+    SSE_CLEANUP_INTERVAL: '300000'
+    SSE_RATE_LIMIT_MAX_EVENTS: '60'
 
 custom:
   projectName: espectra-backend
@@ -164,8 +170,7 @@ custom:
     systemKeyArn: ${ssm:/espectra/dev/kms/system-key-arn, 'espectra-backend-dev-v4-r1-kms.SystemKeyArn'}
     secretsKeyId: ${ssm:/espectra/dev/kms/secrets-key-id, 'espectra-backend-dev-v4-r1-kms.SecretsKeyId'}
     secretsKeyArn: ${ssm:/espectra/dev/kms/secrets-key-arn, 'espectra-backend-dev-v4-r1-kms.SecretsKeyArn'}
-    websocketKeyId: ${ssm:/espectra/dev/kms/websocket-key-id, 'espectra-backend-dev-v4-r1-kms.WebsocketKeyId'}
-    websocketKeyArn: ${ssm:/espectra/dev/kms/websocket-key-arn, 'espectra-backend-dev-v4-r1-kms.WebsocketKeyArn'}
+
 
   # SNS Topics
   snsHighPriorityTopic: ${ssm:/espectra/dev/sns/high-priority-topic, 'espectra-backend-dev-v4-r1-sns.HighPriorityTopicArn'}
@@ -183,12 +188,10 @@ custom:
       latency: 1000
       4xxErrors: 5
       5xxErrors: 1
-    websocket:
-      connections: 2000
+
 
   serverless-offline:
     httpPort: 3000
-    websocketPort: 3001
     lambdaPort: 3002
     noPrependStageInUrl: true
     noTimeout: true
@@ -460,59 +463,6 @@ functions:
     environment:
       SES_FROM_EMAIL: 'soporte@spectrumai.com.co'
 
-  # WebSocket Functions
-  wsAuthorizer:
-    handler: services/websocket/handlers/authorizer.handler
-    name: ${self:custom.resourcePrefix}-websocket-authorizer
-    role:
-      Fn::ImportValue: ${self:custom.resourcePrefix}-lambda-role-arn
-    memorySize: 256
-    timeout: 29
-    environment:
-      COGNITO_USER_POOL_ID:
-        Fn::ImportValue: ${self:custom.resourcePrefix}-cognito-UserPoolId
-      COGNITO_CLIENT_ID:
-        Fn::ImportValue: ${self:custom.resourcePrefix}-cognito-UserPoolClientId
-
-  webSocketConnect:
-    handler: services/websocket/handlers/connect.handler
-    name: ${self:custom.resourcePrefix}-webSocketConnect
-    role:
-      Fn::ImportValue: ${self:custom.resourcePrefix}-lambda-role-arn
-    events:
-      - websocket:
-          route: $connect
-          authorizer:
-            name: wsAuthorizer
-            identitySource:
-              - 'route.request.querystring.Auth'
-
-  webSocketDisconnect:
-    handler: services/websocket/handlers/disconnect.handler
-    name: ${self:custom.resourcePrefix}-webSocketDisconnect
-    role:
-      Fn::ImportValue: ${self:custom.resourcePrefix}-lambda-role-arn
-    events:
-      - websocket:
-          route: $disconnect
-
-  webSocketMessage:
-    handler: services/websocket/handlers/message.handler
-    name: ${self:custom.resourcePrefix}-webSocketMessage
-    role:
-      Fn::ImportValue: ${self:custom.resourcePrefix}-lambda-role-arn
-    events:
-      - websocket:
-          route: $default
-
-  webSocketAgent:
-    handler: services/websocket/handlers/agent.handler
-    name: ${self:custom.resourcePrefix}-webSocketAgent
-    role:
-      Fn::ImportValue: ${self:custom.resourcePrefix}-lambda-role-arn
-    events:
-      - websocket:
-          route: agent
 
   # Botpress Integration Functions
   botpressWebhook:
@@ -680,6 +630,8 @@ functions:
           method: post
           cors: true
           integration: lambda-proxy
+          restApi:
+            id: !Ref RestApiId
           authorizer:
             name: restAuthorizer
   # Removed aliases as it's not supported in Serverless v4
@@ -696,6 +648,8 @@ functions:
           method: post
           cors: true
           integration: lambda-proxy
+          restApi:
+            id: !Ref RestApiId
           authorizer:
             name: restAuthorizer
 
@@ -710,6 +664,8 @@ functions:
           method: post
           cors: true
           integration: lambda-proxy
+          restApi:
+            id: !Ref RestApiId
           authorizer:
             name: restAuthorizer
     environment:
@@ -726,6 +682,10 @@ functions:
       - http:
           path: sessions/update/{sessionId}
           method: put
+          cors: true
+          integration: lambda-proxy
+          restApi:
+            id: !Ref RestApiId
           authorizer:
             name: restAuthorizer
     environment:
@@ -743,14 +703,46 @@ functions:
           method: post
           cors: true
           integration: lambda-proxy
+          restApi:
+            id: !Ref RestApiId
           authorizer:
             name: restAuthorizer
 
+  # SPECTRUM - Polling Functions (SSE removed - not compatible with Lambda)
+
+  # SSE Polling Function
+  sseConversationPoll:
+    handler: services/sse/handlers/poll.handler
+    name: ${self:custom.resourcePrefix}-sse-conversation-poll
+    role:
+      Fn::ImportValue: ${self:custom.resourcePrefix}-lambda-role-arn
+    timeout: 30  # 30 segundos para polling
+    events:
+      - http:
+          path: conversations/{conversationId}/poll
+          method: get
+          cors: true
+          integration: lambda-proxy
+          restApi:
+            id: !Ref RestApiId
+          authorizer:
+            name: restAuthorizer
+    environment:
+      SSE_LOG_LEVEL: ${self:custom.logLevel.${self:provider.stage}}
+
+  sseConversationPollOptions:
+    handler: services/sse/handlers/poll.optionsHandler
+    name: ${self:custom.resourcePrefix}-sse-conversation-poll-options
+    role:
+      Fn::ImportValue: ${self:custom.resourcePrefix}-lambda-role-arn
+    events:
+      - http:
+          path: conversations/{conversationId}/poll
+          method: options
+          cors: true
+          integration: lambda-proxy
+          restApi:
+            id: !Ref RestApiId
+
 resources:
-  - ${file(infrastructure/apigateway/api.yml)}
-  - ${file(infrastructure/apigateway/chat-api-routes.yml)}
-
-  - ${file(infrastructure/security/waf.yml)}
-
-  - ${file(infrastructure/websocket/websocket.yml)}
-  - ${file(infrastructure/security/websocket-security.yml)}
+  - ${file(infrastructure/sse/sse-infrastructure.yml)}
