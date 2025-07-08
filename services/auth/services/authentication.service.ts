@@ -950,12 +950,18 @@ export class AuthenticationService {
 
       const userId = uuidv4();
       let botpressUserKeyId: string | undefined;
+      let botpressUserId: string | undefined;
 
       // Crear usuario en Botpress
       try {
         const botpressResponse = await this.botpressService.createBotpressUser(userId, credentials.email);
         botpressUserKeyId = botpressResponse.key;
-        this.logger.info('Botpress user created', { name: credentials.email });
+        botpressUserId = botpressResponse.user.id;
+        this.logger.info('Botpress user created', {
+          email: credentials.email,
+          botpressUserId: botpressUserId,
+          botpressUserKeyId: botpressUserKeyId
+        });
       } catch (error) {
         this.logger.error('Botpress user creation failed', { error, email: credentials.email });
         await this.metrics.incrementCounter('RegistrationFailureBotpress');
@@ -968,6 +974,7 @@ export class AuthenticationService {
         email: credentials.email,
         name: credentials.name,
         botpressUserKeyId: botpressUserKeyId,
+        botpressUserId: botpressUserId,
         phoneNumber: credentials.phoneNumber,
         userType: credentials.userType || 'basic',
         language: credentials.language || 'es',

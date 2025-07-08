@@ -67,7 +67,8 @@ const loginHandler: APIGatewayProxyHandler = async (event) => {
             userSub: result.user.userSub,
             email: result.user.email,
             name: result.user.name,
-            userType: result.user.userType
+            userType: result.user.userType,
+            botpressUserId: result.user.botpressUserId
           },
           tokens: {
             accessToken: result.tokens.accessToken,

@@ -38,6 +38,7 @@ export interface LoginCredentials {
     userId: string;
     userSub: string;
     botpressUserKeyId: string;
+    botpressUserId?: string;
     email: string;
     name: string;
     userType: string;
