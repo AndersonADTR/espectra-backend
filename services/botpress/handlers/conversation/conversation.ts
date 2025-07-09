@@ -3,6 +3,7 @@
 import { Handler, APIGatewayProxyEvent } from 'aws-lambda';
 import { BotpressService } from '@services/botpress/services/botpress/botpress.service';
 import { UserService } from '@services/botpress/services/user/user.service';
+import { ConversationContextService } from '@services/botpress/services/context/conversation-context.service';
 
 /**
  * Handler Lambda para gestionar conversaciones de concierge vía API REST
@@ -80,12 +81,29 @@ export const handler: Handler = async (event: APIGatewayProxyEvent) => {
     if (method === 'GET' && !conversationId) {
       const activeConversation = await botpressService.getActiveConciergeConversation(userBotpressKey);
 
+      // Si hay conversación activa, remover el array de mensajes de la respuesta
+      let conversationResponse = null;
+      if (activeConversation) {
+        conversationResponse = {
+          conversationId: activeConversation.conversationId,
+          userId: activeConversation.userId,
+          status: activeConversation.status,
+          type: activeConversation.type,
+          createdAt: activeConversation.createdAt,
+          updatedAt: activeConversation.updatedAt,
+          lastActivity: activeConversation.lastActivity,
+          messageCount: activeConversation.messageCount || 0,
+          lastMessageId: activeConversation.lastMessageId,
+          lastMessageTimestamp: activeConversation.lastMessageTimestamp
+        };
+      }
+
       return {
         statusCode: 200,
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           hasActiveConversation: !!activeConversation,
-          conversation: activeConversation
+          conversation: conversationResponse
         })
       };
     }
@@ -132,12 +150,26 @@ export const handler: Handler = async (event: APIGatewayProxyEvent) => {
           userBotpressKey,
           conversationId: existingConversation.conversationId
         });
+        // Limpiar la respuesta de la conversación existente
+        const cleanExistingConversation = {
+          conversationId: existingConversation.conversationId,
+          userId: existingConversation.userId,
+          status: existingConversation.status,
+          type: existingConversation.type,
+          createdAt: existingConversation.createdAt,
+          updatedAt: existingConversation.updatedAt,
+          lastActivity: existingConversation.lastActivity,
+          messageCount: existingConversation.messageCount || 0,
+          lastMessageId: existingConversation.lastMessageId,
+          lastMessageTimestamp: existingConversation.lastMessageTimestamp
+        };
+
         return {
           statusCode: 200,
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             message: 'Active conversation already exists',
-            conversation: existingConversation
+            conversation: cleanExistingConversation
           })
         };
       }
@@ -151,12 +183,26 @@ export const handler: Handler = async (event: APIGatewayProxyEvent) => {
         conversationId: newConversation.conversationId
       });
 
+      // Limpiar la respuesta de la nueva conversación
+      const cleanNewConversation = {
+        conversationId: newConversation.conversationId,
+        userId: newConversation.userId,
+        status: newConversation.status,
+        type: newConversation.type,
+        createdAt: newConversation.createdAt,
+        updatedAt: newConversation.updatedAt,
+        lastActivity: newConversation.lastActivity,
+        messageCount: newConversation.messageCount || 0,
+        lastMessageId: newConversation.lastMessageId,
+        lastMessageTimestamp: newConversation.lastMessageTimestamp
+      };
+
       return {
         statusCode: 201,
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           message: 'New concierge conversation created',
-          conversation: newConversation
+          conversation: cleanNewConversation
         })
       };
     }
@@ -182,12 +228,48 @@ export const handler: Handler = async (event: APIGatewayProxyEvent) => {
 
     // 4. GET /conversations/{id}/messages - Cargar mensajes de la conversación
     else if (method === 'GET' && conversationId && action === 'messages') {
-      const messages = await botpressService.getConversationMessages(userBotpressKey, conversationId);
+      // Obtener parámetros de paginación
+      const limit = event.queryStringParameters?.limit
+        ? parseInt(event.queryStringParameters.limit)
+        : 30;
+      const nextToken = event.queryStringParameters?.nextToken;
+
+      console.info('Getting conversation messages', {
+        conversationId,
+        userBotpressKey: userBotpressKey.substring(0, 10) + '...',
+        limit,
+        hasNextToken: !!nextToken
+      });
+
+      // Necesitamos el botpressUserId del usuario para identificar roles
+      if (!user.botpressUserId) {
+        console.error('User does not have botpressUserId', { userSub });
+        return {
+          statusCode: 400,
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            message: 'User not properly configured for messaging',
+            error: 'MISSING_BOTPRESS_USER_ID'
+          })
+        };
+      }
+
+      const messages = await botpressService.getConversationMessages(
+        userBotpressKey,
+        conversationId,
+        user.botpressUserId,
+        limit,
+        nextToken
+      );
 
       return {
         statusCode: 200,
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(messages)
+        body: JSON.stringify({
+          success: true,
+          data: messages,
+          conversationId
+        })
       };
     }
 
@@ -195,15 +277,32 @@ export const handler: Handler = async (event: APIGatewayProxyEvent) => {
     else if (method === 'POST' && conversationId && action === 'messages') {
 
       console.info('Sending message to conversation', {
-        userBotpressKey,
+        userBotpressKey: userBotpressKey.substring(0, 10) + '...',
         conversationId
       });
+
+      // Validar que la conversación existe y pertenece al usuario
+      const contextService = ConversationContextService.getInstance();
+      const conversationContext = await contextService.getContext(conversationId);
+      if (!conversationContext || conversationContext.userId !== userBotpressKey) {
+        return {
+          statusCode: 404,
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            message: 'Conversation not found or access denied',
+            error: 'CONVERSATION_NOT_FOUND'
+          })
+        };
+      }
 
       if (!event.body) {
         return {
           statusCode: 400,
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ message: 'Request body is required' })
+          body: JSON.stringify({
+            message: 'Request body is required',
+            error: 'MISSING_BODY'
+          })
         };
       }
 
@@ -217,20 +316,28 @@ export const handler: Handler = async (event: APIGatewayProxyEvent) => {
 
       const requestData = JSON.parse(event.body);
 
-      console.info('Request data parsed', { requestData });
+      console.info('Request data parsed', {
+        hasMessage: !!requestData.message,
+        messageLength: requestData.message?.length,
+        type: requestData.type
+      });
 
-      if (!requestData.message) {
+      if (!requestData.message || requestData.message.trim().length === 0) {
         return {
           statusCode: 400,
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ message: 'Message is required' })
+          body: JSON.stringify({
+            message: 'Message content is required and cannot be empty',
+            error: 'EMPTY_MESSAGE'
+          })
         };
       }
 
       console.info('Sending message to conversation', {
-        userBotpressKey,
+        userBotpressKey: userBotpressKey.substring(0, 10) + '...',
         conversationId,
-        payload: requestData
+        messageLength: requestData.message.length,
+        type: requestData.type || 'text'
       });
 
       // Enviar mensaje a la conversación existente
@@ -238,13 +345,19 @@ export const handler: Handler = async (event: APIGatewayProxyEvent) => {
         userBotpressKey,
         requestData.message,
         requestData.type || 'text',
-        conversationId
+        conversationId,
+        user.botpressUserId // Pasar el botpressUserId para identificación de roles
       );
 
       return {
         statusCode: 200,
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(response)
+        body: JSON.stringify({
+          success: true,
+          data: response,
+          conversationId,
+          message: 'Message sent successfully'
+        })
       };
     }
 

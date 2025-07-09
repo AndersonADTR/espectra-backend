@@ -56,5 +56,6 @@ resources:
   - ${file(infrastructure/dynamodb/user-tables.yml)}
   - ${file(infrastructure/dynamodb/chat-history-tables.yml)}
   - ${file(infrastructure/dynamodb/chat-session-tables.yml)}
+  - ${file(infrastructure/dynamodb/conversation-messages-tables.yml)}
   - ${file(infrastructure/dynamodb/connection-concierge-tables.yml)}
   - ${file(infrastructure/dynamodb/registration-request-tables.yml)}

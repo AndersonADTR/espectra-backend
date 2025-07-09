@@ -2,11 +2,14 @@ import axios, { AxiosInstance, AxiosError, AxiosRequestConfig } from 'axios';
 import { Logger } from '@shared/utils/logger';
 import { TokenManagementService } from '../token/token-management.service';
 import { ConversationContextService } from '../context/conversation-context.service';
+import { ConversationMessageService } from '../conversation-message/conversation-message.service';
+import { BotpressSyncService } from '../sync/botpress-sync.service';
 import { BotpressMessageTransformer } from './transformers/message-transformer.service';
 import { ConversationStatus, ConversationType } from '@services/botpress/types/conversation-context.types';
 import { HandoffService } from '../handoff/handoff.service';
 import { HandoffReason } from '../handoff/handoff-detection.service';
 import { UserService } from '../user/user.service';
+import { MessageRole, MessageType } from '../../models/conversation-message.model';
 
 export interface BotpressMessage {
   type: string;
@@ -332,6 +335,8 @@ export class BotpressService {
   private readonly apiClient: BotpressApiClient;
   private readonly tokenService: TokenManagementService;
   private readonly contextService: ConversationContextService;
+  private readonly messageService: ConversationMessageService;
+  private readonly syncService: BotpressSyncService;
   private readonly messageTransformer: BotpressMessageTransformer;
   private readonly logger: Logger;
 
@@ -339,6 +344,8 @@ export class BotpressService {
     this.apiClient = new BotpressApiClient();
     this.tokenService = TokenManagementService.getInstance();
     this.contextService = ConversationContextService.getInstance();
+    this.messageService = ConversationMessageService.getInstance();
+    this.syncService = BotpressSyncService.getInstance();
     this.messageTransformer = new BotpressMessageTransformer();
     this.logger = new Logger('BotpressService');
   }
@@ -356,7 +363,7 @@ export class BotpressService {
    * @param message Message text or object
    * @param type Message type (text, document, image, etc.)
    * @param conversationId Optional conversation ID (will be generated if not provided)
-   * @param verifyConversationExists
+   * @param userBotpressId User's Botpress ID for role identification
    * @returns Processed response
    */
   public async sendMessage(
@@ -364,6 +371,7 @@ export class BotpressService {
     message: string | BotpressMessage,
     type: string,
     conversationId?: string,
+    userBotpressId?: string
   ): Promise<BotpressResponse> {
     // Generate conversation ID if not provided
     const actualConversationId = conversationId || `conv-${userKey}-${Date.now()}`;
@@ -391,30 +399,42 @@ export class BotpressService {
           createdAt: Date.now(),
           updatedAt: Date.now(),
           lastActivity: Date.now(),
-          messages: []
+          messageCount: 0
         };
         await this.contextService.saveContext(context);
       }
 
-      // Add user message to context
-      const userMessage = {
-        role: 'user',
-        content: typeof message === 'string' ? message : JSON.stringify(message),
-        timestamp: Date.now()
-      };
-
-      context.messages.push(userMessage as any);
-      await this.contextService.updateContext(actualConversationId, {
-        messages: context.messages,
-        updatedAt: Date.now()
+      // Save user message to messages table
+      const userMessageTimestamp = Date.now();
+      this.logger.info('Saving user message', {
+        conversationId: actualConversationId,
+        userKey: userKey.substring(0, 10) + '...',
+        messageLength: typeof message === 'string' ? message.length : JSON.stringify(message).length
       });
+
+      const userMessage = await this.messageService.saveMessage({
+        conversationId: actualConversationId,
+        userId: userKey,
+        role: MessageRole.USER,
+        type: MessageType.TEXT,
+        content: typeof message === 'string' ? message : JSON.stringify(message),
+        timestamp: userMessageTimestamp
+        // Nota: Los mensajes del usuario no tienen botpressMessageId hasta que se envían
+      });
+
+      // Update context with last message info
+      await this.contextService.updateLastMessage(
+        actualConversationId,
+        userMessage.messageId,
+        userMessageTimestamp
+      );
 
       // Send message to Botpress
       const response = await this.apiClient.sendMessage(
         actualConversationId,
         message,
         type,
-        userKey // Pasar el userId para obtener la clave de usuario
+        userKey
       );
 
       // Consume tokens based on actual usage
@@ -430,24 +450,53 @@ export class BotpressService {
         response
       );
 
-      // Update context with bot response
+      // Save bot response messages to messages table
       if (response.messages && response.messages.length > 0) {
+        this.logger.info('Processing bot response messages', {
+          conversationId: actualConversationId,
+          messageCount: response.messages.length
+        });
+
         for (const botMessage of response.messages) {
           const content = botMessage.type === 'text' && botMessage.payload.text
             ? botMessage.payload.text
             : JSON.stringify(botMessage);
 
-          context.messages.push({
-            role: 'assistant',
-            content,
-            timestamp: Date.now()
-          } as any);
-        }
+          const botMessageTimestamp = Date.now();
 
-        await this.contextService.updateContext(actualConversationId, {
-          messages: context.messages,
-          updatedAt: Date.now()
-        });
+          this.logger.info('Saving bot response message', {
+            conversationId: actualConversationId,
+            botMessageType: botMessage.type,
+            hasText: !!botMessage.payload?.text,
+            contentLength: content.length
+          });
+
+          // Los mensajes de respuesta de Botpress siempre son del BOT
+          // porque vienen como respuesta a nuestro envío
+          // Usamos saveMessage (no saveMessageIfNotExists) porque estos son mensajes nuevos
+          const savedBotMessage = await this.messageService.saveMessage({
+            conversationId: actualConversationId,
+            userId: userKey,
+            role: MessageRole.BOT,
+            type: MessageType.TEXT,
+            content,
+            timestamp: botMessageTimestamp
+            // Nota: Los mensajes de respuesta inmediata no tienen botpressMessageId
+            // Se obtendrán en la próxima sincronización con listMessages
+          });
+
+          this.logger.info('Bot response message saved', {
+            messageId: savedBotMessage.messageId,
+            conversationId: actualConversationId
+          });
+
+          // Update context with last bot message info
+          await this.contextService.updateLastMessage(
+            actualConversationId,
+            savedBotMessage.messageId,
+            botMessageTimestamp
+          );
+        }
       }
 
       return response;
@@ -555,10 +604,9 @@ export class BotpressService {
         conversationId: context.conversationId,
         createdAt: context.createdAt,
         updatedAt: context.updatedAt,
-        messageCount: context.messages.length,
-        lastMessage: context.messages.length > 0
-          ? context.messages[context.messages.length - 1]
-          : null
+        messageCount: context.messageCount || 0,
+        lastMessageId: context.lastMessageId,
+        lastMessageTimestamp: context.lastMessageTimestamp
       }));
     } catch (error) {
       this.logger.error('Error listing user conversations', { error, userId });
@@ -606,7 +654,7 @@ export class BotpressService {
               createdAt: Date.now(),
               updatedAt: Date.now(),
               lastActivity: Date.now(),
-              messages: []
+              messageCount: 0
             };
             await this.contextService.saveContext(newContext);
             return newContext;
@@ -661,51 +709,232 @@ export class BotpressService {
   }
 
   /**
-   * Gets conversation messages from Botpress Chat API
+   * Gets conversation messages from local store only (OPTIMIZED STRATEGY)
+   * No synchronization with Botpress - super fast response
    * @param userKey User key from Botpress
    * @param conversationId Conversation ID
-   * @returns Messages from Botpress
+   * @param userBotpressId User's Botpress ID (not used but kept for compatibility)
+   * @param limit Number of messages to return
+   * @param nextToken Pagination token
+   * @returns Paginated messages from our local store
    */
-  public async getConversationMessages(userKey: string, conversationId: string): Promise<any> {
+  public async getConversationMessages(
+    userKey: string,
+    conversationId: string,
+    userBotpressId: string,
+    limit: number = 30,
+    nextToken?: string
+  ): Promise<any> {
     try {
-      // SPECTRUM: Get conversation context for validation
+      // Validate conversation context
       const context = await this.contextService.getContext(conversationId);
       if (!context) {
-        this.logger.warn('SPECTRUM: Conversation context not found', { conversationId, userKey: userKey.substring(0, 10) + '...' });
+        this.logger.warn('Conversation context not found', {
+          conversationId,
+          userKey: userKey.substring(0, 10) + '...'
+        });
         throw new Error('Conversation not found');
       }
 
-      // SPECTRUM: Log context for debugging
-      this.logger.info('SPECTRUM: Conversation context found', {
+      this.logger.info('Getting messages from local store only (optimized)', {
         conversationId,
-        contextUserId: context.userId,
         userKey: userKey.substring(0, 10) + '...',
-        contextKeys: Object.keys(context)
+        limit,
+        hasNextToken: !!nextToken
       });
 
-      // SPECTRUM: Skip user validation for now - the userKey is for Botpress, context.userId is Cognito userSub
-      // TODO: Implement proper user validation using userSub lookup
+      // ✅ OPTIMIZACIÓN: Solo leer desde nuestra tabla (súper rápido)
+      const messages = await this.messageService.getMessages(conversationId, limit, nextToken);
 
-      // Get messages from Botpress Chat API
-      const botpressMessages = await this.apiClient.listMessages(conversationId, userKey);
+      this.logger.info('Messages retrieved from local store', {
+        conversationId,
+        messageCount: messages.messages.length,
+        hasMore: messages.pagination.hasMore,
+        source: 'LOCAL_ONLY'
+      });
 
-      // Update local context with any new messages
-      if (botpressMessages.messages && botpressMessages.messages.length > 0) {
-        const contextMessages = botpressMessages.messages.map((msg: any) => ({
-          role: msg.direction === 'incoming' ? 'user' : 'assistant',
-          content: msg.payload?.text || JSON.stringify(msg.payload),
-          timestamp: new Date(msg.createdAt).getTime()
-        }));
-
+      // Actualizar contexto con información del último mensaje si hay mensajes
+      if (messages.messages.length > 0) {
+        const lastMessage = messages.messages[0]; // Primer mensaje (más reciente)
         await this.contextService.updateContext(conversationId, {
-          messages: contextMessages,
+          lastMessageId: lastMessage.messageId,
+          lastMessageTimestamp: lastMessage.timestamp,
+          messageCount: await this.messageService.getMessageCount(conversationId),
           updatedAt: Date.now()
         });
       }
 
-      return botpressMessages;
+      return {
+        messages: messages.messages.map(msg => msg.toJSON()),
+        pagination: messages.pagination,
+        source: 'local_store',
+        cached: true // Indica que viene de cache local
+      };
+
     } catch (error) {
-      this.logger.error('Error getting conversation messages', { error, userKey, conversationId });
+      this.logger.error('Error getting conversation messages from local store', {
+        error,
+        userKey: userKey.substring(0, 10) + '...',
+        conversationId
+      });
+      throw error;
+    }
+  }
+
+  /**
+   * Gets new messages with intelligent synchronization (OPTIMIZED STRATEGY)
+   * Only synchronizes when polling - perfect for real-time updates
+   * @param userKey User key from Botpress
+   * @param conversationId Conversation ID
+   * @param userBotpressId User's Botpress ID for role identification
+   * @param sinceTimestamp Timestamp to get messages since
+   * @param roleFilter Filter by message role (optional)
+   * @returns New messages since timestamp
+   */
+  public async getNewMessages(
+    userKey: string,
+    conversationId: string,
+    userBotpressId: string,
+    sinceTimestamp?: number,
+    roleFilter?: MessageRole
+  ): Promise<any> {
+    try {
+      // Validate conversation context
+      const context = await this.contextService.getContext(conversationId);
+      if (!context) {
+        this.logger.warn('Conversation context not found for polling', {
+          conversationId,
+          userKey: userKey.substring(0, 10) + '...'
+        });
+        throw new Error('Conversation not found');
+      }
+
+      this.logger.info('Starting intelligent sync for polling', {
+        conversationId,
+        userKey: userKey.substring(0, 10) + '...',
+        userBotpressId,
+        sinceTimestamp,
+        roleFilter,
+        strategy: 'POLLING_SYNC'
+      });
+
+      // ✅ OPTIMIZACIÓN: Solo sincronizar cuando se hace polling
+      // Esto captura las respuestas del bot que llegaron después del último poll
+      const syncResult = await this.syncService.syncNewMessages(
+        conversationId,
+        userKey,
+        userBotpressId,
+        this.apiClient,
+        sinceTimestamp
+      );
+
+      this.logger.info('Intelligent sync completed for polling', {
+        conversationId,
+        syncResult,
+        strategy: 'POLLING_SYNC'
+      });
+
+      // Obtener mensajes nuevos desde nuestra tabla
+      const since = sinceTimestamp || 0;
+      const newMessages = await this.messageService.getMessagesSince(conversationId, since);
+
+      // Filtrar por rol si se especifica (típicamente solo BOT para polling)
+      const filteredMessages = roleFilter
+        ? newMessages.filter(msg => msg.role === roleFilter)
+        : newMessages;
+
+      this.logger.info('New messages retrieved for polling', {
+        conversationId,
+        totalNewMessages: newMessages.length,
+        filteredMessages: filteredMessages.length,
+        roleFilter,
+        syncedNewMessages: syncResult.newMessages
+      });
+
+      return {
+        messages: filteredMessages.map(msg => msg.toJSON()),
+        timestamp: new Date().toISOString(),
+        hasMore: filteredMessages.length > 0,
+        sync: {
+          newMessages: syncResult.newMessages,
+          duplicatesSkipped: syncResult.duplicatesSkipped,
+          strategy: 'polling_sync'
+        }
+      };
+
+    } catch (error) {
+      this.logger.error('Error getting new messages for polling', {
+        error,
+        userKey: userKey.substring(0, 10) + '...',
+        conversationId,
+        sinceTimestamp
+      });
+      throw error;
+    }
+  }
+
+  /**
+   * Performs initial synchronization for a conversation (OPTIONAL)
+   * Use only when you need to backfill messages from Botpress
+   * @param userKey User key from Botpress
+   * @param conversationId Conversation ID
+   * @param userBotpressId User's Botpress ID for role identification
+   * @returns Sync result
+   */
+  public async performInitialSync(
+    userKey: string,
+    conversationId: string,
+    userBotpressId: string
+  ): Promise<any> {
+    try {
+      this.logger.info('Starting initial conversation sync', {
+        conversationId,
+        userKey: userKey.substring(0, 10) + '...',
+        userBotpressId,
+        strategy: 'INITIAL_SYNC'
+      });
+
+      // Verificar si ya tenemos mensajes
+      const messageCount = await this.messageService.getMessageCount(conversationId);
+
+      if (messageCount > 0) {
+        this.logger.info('Conversation already has messages, skipping initial sync', {
+          conversationId,
+          messageCount
+        });
+        return {
+          skipped: true,
+          reason: 'already_has_messages',
+          messageCount
+        };
+      }
+
+      // Realizar sincronización completa solo si no hay mensajes
+      const syncResult = await this.syncService.syncAllMessages(
+        conversationId,
+        userKey,
+        userBotpressId,
+        this.apiClient
+      );
+
+      this.logger.info('Initial sync completed', {
+        conversationId,
+        syncResult,
+        strategy: 'INITIAL_SYNC'
+      });
+
+      return {
+        performed: true,
+        syncResult,
+        strategy: 'initial_sync'
+      };
+
+    } catch (error) {
+      this.logger.error('Error performing initial sync', {
+        error,
+        userKey: userKey.substring(0, 10) + '...',
+        conversationId
+      });
       throw error;
     }
   }

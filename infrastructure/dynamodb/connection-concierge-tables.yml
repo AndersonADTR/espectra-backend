@@ -1,0 +1,152 @@
+Resources:
+  ConnectionsTable:
+    Type: AWS::DynamoDB::Table
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      TableName: ${self:custom.resourcePrefix}-connections
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: connectionId
+          AttributeType: S
+        - AttributeName: userId
+          AttributeType: S
+        - AttributeName: status
+          AttributeType: S
+        - AttributeName: lastActivity
+          AttributeType: S
+      KeySchema:
+        - AttributeName: connectionId
+          KeyType: HASH
+      GlobalSecondaryIndexes:
+        - IndexName: UserIdIndex
+          KeySchema:
+            - AttributeName: userId
+              KeyType: HASH
+          Projection:
+            ProjectionType: ALL
+        - IndexName: StatusActivityIndex
+          KeySchema:
+            - AttributeName: status
+              KeyType: HASH
+            - AttributeName: lastActivity
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+      TimeToLiveSpecification:
+        AttributeName: ttl
+        Enabled: true
+      SSESpecification:
+        SSEEnabled: true
+        SSEType: KMS
+        KMSMasterKeyId: 
+          Fn::ImportValue: ${self:custom.resourcePrefix}-kms-SystemKeyArn
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
+      StreamSpecification:
+        StreamViewType: NEW_AND_OLD_IMAGES
+      Tags:
+        - Key: Service
+          Value: ${self:custom.service}
+        - Key: Environment
+          Value: ${self:provider.stage}
+        - Key: Purpose
+          Value: WebSocketConnections
+        - Key: Component
+          Value: Concierge
+        - Key: ManagedBy
+          Value: CloudFormation
+
+  # CloudWatch Alarms
+  ConnectionsTableThrottlingAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: ${self:custom.resourcePrefix}-connections-throttling
+      AlarmDescription: Connections table throttled requests exceed threshold
+      MetricName: ThrottledRequests
+      Namespace: AWS/DynamoDB
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 2
+      Threshold: 10
+      ComparisonOperator: GreaterThanThreshold
+      Dimensions:
+        - Name: TableName
+          Value: !Ref ConnectionsTable
+      AlarmActions:
+        - ${self:custom.snsMediumPriorityTopic}
+      Tags:
+        - Key: Service
+          Value: ${self:custom.service}
+        - Key: Environment
+          Value: ${self:provider.stage}
+
+  ConnectionsLatencyAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: ${self:custom.resourcePrefix}-connections-latency
+      AlarmDescription: Connection operations latency exceeds threshold
+      MetricName: SuccessfulRequestLatency
+      Namespace: AWS/DynamoDB
+      Statistic: Maximum
+      Period: 300
+      EvaluationPeriods: 3
+      Threshold: 100
+      ComparisonOperator: GreaterThanThreshold
+      Dimensions:
+        - Name: TableName
+          Value: !Ref ConnectionsTable
+      AlarmActions:
+        - ${self:custom.snsMediumPriorityTopic}
+      Tags:
+        - Key: Service
+          Value: ${self:custom.service}
+        - Key: Environment
+          Value: ${self:provider.stage}
+
+  ActiveConnectionsAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: ${self:custom.resourcePrefix}-active-connections
+      AlarmDescription: Number of active connections exceeds threshold
+      MetricName: ActiveConnections
+      Namespace: ${self:custom.service}/${self:provider.stage}
+      Statistic: Maximum
+      Period: 300
+      EvaluationPeriods: 2
+      Threshold: 2000
+      ComparisonOperator: GreaterThanThreshold
+      AlarmActions:
+        - ${self:custom.snsMediumPriorityTopic}
+      Tags:
+        - Key: Service
+          Value: ${self:custom.service}
+        - Key: Environment
+          Value: ${self:provider.stage}
+
+Outputs:
+  ConnectionsTableName:
+    Description: Name of the Connections table
+    Value:
+      Ref: ConnectionsTable
+    Export:
+      Name: ${self:custom.resourcePrefix}-connections-table-name
+
+  ConnectionsTableArn:
+    Description: ARN of the Connections table
+    Value:
+      Fn::GetAtt: [ConnectionsTable, Arn]
+    Export:
+      Name: ${self:custom.resourcePrefix}-connections-table-arn
+
+  UserIdIndexName:
+    Description: Name of the UserId GSI
+    Value: UserIdIndex
+    Export:
+      Name: ${self:custom.resourcePrefix}-connections-userid-index-name
+
+  StatusActivityIndexName:
+    Description: Name of the Status Activity GSI
+    Value: StatusActivityIndex
+    Export:
+      Name: ${self:custom.resourcePrefix}-connections-status-activity-index-name

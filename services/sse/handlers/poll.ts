@@ -6,6 +6,7 @@ import { MetricsService } from '@shared/utils/metrics';
 import { AuthenticationService } from '@services/auth/services/authentication.service';
 import { UserService } from '@services/botpress/services/user/user.service';
 import { BotpressService } from '@services/botpress/services/botpress/botpress.service';
+import { MessageRole } from '@services/botpress/models/conversation-message.model';
 import { SPECTRUM_POLLING_CONFIG } from '../config/sse.config';
 
 const logger = new Logger('SpectrumPollHandler');
@@ -98,7 +99,19 @@ export const handler: APIGatewayProxyHandler = async (
       userId
     });
 
-    const messages = await getNewMessages(conversationId, userInfo.botpressUserKeyId, since, userId);
+    // Necesitamos el botpressUserId para identificar roles correctamente
+    const userDetails = await userService.getUserByUserSub(userId);
+    if (!userDetails || !userDetails.botpressUserId) {
+      logger.error('User does not have botpressUserId for polling', { userId });
+      return createErrorResponse(400, 'User not properly configured for messaging');
+    }
+
+    const messages = await getNewMessages(
+      conversationId,
+      userInfo.botpressUserKeyId,
+      userDetails.botpressUserId,
+      since
+    );
 
     logger.info('SPECTRUM: getNewMessages returned', {
       conversationId,
@@ -248,53 +261,60 @@ async function getUserInfo(userSub: string): Promise<{
 /**
  * SPECTRUM - Obtiene mensajes nuevos para content creators
  * Optimizado para respuestas del bot especializado en content creation
+ * Usa nuestra tabla local como fuente de verdad
  */
 async function getNewMessages(
   conversationId: string,
   userKey: string,
-  since?: string,
-  userId?: string
+  userBotpressId: string,
+  since?: string
 ): Promise<any[]> {
   try {
     logger.info('SPECTRUM: Getting new messages for content creator', {
       conversationId,
+      userKey: userKey.substring(0, 10) + '...',
+      userBotpressId,
       since,
       platform: 'spectrum'
     });
 
-    // Obtener mensajes de la conversación desde Botpress
-    logger.info('SPECTRUM: Calling Botpress getConversationMessages', {
+    // Convertir timestamp si se proporciona
+    const sinceTimestamp = since ? new Date(since).getTime() : undefined;
+
+    logger.info('SPECTRUM: Using new message sync system', {
       conversationId,
-      userKey: userKey.substring(0, 10) + '...',
-      since
+      sinceTimestamp,
+      userKey: userKey.substring(0, 10) + '...'
     });
 
-    const response = await botpressService.getConversationMessages(userKey, conversationId);
+    // Usar el nuevo método optimizado para polling
+    const response = await botpressService.getNewMessages(
+      userKey,
+      conversationId,
+      userBotpressId,
+      sinceTimestamp,
+      MessageRole.BOT // Solo mensajes del bot para content creators
+    );
 
-    logger.info('SPECTRUM: Botpress response received', {
+    logger.info('SPECTRUM: New message sync response received', {
       conversationId,
       responseType: typeof response,
-      isArray: Array.isArray(response),
       hasMessages: response && response.messages ? response.messages.length : 'no messages property',
-      hasData: response && response.data ? response.data.length : 'no data property',
-      responseKeys: response ? Object.keys(response) : 'null response',
-      responsePreview: JSON.stringify(response).substring(0, 500)
+      hasSync: response && response.sync ? 'sync info present' : 'no sync info',
+      responseKeys: response ? Object.keys(response) : 'null response'
     });
 
-    // Verificar que la respuesta sea válida y extraer los mensajes
+    // Extraer mensajes de la respuesta estructurada
     let messages: any[] = [];
 
-    if (Array.isArray(response)) {
-      messages = response;
-      logger.info('SPECTRUM: Using response as array', { messageCount: messages.length });
-    } else if (response && Array.isArray(response.messages)) {
+    if (response && Array.isArray(response.messages)) {
       messages = response.messages;
-      logger.info('SPECTRUM: Using response.messages', { messageCount: messages.length });
-    } else if (response && Array.isArray(response.data)) {
-      messages = response.data;
-      logger.info('SPECTRUM: Using response.data', { messageCount: messages.length });
+      logger.info('SPECTRUM: Using response.messages from local store', {
+        messageCount: messages.length,
+        syncInfo: response.sync
+      });
     } else {
-      logger.warn('SPECTRUM: Unexpected response format from Botpress', {
+      logger.warn('SPECTRUM: Unexpected response format from new sync system', {
         conversationId,
         responseType: typeof response,
         response: JSON.stringify(response).substring(0, 500)
@@ -302,90 +322,46 @@ async function getNewMessages(
       return [];
     }
 
-    // Log de todos los mensajes antes del filtrado
-    logger.info('SPECTRUM: All messages before filtering', {
+    // Log de mensajes obtenidos
+    logger.info('SPECTRUM: Messages from local store', {
       conversationId,
       totalMessages: messages.length,
       messagesSample: messages.slice(0, 3).map(msg => ({
-        id: msg.id,
-        direction: msg.direction,
+        messageId: msg.messageId,
         role: msg.role,
-        source: msg.source,
-        type: msg.type,
-        createdAt: msg.createdAt,
-        hasPayload: !!msg.payload,
-        payloadText: msg.payload?.text?.substring(0, 50)
+        timestamp: msg.timestamp,
+        content: msg.content?.substring(0, 50)
       }))
     });
 
-    // SPECTRUM: Filtrar mensajes relevantes para content creators
-    // Basado en el análisis de los mensajes reales:
-    // - user_01JWY0JZPXJ21Q92K3DTJ8378F = Bot (respuestas)
-    // - user_01JYARVSQ740AXB26WD34VPRA6 = Usuario (preguntas)
+    // Los mensajes ya vienen filtrados por rol BOT desde el servicio
+    // Solo necesitamos aplicar filtros adicionales si es necesario
 
-    const relevantMessages = messages.filter((message: any) => {
-      // Identificar mensajes del bot por el patrón del userId
-      // Los mensajes del bot tienen userId que empieza con "user_01JWY0JZPXJ21Q92K3DTJ8378F"
-      const isFromBot = message.userId === 'user_01JWY0JZPXJ21Q92K3DTJ8378F';
-      const isFromUser = message.userId === 'user_01JYARVSQ740AXB26WD34VPRA6';
-
-      // Para content creators, queremos solo las respuestas del bot
-      const isRelevant = isFromBot;
-
-      logger.info('SPECTRUM: Message filter check', {
-        messageId: message.id,
-        messageUserId: message.userId,
-        isFromBot,
-        isFromUser,
-        isRelevant,
-        payloadText: message.payload?.text?.substring(0, 50),
-        createdAt: message.createdAt
-      });
-
-      return isRelevant;
+    logger.info('SPECTRUM: Messages ready for content creator', {
+      conversationId,
+      messageCount: messages.length,
+      since,
+      syncInfo: response.sync
     });
 
-    // SPECTRUM: Si no hay userId para filtrar, devolver todos los mensajes
-    if (!userId) {
-      logger.warn('SPECTRUM: No userId provided for filtering, returning all messages', {
+    // Si no hay timestamp específico, devolver todos los mensajes del bot
+    if (!since) {
+      logger.info('SPECTRUM: Returning all bot messages for content creator', {
         conversationId,
         messageCount: messages.length
       });
-      return messages.slice(-5); // Últimos 5 mensajes
+      return messages;
     }
 
-    logger.info('SPECTRUM: Messages after filtering', {
-      conversationId,
-      originalCount: messages.length,
-      filteredCount: relevantMessages.length
-    });
-
-    if (!since) {
-      // Si no hay timestamp, devolver los últimos 5 mensajes relevantes
-      // Para content creators, menos mensajes es mejor para la UX móvil
-      const recentMessages = relevantMessages.slice(-5);
-      logger.info('SPECTRUM: Returning recent messages for content creator', {
-        conversationId,
-        messageCount: recentMessages.length
-      });
-      return recentMessages;
-    }
-
-    // Filtrar mensajes posteriores al timestamp
-    const sinceDate = new Date(since);
-    const newMessages = relevantMessages.filter((message: any) => {
-      const messageDate = new Date(message.createdAt || message.timestamp);
-      return messageDate > sinceDate;
-    });
-
-    logger.info('SPECTRUM: Filtered new messages for content creator', {
+    // Los mensajes ya están filtrados por timestamp en el servicio
+    // pero podemos hacer una verificación adicional si es necesario
+    logger.info('SPECTRUM: Returning filtered bot messages for content creator', {
       conversationId,
       since,
-      newMessageCount: newMessages.length,
-      totalMessageCount: relevantMessages.length
+      messageCount: messages.length
     });
 
-    return newMessages;
+    return messages;
 
   } catch (error) {
     logger.error('Error getting new messages', {

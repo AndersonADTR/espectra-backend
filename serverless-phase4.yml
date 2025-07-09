@@ -84,6 +84,8 @@ provider:
       Fn::ImportValue: ${self:custom.resourcePrefix}-chat-history-table-name
     CONTEXT_TABLE:
       Fn::ImportValue: ${self:custom.resourcePrefix}-context-table-name
+    CONVERSATION_MESSAGES_TABLE:
+      Fn::ImportValue: ${self:custom.resourcePrefix}-conversation-messages-table-name
     TOKEN_TABLE:
       Fn::ImportValue: ${self:custom.resourcePrefix}-tokens-table-name
     REGISTRATION_REQUESTS_TABLE:

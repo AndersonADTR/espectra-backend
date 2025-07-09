@@ -1,0 +1,73 @@
+Resources:
+  # Tabla para almacenar mensajes de conversaciones
+  ConversationMessagesTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: ${self:custom.resourcePrefix}-conversation-messages
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: messageId
+          AttributeType: S
+        - AttributeName: conversationId
+          AttributeType: S
+        - AttributeName: timestamp
+          AttributeType: N
+        - AttributeName: userId
+          AttributeType: S
+      KeySchema:
+        - AttributeName: messageId
+          KeyType: HASH
+      GlobalSecondaryIndexes:
+        # Índice para obtener mensajes por conversación ordenados por timestamp
+        - IndexName: ConversationIndex
+          KeySchema:
+            - AttributeName: conversationId
+              KeyType: HASH
+            - AttributeName: timestamp
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+        # Índice para obtener mensajes por usuario
+        - IndexName: UserIndex
+          KeySchema:
+            - AttributeName: userId
+              KeyType: HASH
+            - AttributeName: timestamp
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+      StreamSpecification:
+        StreamViewType: NEW_AND_OLD_IMAGES
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
+      SSESpecification:
+        SSEEnabled: true
+        SSEType: KMS
+        KMSMasterKeyId: 
+          Fn::ImportValue: ${self:custom.resourcePrefix}-kms-SystemKeyArn
+      Tags:
+        - Key: Environment
+          Value: ${self:provider.stage}
+        - Key: Service
+          Value: ${self:service}
+        - Key: Purpose
+          Value: ConversationMessages
+
+Outputs:
+  ConversationMessagesTableName:
+    Description: "Nombre de la tabla de mensajes de conversaciones"
+    Value: !Ref ConversationMessagesTable
+    Export:
+      Name: ${self:custom.resourcePrefix}-conversation-messages-table-name
+
+  ConversationMessagesTableArn:
+    Description: "ARN de la tabla de mensajes de conversaciones"
+    Value: !GetAtt ConversationMessagesTable.Arn
+    Export:
+      Name: ${self:custom.resourcePrefix}-conversation-messages-table-arn
+
+  ConversationMessagesTableStreamArn:
+    Description: "ARN del stream de la tabla de mensajes de conversaciones"
+    Value: !GetAtt ConversationMessagesTable.StreamArn
+    Export:
+      Name: ${self:custom.resourcePrefix}-conversation-messages-table-stream-arn

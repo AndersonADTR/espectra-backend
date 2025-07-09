@@ -15,12 +15,9 @@ export interface ConversationContext {
   createdAt: number;
   updatedAt: number;
   lastActivity: number;
-  messages: Array<{
-    role: 'user' | 'assistant' | 'system' | 'advisor';
-    content: string;
-    timestamp: number;
-    metadata?: Record<string, any>;
-  }>;
+  messageCount?: number; // Contador de mensajes para estadísticas
+  lastMessageId?: string; // Referencia al último mensaje
+  lastMessageTimestamp?: number; // Timestamp del último mensaje
   botpressContext?: Record<string, any>;
   handoffContext?: {
     handoffCount: number;
@@ -418,18 +415,16 @@ export class ConversationContextService {
   }
 
   /**
-   * Añade un mensaje al historial de la conversación
+   * Actualiza los metadatos de mensaje en el contexto
    * @param conversationId ID de la conversación
-   * @param message Mensaje a añadir
+   * @param messageId ID del último mensaje
+   * @param timestamp Timestamp del último mensaje
    * @returns Contexto actualizado
    */
-  public async addMessage(
+  public async updateLastMessage(
     conversationId: string,
-    message: {
-      role: 'user' | 'assistant' | 'system' | 'advisor';
-      content: string;
-      timestamp?: number;
-    }
+    messageId: string,
+    timestamp?: number
   ): Promise<ConversationContext> {
     const context = await this.getContext(conversationId);
 
@@ -437,16 +432,13 @@ export class ConversationContextService {
       throw new Error(`Conversation not found: ${conversationId}`);
     }
 
-    const newMessage = {
-      ...message,
-      timestamp: message.timestamp || Date.now()
-    };
-
-    const messages = [...context.messages, newMessage];
+    const updateTimestamp = timestamp || Date.now();
 
     return this.updateContext(conversationId, {
-      messages,
-      lastActivity: newMessage.timestamp
+      lastMessageId: messageId,
+      lastMessageTimestamp: updateTimestamp,
+      lastActivity: updateTimestamp,
+      messageCount: (context.messageCount || 0) + 1
     });
   }
 }
