@@ -275,35 +275,49 @@ export class BotpressSyncService {
 
         processed++;
 
-        if (savedMessage) {
-          // Verificar si es un mensaje nuevo o existente
-          const isNewMessage = savedMessage.createdAt === savedMessage.updatedAt;
+        // ✅ ESTRATEGIA SIMPLE Y CONFIABLE:
+        // saveMessageIfNotExists maneja toda la lógica internamente
+        // Solo necesitamos verificar si retornó un mensaje o null
 
-          if (isNewMessage) {
+        if (savedMessage && savedMessage.messageId) {
+          // Si retornó un mensaje con ID, asumimos que la operación fue exitosa
+          // (puede ser nuevo o existente, pero saveMessageIfNotExists ya lo manejó)
+
+          // Para estadísticas, verificar si el mensaje tiene timestamp muy reciente
+          const now = Date.now();
+          const messageAge = now - savedMessage.timestamp;
+          const isLikelyNew = messageAge < 5000; // Menos de 5 segundos = probablemente nuevo
+
+          if (isLikelyNew) {
             newMessages++;
-            this.logger.info('NEW message saved successfully', {
+            this.logger.info('✅ SYNC: Message processed (likely NEW)', {
               botpressMessageId: msg.id,
               role,
               messageId: savedMessage.messageId,
               msgUserId: msg.userId,
               userBotpressId: userBotpressId,
-              isUserMessage: msg.userId === userBotpressId
+              isUserMessage: msg.userId === userBotpressId,
+              messageAge,
+              action: 'LIKELY_NEW'
             });
           } else {
             duplicatesSkipped++;
-            this.logger.info('EXISTING message found, skipped duplicate', {
+            this.logger.info('🔄 SYNC: Message processed (likely EXISTING)', {
               botpressMessageId: msg.id,
               role,
               messageId: savedMessage.messageId,
-              existingTimestamp: savedMessage.createdAt
+              messageAge,
+              action: 'LIKELY_EXISTING'
             });
           }
         } else {
-          // Esto no debería pasar, pero por si acaso
+          // saveMessageIfNotExists retornó null - error o duplicado prevenido
           duplicatesSkipped++;
-          this.logger.warn('Message save returned null', {
+          this.logger.warn('⚠️ SYNC: Message save returned null', {
             botpressMessageId: msg.id,
-            role
+            role,
+            conversationId,
+            action: 'SAVE_FAILED_OR_DUPLICATE'
           });
         }
 

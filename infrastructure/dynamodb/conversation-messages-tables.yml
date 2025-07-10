@@ -10,6 +10,8 @@ Resources:
           AttributeType: S
         - AttributeName: conversationId
           AttributeType: S
+        - AttributeName: botpressMessageId
+          AttributeType: S
         - AttributeName: timestamp
           AttributeType: N
         - AttributeName: userId
@@ -22,6 +24,17 @@ Resources:
         - IndexName: ConversationIndex
           KeySchema:
             - AttributeName: conversationId
+              KeyType: HASH
+            - AttributeName: timestamp
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+        # Índice para obtener mensajes de botpress por su id
+        - IndexName: BotpressConversationIndex
+          KeySchema:
+            - AttributeName: conversationId
+              KeyType: HASH
+            - AttributeName: botpressMessageId
               KeyType: HASH
             - AttributeName: timestamp
               KeyType: RANGE

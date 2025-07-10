@@ -9,7 +9,7 @@ import { ConversationStatus, ConversationType } from '@services/botpress/types/c
 import { HandoffService } from '../handoff/handoff.service';
 import { HandoffReason } from '../handoff/handoff-detection.service';
 import { UserService } from '../user/user.service';
-import { MessageRole, MessageType } from '../../models/conversation-message.model';
+import { MessageRole } from '../../models/conversation-message.model';
 
 export interface BotpressMessage {
   type: string;
@@ -370,8 +370,7 @@ export class BotpressService {
     userKey: string,
     message: string | BotpressMessage,
     type: string,
-    conversationId?: string,
-    userBotpressId?: string
+    conversationId?: string
   ): Promise<BotpressResponse> {
     // Generate conversation ID if not provided
     const actualConversationId = conversationId || `conv-${userKey}-${Date.now()}`;
@@ -404,38 +403,35 @@ export class BotpressService {
         await this.contextService.saveContext(context);
       }
 
-      // Save user message to messages table
-      const userMessageTimestamp = Date.now();
-      this.logger.info('Saving user message', {
+      // ✅ NUEVA ESTRATEGIA: NO guardar mensaje del usuario aquí
+      // El mensaje se guardará en el próximo polling junto con la respuesta del bot
+      // Esto garantiza orden cronológico correcto y evita duplicados
+
+      this.logger.info('📤 SEND MESSAGE: Sending to Botpress only (no local save)', {
         conversationId: actualConversationId,
         userKey: userKey.substring(0, 10) + '...',
-        messageLength: typeof message === 'string' ? message.length : JSON.stringify(message).length
+        messageLength: typeof message === 'string' ? message.length : JSON.stringify(message).length,
+        strategy: 'POLLING_CAPTURE'
       });
-
-      const userMessage = await this.messageService.saveMessage({
-        conversationId: actualConversationId,
-        userId: userKey,
-        role: MessageRole.USER,
-        type: MessageType.TEXT,
-        content: typeof message === 'string' ? message : JSON.stringify(message),
-        timestamp: userMessageTimestamp
-        // Nota: Los mensajes del usuario no tienen botpressMessageId hasta que se envían
-      });
-
-      // Update context with last message info
-      await this.contextService.updateLastMessage(
-        actualConversationId,
-        userMessage.messageId,
-        userMessageTimestamp
-      );
 
       // Send message to Botpress
+      this.logger.info('📤 SEND MESSAGE: Calling Botpress API', {
+        conversationId: actualConversationId,
+        userKey: userKey.substring(0, 10) + '...'
+      });
+
       const response = await this.apiClient.sendMessage(
         actualConversationId,
         message,
         type,
         userKey
       );
+
+      this.logger.info('✅ SEND MESSAGE: Botpress API response received', {
+        conversationId: actualConversationId,
+        hasMessages: response.messages && response.messages.length > 0,
+        messageCount: response.messages?.length || 0
+      });
 
       // Consume tokens based on actual usage
       const tokensUsed = response.tokens?.total || estimatedTokens;
@@ -450,54 +446,25 @@ export class BotpressService {
         response
       );
 
-      // Save bot response messages to messages table
-      if (response.messages && response.messages.length > 0) {
-        this.logger.info('Processing bot response messages', {
-          conversationId: actualConversationId,
-          messageCount: response.messages.length
-        });
+      // ✅ NUEVA ESTRATEGIA: NO guardar NINGÚN mensaje aquí
+      // Tanto el mensaje del usuario como las respuestas del bot se capturarán en polling
+      // Esto garantiza orden cronológico perfecto y cero duplicados
 
-        for (const botMessage of response.messages) {
-          const content = botMessage.type === 'text' && botMessage.payload.text
-            ? botMessage.payload.text
-            : JSON.stringify(botMessage);
+      const currentTimestamp = Date.now();
 
-          const botMessageTimestamp = Date.now();
+      // Solo actualizar el contexto para indicar actividad
+      await this.contextService.updateContext(actualConversationId, {
+        lastActivity: currentTimestamp,
+        updatedAt: currentTimestamp,
+        status: 'ACTIVE' as any
+      });
 
-          this.logger.info('Saving bot response message', {
-            conversationId: actualConversationId,
-            botMessageType: botMessage.type,
-            hasText: !!botMessage.payload?.text,
-            contentLength: content.length
-          });
-
-          // Los mensajes de respuesta de Botpress siempre son del BOT
-          // porque vienen como respuesta a nuestro envío
-          // Usamos saveMessage (no saveMessageIfNotExists) porque estos son mensajes nuevos
-          const savedBotMessage = await this.messageService.saveMessage({
-            conversationId: actualConversationId,
-            userId: userKey,
-            role: MessageRole.BOT,
-            type: MessageType.TEXT,
-            content,
-            timestamp: botMessageTimestamp
-            // Nota: Los mensajes de respuesta inmediata no tienen botpressMessageId
-            // Se obtendrán en la próxima sincronización con listMessages
-          });
-
-          this.logger.info('Bot response message saved', {
-            messageId: savedBotMessage.messageId,
-            conversationId: actualConversationId
-          });
-
-          // Update context with last bot message info
-          await this.contextService.updateLastMessage(
-            actualConversationId,
-            savedBotMessage.messageId,
-            botMessageTimestamp
-          );
-        }
-      }
+      this.logger.info('✅ SEND MESSAGE: Message sent successfully, will be captured in next polling', {
+        conversationId: actualConversationId,
+        botResponseCount: response.messages?.length || 0,
+        strategy: 'POLLING_CAPTURE_ALL',
+        tokensUsed
+      });
 
       return response;
     } catch (error) {
@@ -721,7 +688,6 @@ export class BotpressService {
   public async getConversationMessages(
     userKey: string,
     conversationId: string,
-    userBotpressId: string,
     limit: number = 30,
     nextToken?: string
   ): Promise<any> {
@@ -784,19 +750,22 @@ export class BotpressService {
   /**
    * Gets new messages with intelligent synchronization (OPTIMIZED STRATEGY)
    * Only synchronizes when polling - perfect for real-time updates
+   * Returns only the LATEST messages to keep polling simple and fast
    * @param userKey User key from Botpress
    * @param conversationId Conversation ID
    * @param userBotpressId User's Botpress ID for role identification
    * @param sinceTimestamp Timestamp to get messages since
    * @param roleFilter Filter by message role (optional)
-   * @returns New messages since timestamp
+   * @param maxMessages Maximum number of messages to return (default: 5)
+   * @returns Latest new messages since timestamp
    */
   public async getNewMessages(
     userKey: string,
     conversationId: string,
     userBotpressId: string,
     sinceTimestamp?: number,
-    roleFilter?: MessageRole
+    roleFilter?: MessageRole,
+    maxMessages: number = 5
   ): Promise<any> {
     try {
       // Validate conversation context
@@ -839,26 +808,37 @@ export class BotpressService {
       const newMessages = await this.messageService.getMessagesSince(conversationId, since);
 
       // Filtrar por rol si se especifica (típicamente solo BOT para polling)
-      const filteredMessages = roleFilter
+      let filteredMessages = roleFilter
         ? newMessages.filter(msg => msg.role === roleFilter)
         : newMessages;
 
-      this.logger.info('New messages retrieved for polling', {
+      // ✅ OPTIMIZACIÓN: Limitar a los últimos N mensajes para polling eficiente
+      // Ordenar por timestamp descendente y tomar solo los más recientes
+      filteredMessages = filteredMessages
+        .sort((a, b) => b.timestamp - a.timestamp) // Más recientes primero
+        .slice(0, maxMessages); // Tomar solo los últimos N
+
+      this.logger.info('Latest messages retrieved for polling', {
         conversationId,
         totalNewMessages: newMessages.length,
         filteredMessages: filteredMessages.length,
+        maxMessages,
         roleFilter,
-        syncedNewMessages: syncResult.newMessages
+        syncedNewMessages: syncResult.newMessages,
+        strategy: 'LATEST_MESSAGES_ONLY'
       });
 
       return {
         messages: filteredMessages.map(msg => msg.toJSON()),
         timestamp: new Date().toISOString(),
-        hasMore: filteredMessages.length > 0,
+        hasMore: newMessages.length > maxMessages, // Indica si hay más mensajes disponibles
+        totalAvailable: newMessages.length,
+        returned: filteredMessages.length,
+        maxMessages,
         sync: {
           newMessages: syncResult.newMessages,
           duplicatesSkipped: syncResult.duplicatesSkipped,
-          strategy: 'polling_sync'
+          strategy: 'polling_sync_latest'
         }
       };
 

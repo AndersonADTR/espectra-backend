@@ -257,7 +257,6 @@ export const handler: Handler = async (event: APIGatewayProxyEvent) => {
       const messages = await botpressService.getConversationMessages(
         userBotpressKey,
         conversationId,
-        user.botpressUserId,
         limit,
         nextToken
       );
@@ -346,7 +345,7 @@ export const handler: Handler = async (event: APIGatewayProxyEvent) => {
         requestData.message,
         requestData.type || 'text',
         conversationId,
-        user.botpressUserId // Pasar el botpressUserId para identificación de roles
+        //user.botpressUserId // Pasar el botpressUserId para identificación de roles
       );
 
       return {

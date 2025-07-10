@@ -6,7 +6,6 @@ import { MetricsService } from '@shared/utils/metrics';
 import { AuthenticationService } from '@services/auth/services/authentication.service';
 import { UserService } from '@services/botpress/services/user/user.service';
 import { BotpressService } from '@services/botpress/services/botpress/botpress.service';
-import { MessageRole } from '@services/botpress/models/conversation-message.model';
 import { SPECTRUM_POLLING_CONFIG } from '../config/sse.config';
 
 const logger = new Logger('SpectrumPollHandler');
@@ -287,34 +286,43 @@ async function getNewMessages(
       userKey: userKey.substring(0, 10) + '...'
     });
 
-    // Usar el nuevo método optimizado para polling
+    // ✅ NUEVA ESTRATEGIA: Capturar TODOS los mensajes (usuario + bot)
+    // Pero limitar a los últimos N mensajes para polling eficiente
+    const maxMessages = parseInt(process.env.POLLING_MAX_MESSAGES || '5'); // Configurable vía ENV
+
     const response = await botpressService.getNewMessages(
       userKey,
       conversationId,
       userBotpressId,
       sinceTimestamp,
-      MessageRole.BOT // Solo mensajes del bot para content creators
+      undefined, // Sin filtro de rol - capturar TODO
+      maxMessages // Limitar resultados
     );
 
-    logger.info('SPECTRUM: New message sync response received', {
+    logger.info('SPECTRUM: Latest messages sync response received', {
       conversationId,
       responseType: typeof response,
       hasMessages: response && response.messages ? response.messages.length : 'no messages property',
+      totalAvailable: response?.totalAvailable || 'unknown',
+      returned: response?.returned || 'unknown',
+      maxMessages,
       hasSync: response && response.sync ? 'sync info present' : 'no sync info',
-      responseKeys: response ? Object.keys(response) : 'null response'
+      strategy: 'LATEST_MESSAGES_POLLING'
     });
 
     // Extraer mensajes de la respuesta estructurada
-    let messages: any[] = [];
+    let allMessages: any[] = [];
 
     if (response && Array.isArray(response.messages)) {
-      messages = response.messages;
-      logger.info('SPECTRUM: Using response.messages from local store', {
-        messageCount: messages.length,
+      allMessages = response.messages;
+      logger.info('SPECTRUM: Latest messages captured from Botpress sync', {
+        totalMessages: allMessages.length,
+        totalAvailable: response.totalAvailable,
+        maxMessages,
         syncInfo: response.sync
       });
     } else {
-      logger.warn('SPECTRUM: Unexpected response format from new sync system', {
+      logger.warn('SPECTRUM: Unexpected response format from sync system', {
         conversationId,
         responseType: typeof response,
         response: JSON.stringify(response).substring(0, 500)
@@ -322,46 +330,35 @@ async function getNewMessages(
       return [];
     }
 
-    // Log de mensajes obtenidos
-    logger.info('SPECTRUM: Messages from local store', {
+    // ✅ NUEVA ESTRATEGIA: Filtrar solo mensajes del BOT para la respuesta
+    // (Los mensajes del usuario ya se guardaron, pero no los devolvemos en polling)
+    const botMessages = allMessages.filter(msg => msg.role === 'bot');
+
+    logger.info('SPECTRUM: Latest messages processed for content creator', {
       conversationId,
-      totalMessages: messages.length,
-      messagesSample: messages.slice(0, 3).map(msg => ({
+      totalCaptured: allMessages.length,
+      userMessages: allMessages.filter(msg => msg.role === 'user').length,
+      botMessages: botMessages.length,
+      maxMessages,
+      totalAvailable: response.totalAvailable,
+      messagesSample: botMessages.slice(0, 2).map(msg => ({
         messageId: msg.messageId,
         role: msg.role,
         timestamp: msg.timestamp,
         content: msg.content?.substring(0, 50)
-      }))
-    });
-
-    // Los mensajes ya vienen filtrados por rol BOT desde el servicio
-    // Solo necesitamos aplicar filtros adicionales si es necesario
-
-    logger.info('SPECTRUM: Messages ready for content creator', {
-      conversationId,
-      messageCount: messages.length,
-      since,
+      })),
       syncInfo: response.sync
     });
 
-    // Si no hay timestamp específico, devolver todos los mensajes del bot
-    if (!since) {
-      logger.info('SPECTRUM: Returning all bot messages for content creator', {
-        conversationId,
-        messageCount: messages.length
-      });
-      return messages;
-    }
-
-    // Los mensajes ya están filtrados por timestamp en el servicio
-    // pero podemos hacer una verificación adicional si es necesario
-    logger.info('SPECTRUM: Returning filtered bot messages for content creator', {
+    logger.info('SPECTRUM: Returning latest bot messages for content creator', {
       conversationId,
+      botMessageCount: botMessages.length,
+      maxMessages,
       since,
-      messageCount: messages.length
+      strategy: 'LATEST_BOT_MESSAGES_ONLY'
     });
 
-    return messages;
+    return botMessages;
 
   } catch (error) {
     logger.error('Error getting new messages', {
