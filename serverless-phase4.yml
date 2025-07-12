@@ -573,6 +573,16 @@ functions:
             id: !Ref RestApiId
           authorizer:
             name: restAuthorizer
+      # DELETE /conversations/{id} - Delete conversation
+      - http:
+          path: conversations/{conversationId}
+          method: delete
+          cors: true
+          integration: lambda-proxy
+          restApi:
+            id: !Ref RestApiId
+          authorizer:
+            name: restAuthorizer
 
   # Token Management
   tokenUsage:

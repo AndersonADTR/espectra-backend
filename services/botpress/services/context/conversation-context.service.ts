@@ -441,4 +441,98 @@ export class ConversationContextService {
       messageCount: (context.messageCount || 0) + 1
     });
   }
+
+  /**
+   * Inactiva una conversación (soft delete)
+   * @param conversationId ID de la conversación
+   * @param reason Razón de la inactivación (opcional)
+   * @returns Contexto actualizado
+   */
+  async inactivateConversation(
+    conversationId: string,
+    reason?: string
+  ): Promise<ConversationContext> {
+    const startTime = Date.now();
+
+    try {
+      this.logger.info('Inactivating conversation', {
+        conversationId,
+        reason
+      });
+
+      // Verificar que la conversación existe
+      const existingContext = await this.getContext(conversationId);
+      if (!existingContext) {
+        throw new Error(`Conversation not found: ${conversationId}`);
+      }
+
+      // Verificar que no esté ya inactiva
+      if (existingContext.status === ConversationStatus.INACTIVE) {
+        this.logger.warn('Conversation already inactive', {
+          conversationId,
+          currentStatus: existingContext.status
+        });
+        return existingContext;
+      }
+
+      const inactivationTimestamp = Date.now();
+
+      // Actualizar el contexto para marcarlo como inactivo
+      const updatedContext = await this.updateContext(conversationId, {
+        status: ConversationStatus.INACTIVE,
+        lastActivity: inactivationTimestamp,
+        updatedAt: inactivationTimestamp,
+        metadata: {
+          ...existingContext.metadata,
+          inactivatedAt: inactivationTimestamp,
+          inactivationReason: reason || 'User requested deletion',
+          deletedFromBotpress: false // Se actualizará cuando se elimine de Botpress
+        }
+      });
+
+      this.logger.info('Conversation inactivated successfully', {
+        conversationId,
+        previousStatus: existingContext.status,
+        newStatus: ConversationStatus.INACTIVE,
+        reason,
+        inactivatedAt: inactivationTimestamp
+      });
+
+      this.metrics.incrementCounter('ConversationInactivated');
+      this.metrics.recordLatency('ConversationInactivationLatency', Date.now() - startTime);
+
+      return updatedContext;
+    } catch (error) {
+      this.logger.error('Error inactivating conversation', {
+        error,
+        conversationId,
+        reason
+      });
+      this.metrics.incrementCounter('ConversationInactivationErrors');
+      this.metrics.recordLatency('ConversationInactivationLatency', Date.now() - startTime);
+      throw error;
+    }
+  }
+
+  /**
+   * Verifica si una conversación está activa
+   * @param conversationId ID de la conversación
+   * @returns true si está activa, false si está inactiva
+   */
+  async isConversationActive(conversationId: string): Promise<boolean> {
+    try {
+      const context = await this.getContext(conversationId);
+      if (!context) {
+        return false; // Si no existe, no está activa
+      }
+
+      return context.status !== ConversationStatus.INACTIVE;
+    } catch (error) {
+      this.logger.error('Error checking if conversation is active', {
+        error,
+        conversationId
+      });
+      return false; // En caso de error, asumir que no está activa
+    }
+  }
 }

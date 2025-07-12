@@ -382,6 +382,63 @@ export const handler: Handler = async (event: APIGatewayProxyEvent) => {
       };
     }
 
+    // 8. DELETE /conversations/{id} - Eliminar conversación
+    else if (method === 'DELETE' && conversationId && !action) {
+      console.info('Deleting conversation', {
+        conversationId,
+        userBotpressKey: userBotpressKey.substring(0, 10) + '...'
+      });
+
+      // Obtener razón opcional del body
+      let reason: string | undefined;
+      if (event.body) {
+        try {
+          if (event.isBase64Encoded) {
+            const body = Buffer.from(event.body, 'base64').toString('utf8');
+            event.body = body;
+          }
+          const requestData = JSON.parse(event.body);
+          reason = requestData.reason;
+        } catch (parseError) {
+          console.warn('Could not parse request body for deletion reason', { parseError });
+        }
+      }
+
+      console.info('Proceeding with conversation deletion', {
+        conversationId,
+        hasReason: !!reason,
+        reason: reason?.substring(0, 100) // Log solo primeros 100 caracteres
+      });
+
+      // Eliminar conversación (inactivar localmente + eliminar de Botpress)
+      const deletionResult = await botpressService.deleteConversation(
+        userBotpressKey,
+        conversationId,
+        reason
+      );
+
+      return {
+        statusCode: 200,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          success: true,
+          message: 'Conversation deleted successfully',
+          data: {
+            conversationId,
+            localInactivation: {
+              status: deletionResult.localInactivation.status,
+              inactivatedAt: deletionResult.localInactivation.metadata?.inactivatedAt,
+              reason: deletionResult.localInactivation.metadata?.inactivationReason
+            },
+            botpressDeletion: {
+              deleted: true,
+              timestamp: Date.now()
+            }
+          }
+        })
+      };
+    }
+
     else {
       // Método no soportado
       return {
@@ -393,10 +450,49 @@ export const handler: Handler = async (event: APIGatewayProxyEvent) => {
   } catch (error) {
     console.error('Error processing conversation request', { error });
 
+    // Manejo específico de errores de eliminación
+    const errorMessage = (error as Error)?.message || '';
+
+    if (errorMessage.includes('already inactive')) {
+      return {
+        statusCode: 409,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          message: 'Conversation is already deleted or inactive',
+          error: 'CONVERSATION_ALREADY_INACTIVE'
+        })
+      };
+    }
+
+    if (errorMessage.includes('not found')) {
+      return {
+        statusCode: 404,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          message: 'Conversation not found',
+          error: 'CONVERSATION_NOT_FOUND'
+        })
+      };
+    }
+
+    if (errorMessage.includes('access denied')) {
+      return {
+        statusCode: 403,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          message: 'Access denied to conversation',
+          error: 'ACCESS_DENIED'
+        })
+      };
+    }
+
     return {
       statusCode: 500,
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ message: 'Internal server error' })
+      body: JSON.stringify({
+        message: 'Internal server error',
+        error: 'INTERNAL_ERROR'
+      })
     };
   }
 };

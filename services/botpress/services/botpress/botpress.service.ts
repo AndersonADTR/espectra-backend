@@ -5,7 +5,7 @@ import { ConversationContextService } from '../context/conversation-context.serv
 import { ConversationMessageService } from '../conversation-message/conversation-message.service';
 import { BotpressSyncService } from '../sync/botpress-sync.service';
 import { BotpressMessageTransformer } from './transformers/message-transformer.service';
-import { ConversationStatus, ConversationType } from '@services/botpress/types/conversation-context.types';
+import { ConversationStatus, ConversationType, ConversationContext } from '@services/botpress/types/conversation-context.types';
 import { HandoffService } from '../handoff/handoff.service';
 import { HandoffReason } from '../handoff/handoff-detection.service';
 import { UserService } from '../user/user.service';
@@ -325,6 +325,45 @@ export class BotpressApiClient {
       return response.data;
     } catch (error) {
       this.logger.error('Error listing messages from Chat API', { error, conversationId, userKey });
+      throw error;
+    }
+  }
+
+  /**
+   * Deletes a conversation from Botpress
+   * @param conversationId Conversation ID
+   * @param userKey User key from Botpress
+   * @returns Deleted conversation object
+   */
+  public async deleteConversation(
+    conversationId: string,
+    userKey: string
+  ): Promise<any> {
+    try {
+      this.logger.info('Deleting conversation from Botpress', {
+        conversationId,
+        userKey: userKey.substring(0, 10) + '...'
+      });
+
+      const response = await this.axios.delete(`/conversations/${conversationId}`, {
+        headers: {
+          'Content-Type': 'application/json',
+          'x-user-key': userKey
+        }
+      });
+
+      this.logger.info('Conversation deleted from Botpress successfully', {
+        conversationId,
+        deletedConversation: response.data
+      });
+
+      return response.data;
+    } catch (error) {
+      this.logger.error('Error deleting conversation from Botpress', {
+        error,
+        conversationId,
+        userKey: userKey.substring(0, 10) + '...'
+      });
       throw error;
     }
   }
@@ -965,6 +1004,129 @@ export class BotpressService {
       this.logger.info('Session closed for conversation', { userId, conversationId });
     } catch (error) {
       this.logger.error('Error closing session', { error, userId, conversationId });
+      throw error;
+    }
+  }
+
+  /**
+   * Deletes a conversation (inactivates locally and deletes from Botpress)
+   * @param userKey User key from Botpress
+   * @param conversationId Conversation ID
+   * @param reason Optional reason for deletion
+   * @returns Deletion result
+   */
+  public async deleteConversation(
+    userKey: string,
+    conversationId: string,
+    reason?: string
+  ): Promise<{
+    localInactivation: any;
+    botpressDeletion: any;
+    success: boolean;
+  }> {
+    let localInactivation: any = null;
+    let botpressDeletion: any = null;
+
+    try {
+      this.logger.info('Starting conversation deletion process', {
+        conversationId,
+        userKey: userKey.substring(0, 10) + '...',
+        reason
+      });
+
+      // 1. Verificar que la conversación existe, está activa Y pertenece al usuario
+      const context = await this.contextService.getContext(conversationId);
+      if (!context) {
+        throw new Error('Conversation not found');
+      }
+
+      if (context.userId !== userKey) {
+        throw new Error('Access denied to conversation');
+      }
+
+      if (context.status === ConversationStatus.INACTIVE) {
+        throw new Error('Conversation is already inactive or does not exist');
+      }
+
+      // 2. Inactivar la conversación en nuestra tabla (soft delete)
+      this.logger.info('Inactivating conversation locally', {
+        conversationId
+      });
+
+      localInactivation = await this.contextService.inactivateConversation(
+        conversationId,
+        reason
+      );
+
+      this.logger.info('Conversation inactivated locally', {
+        conversationId,
+        newStatus: localInactivation.status
+      });
+
+      // 3. Eliminar la conversación de Botpress (hard delete)
+      this.logger.info('Deleting conversation from Botpress', {
+        conversationId
+      });
+
+      try {
+        botpressDeletion = await this.apiClient.deleteConversation(
+          conversationId,
+          userKey
+        );
+
+        this.logger.info('Conversation deleted from Botpress', {
+          conversationId,
+          botpressResponse: botpressDeletion
+        });
+
+        // 4. Actualizar metadata para indicar que se eliminó de Botpress
+        await this.contextService.updateContext(conversationId, {
+          metadata: {
+            ...localInactivation.metadata,
+            deletedFromBotpress: true,
+            botpressDeletionTimestamp: Date.now()
+          }
+        });
+
+      } catch (botpressError) {
+        this.logger.error('Failed to delete from Botpress, reverting local changes', {
+          botpressError,
+          conversationId
+        });
+
+        // Revertir la inactivación local
+        await this.contextService.updateContext(conversationId, {
+          status: ConversationStatus.ACTIVE,
+          metadata: {
+            ...context.metadata,
+            revertedInactivation: true,
+            revertedAt: Date.now(),
+            revertReason: 'Botpress deletion failed'
+          }
+        });
+
+        throw new Error(`Failed to delete conversation from Botpress: ${(botpressError as Error).message}`);
+      }
+
+      this.logger.info('Conversation deletion process completed successfully', {
+        conversationId,
+        reason
+      });
+
+      return {
+        localInactivation,
+        botpressDeletion,
+        success: true
+      };
+
+    } catch (error) {
+      this.logger.error('Error during conversation deletion process', {
+        error,
+        conversationId,
+        userKey: userKey.substring(0, 10) + '...',
+        reason
+      });
+
       throw error;
     }
   }
